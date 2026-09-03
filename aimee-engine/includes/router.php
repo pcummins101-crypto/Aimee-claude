@@ -91,35 +91,45 @@ function aimee_engine_fallback_classification($user_text, $recent_text = '') {
 }
 
 /**
- * Run the classifier. Returns the normalised classification plus telemetry.
+ * Build the classifier request so it can be sent alone or in a parallel batch.
  */
-function aimee_engine_classify($user_text, array $recent_rows, $stage) {
-    $model = (string) aimee_engine_setting('classifier_model');
+function aimee_engine_classifier_body($user_text, array $recent_rows, $stage) {
     $recent = array_slice($recent_rows, -10);
     $thread = aimee_engine_history_string($recent, 4000);
-
     $content = "Recent thread:\n" . ($thread !== '' ? $thread : '(none)') . "\n\nLatest message from the user:\n" . (string) $user_text;
-    $body = aimee_engine_anthropic_build_body(
-        $model,
+    return aimee_engine_anthropic_build_body(
+        (string) aimee_engine_setting('classifier_model'),
         [['type' => 'text', 'text' => aimee_engine_classifier_prompt($stage)]],
         [['role' => 'user', 'content' => $content]],
         ['max_tokens' => 300, 'output_schema' => aimee_engine_classifier_schema()]
     );
-    $result = aimee_engine_anthropic_request($body, 30);
+}
 
-    if ($result['ok'] && $result['stop_reason'] !== 'refusal') {
-        $data = aimee_engine_extract_json($result['text']);
+/**
+ * Turn a classifier response into a classification, falling back to the
+ * deterministic read when the call failed or returned nothing usable.
+ */
+function aimee_engine_classification_from_result(array $result, $user_text, $recent_text = '') {
+    if (!empty($result['ok']) && ($result['stop_reason'] ?? '') !== 'refusal') {
+        $data = aimee_engine_extract_json($result['text'] ?? '');
         if (is_array($data)) {
             $classification = aimee_engine_normalise_classification($data, 'classifier');
-            $classification['classifier_model'] = $model;
-            $classification['latency_ms'] = $result['latency_ms'];
+            $classification['classifier_model'] = (string) ($result['model'] ?? aimee_engine_setting('classifier_model'));
+            $classification['latency_ms'] = intval($result['latency_ms'] ?? 0);
             return $classification;
         }
     }
-
-    $fallback = aimee_engine_fallback_classification($user_text, $thread);
-    $fallback['classifier_error'] = $result['error_type'] ?: ($result['stop_reason'] === 'refusal' ? 'refusal' : 'unparseable');
+    $fallback = aimee_engine_fallback_classification($user_text, $recent_text);
+    $fallback['classifier_error'] = ($result['error_type'] ?? '') ?: ((($result['stop_reason'] ?? '') === 'refusal') ? 'refusal' : 'unparseable');
     return $fallback;
+}
+
+/**
+ * Run the classifier on its own. Returns the normalised classification.
+ */
+function aimee_engine_classify($user_text, array $recent_rows, $stage) {
+    $result = aimee_engine_anthropic_request(aimee_engine_classifier_body($user_text, $recent_rows, $stage), 30);
+    return aimee_engine_classification_from_result($result, $user_text, aimee_engine_history_string(array_slice($recent_rows, -10), 4000));
 }
 
 /**

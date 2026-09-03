@@ -155,13 +155,19 @@ function aimee_engine_run_primary(array $ctx) {
         'stop_reason' => '', 'refusal_category' => '', 'error_type' => '', 'latency_ms' => 0, 'calls' => 0, 'usage' => [],
     ];
 
+    $initial = is_array($ctx['initial_result'] ?? null) ? $ctx['initial_result'] : null;
+
     for ($i = 0; $i < 3; $i++) {
-        $body = aimee_engine_anthropic_build_body($model, $ctx['system_blocks'], $messages, [
-            'max_tokens' => intval($ctx['max_tokens']),
-            'effort'     => (string) $ctx['effort'],
-            'tools'      => $tools,
-        ]);
-        $result = aimee_engine_anthropic_request($body, 120);
+        if ($initial !== null && $i === 0) {
+            $result = $initial;
+        } else {
+            $body = aimee_engine_anthropic_build_body($model, $ctx['system_blocks'], $messages, [
+                'max_tokens' => intval($ctx['max_tokens']),
+                'effort'     => (string) $ctx['effort'],
+                'tools'      => $tools,
+            ]);
+            $result = aimee_engine_anthropic_request($body, 120);
+        }
         $out['calls']++;
         $out['latency_ms'] += intval($result['latency_ms']);
         $out['stop_reason'] = $result['stop_reason'];
@@ -324,6 +330,35 @@ function aimee_engine_run_specialist(array $ctx) {
     return $out;
 }
 
+function aimee_engine_primary_body(array $ctx) {
+    return aimee_engine_anthropic_build_body((string) $ctx['model'], $ctx['system_blocks'], $ctx['messages'], [
+        'max_tokens' => intval($ctx['max_tokens']),
+        'effort'     => (string) $ctx['effort'],
+        'tools'      => !empty($ctx['tool']) ? [$ctx['tool']] : [],
+    ]);
+}
+
+/**
+ * Read-only relationship snapshot used for facts and photo eligibility before
+ * this turn's maths has run. One turn of lag is immaterial for either.
+ */
+function aimee_engine_intimacy_snapshot($profile, $current_stage) {
+    $snapshot = [
+        'score' => max(0, min(100, intval($profile->intimacy_score ?? 8))),
+        'stage' => sanitize_key((string) $current_stage),
+        'use_intimacy_model' => false,
+    ];
+    if (function_exists('aimee_load_relationship_state')) {
+        $state = aimee_load_relationship_state($profile);
+        if (is_array($state)) {
+            foreach (['trust', 'affection', 'chemistry', 'safety', 'reciprocity', 'reliability', 'frustration', 'meaningful_interaction_count', 'qualified_session_count', 'session_count'] as $key) {
+                if (array_key_exists($key, $state)) $snapshot[$key] = $state[$key];
+            }
+        }
+    }
+    return $snapshot;
+}
+
 function aimee_engine_error_response($code, $message, $status, $is_error = true) {
     return $is_error
         ? new WP_Error($code, $message, ['status' => $status])
@@ -431,6 +466,8 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
     }
 
     // ---- History and state -------------------------------------------------
+    $timings = ['gates_ms' => intval((microtime(true) - $started) * 1000)];
+    $phase = microtime(true);
     $history_limit = max(6, intval(aimee_engine_setting('history_messages')));
     $rows = $wpdb->get_results($wpdb->prepare(
         "SELECT {$pk} AS message_id, sender, message_text, image_url, created_at
@@ -456,42 +493,10 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
 
     $is_owner = function_exists('aimee_is_owner_user') && aimee_is_owner_user($profile);
     $name = $is_owner ? 'Paul' : trim((string) ($profile->first_name ?? ''));
-
-    // ---- Classify ------------------------------------------------------------
-    $classification = aimee_engine_classify($user_text !== '' ? $user_text : '[attached a photo]', $rows, $current_stage);
-    $legacy_classification = aimee_engine_classification_to_legacy($classification);
-
-    $ledger = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ledger_table WHERE user_id = %d", $user_id));
-    if (!$ledger) {
-        $wpdb->insert($ledger_table, ['user_id' => $user_id]);
-        $ledger = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ledger_table WHERE user_id = %d", $user_id));
-    }
-    if (!$ledger) $ledger = (object) ['overall_equity' => 50, 'inquiry_ratio' => 50, 'fantasy_imposition' => 0];
-
+    $classify_text = $user_text !== '' ? $user_text : '[attached a photo]';
     $history_string = aimee_engine_history_string($rows);
-    $intimacy = aimee_calculate_intimacy_state($profile, $ledger, $legacy_classification, $user_text, $user_message_count, $history_string);
-    if (!is_array($intimacy)) $intimacy = ['score' => intval($profile->intimacy_score ?? 8), 'stage' => $current_stage, 'use_intimacy_model' => false];
-    if (!empty($intimacy['classifier_for_relationship']) && is_array($intimacy['classifier_for_relationship'])) {
-        $legacy_classification = $intimacy['classifier_for_relationship'];
-    }
-    if ($image_data_uri !== '') $intimacy['use_intimacy_model'] = false;
 
-    $live_data = function_exists('get_aimee_live_context') ? get_aimee_live_context() : [];
-    $gap = function_exists('aimee_conversation_gap_snapshot') ? aimee_conversation_gap_snapshot($last_created_at, $live_data) : [];
-    if (!is_array($gap)) $gap = [];
-
-    // Inner appraisal keeps her mood and relationship events moving.
-    $inner_state = aimee_appraise_user_turn($user_id, $user_text, $legacy_classification, $intimacy, $gap, [
-        'last_sender'       => $last_sender,
-        'last_created_at'   => $last_created_at,
-        'last_directive'    => '',
-        'last_message_id'   => $last_message_id,
-        'last_message_text' => $last_text,
-    ]);
-    if (!is_array($inner_state)) $inner_state = [];
-    unset($inner_state['_persistence_ok']);
-
-    // ---- Persist the user's message and relationship movement ---------------
+    // Store the user's message first so it survives whatever the providers do.
     $inserted = $wpdb->insert($messages_table, [
         'user_id'                => $user_id,
         'sender'                 => 'user',
@@ -508,29 +513,29 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
         aimee_turn_request_finish($user_id, $request_id, 'failed', $error, 'user_message_insert_failed');
         return new WP_REST_Response($error, 503);
     }
-    if (!empty($intimacy['relationship_state']) && is_array($intimacy['relationship_state'])) {
-        aimee_save_relationship_state($user_id, $intimacy['relationship_state']);
-    }
-    $wpdb->update($profile_table, [
-        'intimacy_score' => intval($intimacy['score'] ?? 0),
-        'intimacy_stage' => sanitize_key((string) ($intimacy['stage'] ?? 'guarded')),
-    ], ['user_id' => $user_id], ['%d', '%s'], ['%d']);
 
-    // ---- Route and context ---------------------------------------------------
-    $specialist_eligible = $classification['route'] === 'erotic'
-        && !empty($intimacy['use_intimacy_model'])
-        && $image_data_uri === ''
-        && !$discussion_only
-        && defined('OPENROUTER_API_KEY') && trim((string) OPENROUTER_API_KEY) !== '';
+    // ---- Provisional read of the moment -------------------------------------
+    // The classifier runs in parallel with the main model. A deterministic
+    // read decides what the main model is told and which photos it may offer;
+    // the real classification arrives with the reply and drives the
+    // relationship maths and the explicit re-route.
+    $provisional = aimee_engine_fallback_classification($classify_text, $history_string);
+    $provisional_legacy = aimee_engine_classification_to_legacy($provisional);
+    $snapshot = aimee_engine_intimacy_snapshot($profile, $current_stage);
+    $specialist_possible = defined('OPENROUTER_API_KEY') && trim((string) OPENROUTER_API_KEY) !== ''
+        && $image_data_uri === '' && !$discussion_only;
+
+    $live_data = aimee_engine_live_context();
+    $gap = function_exists('aimee_conversation_gap_snapshot') ? aimee_conversation_gap_snapshot($last_created_at, $live_data) : [];
+    if (!is_array($gap)) $gap = [];
+    $inner_state = function_exists('aimee_load_inner_state') ? aimee_load_inner_state($user_id) : [];
+    if (!is_array($inner_state)) $inner_state = [];
 
     $sent = aimee_engine_previously_sent_photos($user_id);
     $eligible = [];
-    if (!$discussion_only && $classification['route'] !== 'abusive' && $classification['route'] !== 'unsafe') {
-        $eligible = aimee_engine_eligible_photos($user_id, $profile, 'primary', $legacy_classification, $intimacy);
+    if (!$discussion_only && $provisional['route'] === 'everyday') {
+        $eligible = aimee_engine_eligible_photos($user_id, $profile, 'primary', $provisional_legacy, $snapshot);
     }
-    $specialist_photos = $specialist_eligible
-        ? aimee_engine_eligible_photos($user_id, $profile, 'intimacy_specialist', $legacy_classification, $intimacy)
-        : [];
 
     $memory_context = aimee_memory_context_for_turn($user_id, $user_text);
     $opinions = function_exists('aimee_opinion_context_directive') ? aimee_opinion_context_directive($user_id, $user_text) : '';
@@ -542,27 +547,30 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
         aimee_engine_mood_line($inner_state),
     ])));
 
-    $facts = aimee_engine_build_facts([
-        'profile'             => $profile,
-        'name'                => $name,
-        'live_data'           => $live_data,
-        'gap'                 => $gap,
-        'intimacy'            => $intimacy,
-        'classification'      => $classification,
-        'specialist_eligible' => $specialist_eligible,
-        'gallery_reference'   => $gallery_reference,
-        'eligible_count'      => count($eligible),
-        'sent_count'          => count($sent),
-        'user_message_count'  => $user_message_count,
-    ]);
+    $build_facts = function (array $classification, $specialist_eligible) use ($profile, $name, $live_data, $gap, $snapshot, $gallery_reference, $eligible, $sent, $user_message_count) {
+        return aimee_engine_build_facts([
+            'profile'             => $profile,
+            'name'                => $name,
+            'live_data'           => $live_data,
+            'gap'                 => $gap,
+            'intimacy'            => $snapshot,
+            'classification'      => $classification,
+            'specialist_eligible' => $specialist_eligible,
+            'gallery_reference'   => $gallery_reference,
+            'eligible_count'      => count($eligible),
+            'sent_count'          => count($sent),
+            'user_message_count'  => $user_message_count,
+        ]);
+    };
     $card = aimee_engine_character_card();
+    $facts = $build_facts($provisional, false);
     $system_blocks = aimee_engine_system_blocks($card, $dossier, $facts);
 
     $messages = aimee_engine_transcript_messages($rows, [
         'max_characters' => intval(aimee_engine_setting('history_characters')),
         'photo_alts'     => aimee_engine_catalogue_alts(),
     ]);
-    $current_text = $user_text !== '' ? $user_text : '[attached a photo]';
+    $current_text = $classify_text;
     if ($image_data_uri !== '' && preg_match('#^data:(image/[a-z0-9.+-]+);base64,(.+)$#is', $image_data_uri, $m)) {
         $current = [
             ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => strtolower($m[1]), 'data' => $m[2]]],
@@ -596,16 +604,84 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
         'messages'                   => $messages,
         'tool'                       => aimee_engine_photo_tool($eligible, $sent),
         'eligible'                   => $eligible,
-        'specialist_eligible_photos' => $specialist_photos,
+        'specialist_eligible_photos' => [],
         'sent'                       => $sent,
         'card'                       => $card,
         'dossier'                    => $dossier,
         'facts'                      => $facts,
-        'intimacy'                   => $intimacy,
-        'legacy_classification'      => $legacy_classification,
+        'intimacy'                   => $snapshot,
+        'legacy_classification'      => $provisional_legacy,
     ];
+    $timings['context_ms'] = intval((microtime(true) - $phase) * 1000);
+
+    // ---- Classify and generate ---------------------------------------------
+    // Ordinary turns: classifier and main model in flight together.
+    // Turns that already look explicit: classify first, since the answer
+    // decides which model writes at all.
+    $phase = microtime(true);
+    $classification = null;
+    $initial_primary = null;
+    $classifier_body = aimee_engine_classifier_body($classify_text, $rows, $current_stage);
+
+    if ($provisional['route'] === 'everyday') {
+        $results = aimee_engine_anthropic_request_multiple([
+            'classifier' => $classifier_body,
+            'primary'    => aimee_engine_primary_body($ctx),
+        ], 120);
+        $classification = aimee_engine_classification_from_result($results['classifier'], $classify_text, $history_string);
+        $initial_primary = $results['primary'];
+    } else {
+        $classification = aimee_engine_classification_from_result(aimee_engine_anthropic_request($classifier_body, 30), $classify_text, $history_string);
+    }
+    $timings['classify_ms'] = intval((microtime(true) - $phase) * 1000);
+
+    // ---- Relationship maths with the real classification --------------------
+    $phase = microtime(true);
+    $legacy_classification = aimee_engine_classification_to_legacy($classification);
+    $ledger = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ledger_table WHERE user_id = %d", $user_id));
+    if (!$ledger) {
+        $wpdb->insert($ledger_table, ['user_id' => $user_id]);
+        $ledger = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ledger_table WHERE user_id = %d", $user_id));
+    }
+    if (!$ledger) $ledger = (object) ['overall_equity' => 50, 'inquiry_ratio' => 50, 'fantasy_imposition' => 0];
+
+    $intimacy = aimee_calculate_intimacy_state($profile, $ledger, $legacy_classification, $user_text, $user_message_count, $history_string);
+    if (!is_array($intimacy)) $intimacy = $snapshot;
+    if (!empty($intimacy['classifier_for_relationship']) && is_array($intimacy['classifier_for_relationship'])) {
+        $legacy_classification = $intimacy['classifier_for_relationship'];
+    }
+    if ($image_data_uri !== '') $intimacy['use_intimacy_model'] = false;
+
+    $inner_state = aimee_appraise_user_turn($user_id, $user_text, $legacy_classification, $intimacy, $gap, [
+        'last_sender'       => $last_sender,
+        'last_created_at'   => $last_created_at,
+        'last_directive'    => '',
+        'last_message_id'   => $last_message_id,
+        'last_message_text' => $last_text,
+    ]);
+    if (!is_array($inner_state)) $inner_state = [];
+    unset($inner_state['_persistence_ok']);
+
+    if (!empty($intimacy['relationship_state']) && is_array($intimacy['relationship_state'])) {
+        aimee_save_relationship_state($user_id, $intimacy['relationship_state']);
+    }
+    $wpdb->update($profile_table, [
+        'intimacy_score' => intval($intimacy['score'] ?? 0),
+        'intimacy_stage' => sanitize_key((string) ($intimacy['stage'] ?? 'guarded')),
+    ], ['user_id' => $user_id], ['%d', '%s'], ['%d']);
+
+    $specialist_eligible = $specialist_possible
+        && $classification['route'] === 'erotic'
+        && !empty($intimacy['use_intimacy_model']);
+    $ctx['intimacy'] = $intimacy;
+    $ctx['legacy_classification'] = $legacy_classification;
+    $ctx['specialist_eligible_photos'] = $specialist_eligible
+        ? aimee_engine_eligible_photos($user_id, $profile, 'intimacy_specialist', $legacy_classification, $intimacy)
+        : [];
+    $timings['relationship_ms'] = intval((microtime(true) - $phase) * 1000);
 
     // ---- Generate ------------------------------------------------------------
+    $phase = microtime(true);
     $route = 'primary';
     $attempts = [];
     $reply = '';
@@ -616,6 +692,8 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
     $specialist_tried = false;
 
     if ($specialist_eligible) {
+        // The real classification overruled the provisional read: the
+        // specialist writes this one, and any in-flight primary reply is dropped.
         $specialist_tried = true;
         $s = aimee_engine_run_specialist($ctx);
         $attempts[] = ['route' => 'intimacy_specialist', 'ok' => $s['ok'], 'model' => $s['model'], 'error' => $s['error_type'], 'ms' => $s['latency_ms'], 'brief' => $s['brief'], 'brief_ms' => $s['brief_ms']];
@@ -625,12 +703,22 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
             $photo = $s['photo'];
             $actual_model = $s['model'];
             $actual_provider = $s['provider'];
+            $initial_primary = null;
         }
     }
 
     if ($reply === '') {
+        if ($initial_primary === null || $classification['route'] !== $provisional['route']) {
+            // The moment changed under the provisional read (or there was no
+            // parallel call): rebuild the facts and call fresh.
+            $ctx['facts'] = $build_facts($classification, $specialist_eligible);
+            $ctx['system_blocks'] = aimee_engine_system_blocks($card, $dossier, $ctx['facts']);
+            if ($classification['route'] !== 'everyday') { $ctx['tool'] = null; $ctx['eligible'] = []; }
+            $initial_primary = null;
+        }
+        $ctx['initial_result'] = $initial_primary;
         $p = aimee_engine_run_primary($ctx);
-        $attempts[] = ['route' => 'primary', 'ok' => $p['ok'], 'model' => $p['model'], 'error' => $p['error_type'], 'refusal' => $p['refusal_category'], 'ms' => $p['latency_ms'], 'calls' => $p['calls']];
+        $attempts[] = ['route' => 'primary', 'ok' => $p['ok'], 'model' => $p['model'], 'error' => $p['error_type'], 'refusal' => $p['refusal_category'], 'ms' => $p['latency_ms'], 'calls' => $p['calls'], 'parallel' => $initial_primary !== null];
         $photo = $p['photo'];
         $actual_model = $p['model'];
         $actual_provider = 'anthropic';
@@ -655,7 +743,8 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
             if ($reply === '' && $photo === null) {
                 $retry = $ctx;
                 $retry['tool'] = null;
-                $retry['system_blocks'] = aimee_engine_system_blocks($card, $dossier, $facts . "\n- He has pushed toward territory she is not going to describe explicitly right now. She stays herself: warm, a little teasing, unbothered, and simply does not go there. No lecture, no mention of rules.");
+                $retry['initial_result'] = null;
+                $retry['system_blocks'] = aimee_engine_system_blocks($card, $dossier, $ctx['facts'] . "\n- He has pushed toward territory she is not going to describe explicitly right now. She stays herself: warm, a little teasing, unbothered, and simply does not go there. No lecture, no mention of rules.");
                 $p2 = aimee_engine_run_primary($retry);
                 $attempts[] = ['route' => 'primary_retry', 'ok' => $p2['ok'], 'model' => $p2['model'], 'error' => $p2['error_type'], 'refusal' => $p2['refusal_category'], 'ms' => $p2['latency_ms']];
                 if ($p2['ok']) {
@@ -666,6 +755,8 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
             }
         }
     }
+    $timings['generate_ms'] = intval((microtime(true) - $phase) * 1000);
+    $phase = microtime(true);
 
     $generation_failed = $reply === '';
     if ($generation_failed) {
@@ -761,6 +852,8 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
         'history_messages'    => count($rows),
         'reply_characters'    => mb_strlen($reply),
         'observer'            => $observer,
+        'provisional_route'   => $provisional['route'],
+        'timings'             => $timings + ['persist_ms' => intval((microtime(true) - $phase) * 1000)],
         'total_ms'            => intval((microtime(true) - $started) * 1000),
     ]);
 

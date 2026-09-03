@@ -239,3 +239,35 @@ function aimee_engine_specialist_system($card, $dossier, $facts, $brief = '', ar
     $parts[] = $frame;
     return implode("\n\n", array_filter($parts));
 }
+
+/**
+ * Aimee Global's live context fetches headlines and weather over the network
+ * on every turn. Time is computed fresh; the remote parts are cached.
+ */
+function aimee_engine_live_context() {
+    $cached = get_transient('aimee_engine_live_remote');
+    if (!is_array($cached) || !function_exists('aimee_local_now')) {
+        $live = function_exists('get_aimee_live_context') ? get_aimee_live_context() : [];
+        if (is_array($live) && $live) {
+            set_transient('aimee_engine_live_remote', [
+                'trending' => (string) ($live['trending'] ?? ''),
+                'weather'  => (string) ($live['weather'] ?? ''),
+            ], 15 * MINUTE_IN_SECONDS);
+        }
+        return is_array($live) ? $live : [];
+    }
+
+    $now = aimee_local_now();
+    $hour = intval($now->format('G'));
+    return [
+        'date'        => $now->format('l, F j, Y') . ' (Current UK time: ' . $now->format('H:i') . ')',
+        'local_date'  => $now->format('l, F j, Y'),
+        'time'        => $now->format('H:i'),
+        'hour'        => $hour,
+        'time_rhythm' => function_exists('aimee_time_rhythm_from_hour') ? aimee_time_rhythm_from_hour($hour) : 'daytime',
+        'timezone'    => $now->getTimezone()->getName(),
+        'iso_local'   => $now->format(DateTimeInterface::ATOM),
+        'trending'    => (string) ($cached['trending'] ?? ''),
+        'weather'     => (string) ($cached['weather'] ?? ''),
+    ];
+}

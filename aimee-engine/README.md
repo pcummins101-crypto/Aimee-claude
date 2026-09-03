@@ -1,4 +1,6 @@
-# Aimee Engine 0.1.1
+# Aimee Engine 0.1.2
+
+0.1.2 cuts turn latency: the classifier now runs in parallel with the main model call instead of before it, headlines and weather are cached for fifteen minutes instead of fetched on every turn, and the settings page shows a per-phase timing breakdown for recent turns.
 
 0.1.1 fixes a double-processing bug: 0.1.0 hooked `rest_request_before_callbacks`, which does not stop the original route callback, so Aimee Global answered every message a second time. The engine now hooks `rest_dispatch_request`, which replaces the callback.
 

@@ -13,16 +13,9 @@ POST /aimee/v1/message
   │
   ├─ Load history rows (last N, oldest first)
   │
-  ├─ Classifier (Haiku, structured output)
-  │    route: everyday | erotic | abusive | unsafe
-  │    tone:  neutral | warm | flirty | vulnerable
-  │    + continuation / aimee_invited / consensual / respectful
-  │    Deterministic regex fallback if the call fails.
+  ├─ User message stored
   │
-  ├─ Aimee Global relationship maths
-  │    classification → legacy intent → aimee_calculate_intimacy_state()
-  │    aimee_appraise_user_turn() keeps inner state and relationship events moving
-  │    user message stored; relationship state and profile stage saved
+  ├─ Provisional read (deterministic regex) → what the main model is told, which photos it may offer
   │
   ├─ Context
   │    system[0]  character card            (stable, cache_control: ephemeral)
@@ -31,11 +24,22 @@ POST /aimee/v1/message
   │    messages   transcript from rows       timestamps only when time has passed; photos noted in words
   │               + current message          image block if he attached one
   │
-  ├─ Generate
-  │    erotic + policy allows + OpenRouter key → SPECIALIST
+  ├─ Classifier and main model IN PARALLEL (ordinary turns)
+  │    classifier (Haiku, structured output): everyday | erotic | abusive | unsafe, + tone and flags
+  │    primary (Claude, send_photo tool when photos are eligible)
+  │    Turns that already look explicit run the classifier first, since it decides who writes.
+  │
+  ├─ Aimee Global relationship maths with the real classification
+  │    classification → legacy intent → aimee_calculate_intimacy_state()
+  │    aimee_appraise_user_turn() keeps inner state and relationship events moving
+  │    relationship state and profile stage saved
+  │
+  ├─ Resolve
+  │    erotic + policy allows + OpenRouter key → SPECIALIST (in-flight primary reply dropped)
   │        optional brief (Claude, ≤80 words, non-explicit) → OpenRouter with card + facts + dossier + brief
   │        photo chosen via [[photo:KEY]] token from the specialist-eligible list
-  │    otherwise → PRIMARY (Claude, send_photo tool when photos are eligible)
+  │    classification changed the moment (abusive, unsafe, erotic-but-not-allowed) → facts rebuilt, primary called fresh
+  │    otherwise → the parallel primary reply is used as-is
   │        tool_use send_photo → Global's decision + delivery pipeline → tool_result → final message
   │        stop_reason refusal → specialist if allowed, else one retry with the moment named plainly
   │    everything failed → short deterministic line, telemetry records why
@@ -66,6 +70,10 @@ delivers it during the turn, and the model writes its message knowing whether
 delivery succeeded. Every access check is re-run against a fresh profile
 inside `aimee_engine_deliver_photo()`, using Aimee Global's decision and
 delivery records so history, acknowledgements and private serving all work.
+
+## Latency
+
+One ordinary turn costs one round trip of the slowest call (the main model) plus database work. The classifier rides alongside it, headlines and weather are cached for fifteen minutes, and Aimee Global's helpers in the path make no network calls. Telemetry records `timings` per turn (gates, context, classify, relationship, generate, persist) and the settings page shows the breakdown.
 
 ## Why the classifier still exists
 

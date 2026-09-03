@@ -182,3 +182,63 @@ function aimee_engine_extract_json($text) {
     }
     return null;
 }
+
+/**
+ * Send several Messages API requests concurrently using the Requests library
+ * WordPress ships with. Falls back to sequential calls when it is missing.
+ * Returns normalised results in the same order as $bodies.
+ */
+function aimee_engine_anthropic_request_multiple(array $bodies, $timeout = 90) {
+    $api_key = defined('ANTHROPIC_API_KEY') ? trim((string) ANTHROPIC_API_KEY) : '';
+    $class = class_exists('\\WpOrg\\Requests\\Requests') ? '\\WpOrg\\Requests\\Requests'
+        : (class_exists('Requests') ? 'Requests' : '');
+
+    if ($api_key === '' || $class === '' || count($bodies) < 2) {
+        $results = [];
+        foreach ($bodies as $index => $body) $results[$index] = aimee_engine_anthropic_request($body, $timeout);
+        return $results;
+    }
+
+    $requests = [];
+    foreach ($bodies as $index => $body) {
+        $requests[$index] = [
+            'url'     => 'https://api.anthropic.com/v1/messages',
+            'type'    => 'POST',
+            'headers' => [
+                'x-api-key'         => $api_key,
+                'anthropic-version' => '2023-06-01',
+                'content-type'      => 'application/json',
+            ],
+            'data'    => wp_json_encode($body),
+            'options' => ['timeout' => max(15, intval($timeout)), 'connect_timeout' => 10],
+        ];
+    }
+
+    $started = microtime(true);
+    try {
+        $responses = $class::request_multiple($requests, ['timeout' => max(15, intval($timeout))]);
+    } catch (Exception $e) {
+        $results = [];
+        foreach ($bodies as $index => $body) $results[$index] = aimee_engine_anthropic_request($body, $timeout);
+        return $results;
+    }
+    $latency = intval((microtime(true) - $started) * 1000);
+
+    $results = [];
+    foreach ($bodies as $index => $body) {
+        $response = $responses[$index] ?? null;
+        if (is_object($response) && isset($response->status_code) && isset($response->body)) {
+            $results[$index] = aimee_engine_anthropic_normalise(intval($response->status_code), (string) $response->body, $latency);
+        } else {
+            $message = is_object($response) && method_exists($response, 'getMessage') ? $response->getMessage() : 'No response.';
+            $results[$index] = aimee_engine_anthropic_normalise(0, '{}', $latency);
+            $results[$index]['error'] = $message;
+            $results[$index]['error_type'] = 'network_error';
+            error_log('[Aimee Engine] anthropic parallel request failed: ' . sanitize_text_field($message));
+        }
+        if (!$results[$index]['ok']) {
+            error_log(sprintf('[Aimee Engine] anthropic error status=%d type=%s model=%s', $results[$index]['status'], sanitize_text_field($results[$index]['error_type']), sanitize_text_field((string) ($body['model'] ?? ''))));
+        }
+    }
+    return $results;
+}

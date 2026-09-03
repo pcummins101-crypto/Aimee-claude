@@ -47,7 +47,7 @@ The colleague persona (Georgia) always stays on Aimee Global.
 
 ## Telemetry
 
-- `aimee_analytics_events`, `event_name = engine_v2_turn`: route, classifier outcome, models, attempts, refusal category, stage, photo key, timings.
+- `aimee_analytics_events`, `event_name = engine_v2_turn`: route, classifier outcome, models, attempts, refusal category, stage, photo key, and `timings` (gates, context, classify, relationship, generate, persist in ms).
 - `aimee_analytics_events`, `event_name = engine_v2_observer`: what the observer wrote.
 - `aimee_messages.evaluator_directive` on Aimee's rows: `engine_v2 route=… model=… classifier=…`.
 
