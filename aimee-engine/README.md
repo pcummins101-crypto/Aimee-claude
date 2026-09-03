@@ -1,4 +1,6 @@
-# Aimee Engine 0.1.0
+# Aimee Engine 0.1.1
+
+0.1.1 fixes a double-processing bug: 0.1.0 hooked `rest_request_before_callbacks`, which does not stop the original route callback, so Aimee Global answered every message a second time. The engine now hooks `rest_dispatch_request`, which replaces the callback.
 
 A prompt-light conversation engine for Aimee that runs **alongside** Aimee Global.
 It takes over one thing, the in-app chat turn (`POST /aimee/v1/message`), and only

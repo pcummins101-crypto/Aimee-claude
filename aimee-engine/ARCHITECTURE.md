@@ -5,8 +5,8 @@
 ```
 POST /aimee/v1/message
   │
-  ├─ rest_request_before_callbacks (priority 5)
-  │    enabled? keys? user enrolled? not the colleague persona?  → otherwise legacy handler runs untouched
+  ├─ rest_dispatch_request (priority 5; runs after the route's permission check and replaces the callback)
+  │    enabled? keys? user enrolled? not the colleague persona?  → otherwise null, and the legacy handler runs untouched
   │
   ├─ Gates (identical to Aimee Global): rate limit, chat access, Camera Roll reference,
   │    image event resolution, request idempotency reservation

@@ -3,7 +3,7 @@
  * Plugin Name: Aimee Engine
  * Plugin URI: https://aimee-ai.com
  * Description: A prompt-light conversation engine for Aimee. Runs alongside Aimee Global and takes over the in-app chat turn for enrolled users only. Everything else (pages, billing, gallery, SMS, voice, memory tables) stays with Aimee Global.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: Engram Intelligence
  * Requires at least: 6.4
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@
 
 defined('ABSPATH') || exit;
 
-define('AIMEE_ENGINE_VERSION', '0.1.0');
+define('AIMEE_ENGINE_VERSION', '0.1.1');
 define('AIMEE_ENGINE_FILE', __FILE__);
 define('AIMEE_ENGINE_DIR', plugin_dir_path(__FILE__));
 define('AIMEE_ENGINE_URL', plugin_dir_url(__FILE__));
@@ -82,29 +82,33 @@ function aimee_engine_ready() {
 }
 
 /**
- * Take over POST /aimee/v1/message for enrolled users. WordPress runs the
- * route's permission callback before this filter, so authentication has
- * already been enforced by Aimee Global. Returning null leaves the request
- * with the legacy handler untouched.
+ * Take over POST /aimee/v1/message for enrolled users.
+ *
+ * This uses rest_dispatch_request, which WordPress consults after the
+ * route's permission callback has passed and which REPLACES the route
+ * callback when a non-null result is returned. (rest_request_before_callbacks
+ * only short-circuits on a WP_Error; a normal response from it is followed
+ * by the original callback, which would run the legacy engine as well.)
+ * Returning null leaves the request with the legacy handler untouched.
  */
-function aimee_engine_intercept_rest($response, $handler, $request) {
-    if ($response !== null) return $response;
-    if (!is_object($request) || !is_a($request, 'WP_REST_Request')) return $response;
-    if ($request->get_method() !== 'POST') return $response;
-    if (rtrim((string) $request->get_route(), '/') !== '/aimee/v1/message') return $response;
-    if (!aimee_engine_ready()) return $response;
+function aimee_engine_intercept_rest($dispatch_result, $request, $route, $handler) {
+    if ($dispatch_result !== null) return $dispatch_result;
+    if (!is_object($request) || !is_a($request, 'WP_REST_Request')) return $dispatch_result;
+    if ($request->get_method() !== 'POST') return $dispatch_result;
+    if (rtrim((string) $request->get_route(), '/') !== '/aimee/v1/message') return $dispatch_result;
+    if (!aimee_engine_ready()) return $dispatch_result;
 
     $user_id = get_current_user_id();
-    if (!$user_id) return $response;
+    if (!$user_id) return $dispatch_result;
 
     $decision = aimee_engine_route_decision_for_request($user_id, $request);
-    if ($decision !== 'engine') return $response;
+    if ($decision !== 'engine') return $dispatch_result;
 
     $result = aimee_engine_handle_message($request);
     if (is_wp_error($result)) return $result;
     return rest_ensure_response($result);
 }
-add_filter('rest_request_before_callbacks', 'aimee_engine_intercept_rest', 5, 3);
+add_filter('rest_dispatch_request', 'aimee_engine_intercept_rest', 5, 4);
 
 register_activation_hook(__FILE__, function () {
     $settings = get_option('aimee_engine_settings');
