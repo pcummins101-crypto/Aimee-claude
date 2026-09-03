@@ -51,6 +51,10 @@ The colleague persona (Georgia) always stays on Aimee Global.
 
 ## Telemetry
 
+- **Photo delivery diagnostics** (settings page): every refusal from Aimee Global's private media controller, with the exact missing precondition. A row with user `signed out` means the image request carried no session cookie, which points at the chat page and `admin-post.php` differing in host or scheme rather than at entitlement.
+- `AIMEE_PORTRAIT_URL` overrides the chat header portrait; otherwise the engine serves the catalogue's profile asset from disk to signed-in profiles.
+
+
 - `aimee_analytics_events`, `event_name = engine_v2_turn`: route, classifier outcome, models, attempts, refusal category, stage, photo key, and `timings` (gates, context, classify, relationship, generate, persist in ms).
 - `aimee_analytics_events`, `event_name = engine_v2_observer`: what the observer wrote.
 - `aimee_messages.evaluator_directive` on Aimee's rows: `engine_v2 route=… model=… classifier=…`.

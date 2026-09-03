@@ -1,4 +1,6 @@
-# Aimee Engine 0.2.4
+# Aimee Engine 0.2.5
+
+0.2.5 records why a private photograph was refused (Settings → Aimee Engine → Photo delivery diagnostics), serves the header portrait from the engine's own endpoint rather than the delivery pipeline, and offers a retry when an image fails to load.
 
 0.2.4 gives Aimee the web through Anthropic's server-side search and fetch tools on the primary model: no Brave key, no second round trip, results and citations arrive inside the same reply, and the header shows "looking that up…" while it happens. Switch it off or cap searches per reply under Settings → Aimee Engine.
 

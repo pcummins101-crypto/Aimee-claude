@@ -62,7 +62,8 @@ button,input,textarea{font:inherit}button{touch-action:manipulation;cursor:point
 .bubble{position:relative;max-width:min(640px,84%);background:#fff;border-radius:6px 14px 14px 14px;padding:9px 12px 20px;box-shadow:0 1px 2px rgba(0,0,0,.13);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.48;font-size:15px}
 .row.user .bubble{background:var(--user);border-radius:14px 6px 14px 14px}
 .bubble time{position:absolute;right:10px;bottom:5px;font-size:10px;color:#8a8f98}
-.bubble img{display:block;max-width:100%;border-radius:10px;margin:6px 0 4px}.bubble audio{display:block;max-width:100%;margin:6px 0 2px}
+.bubble img{display:block;max-width:100%;border-radius:10px;margin:6px 0 4px}
+.photo-retry{display:block;width:100%;margin:6px 0 4px;padding:14px 12px;border:1px dashed #c7c7cd;border-radius:10px;background:#fafafa;color:#52525b;font-size:12px;font-weight:650;text-align:center}.bubble audio{display:block;max-width:100%;margin:6px 0 2px}
 .bubble.live{padding-bottom:20px}.bubble.live::after{content:"";display:inline-block;width:7px;height:15px;margin-left:2px;vertical-align:-2px;background:#9ca3af;border-radius:2px;animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:0}}
 .typing{display:inline-flex;gap:4px;padding:6px 2px}.typing i{width:7px;height:7px;background:#777;border-radius:50%;animation:b 1s infinite}.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}@keyframes b{50%{transform:translateY(-4px)}}
@@ -233,7 +234,9 @@ function dayLabel(d){var today=new Date(),y=new Date();y.setDate(today.getDate()
 function daySeparator(iso){var d=parseDate(iso);if(!d)return;var key=d.toDateString();if(key===lastDayKey)return;lastDayKey=key;var el=document.createElement('div');el.className='day';var s=document.createElement('span');s.textContent=dayLabel(d);el.append(s);msgs.append(el)}
 function row(textValue,who,iso){var r=document.createElement('div');r.className='row '+who;var b=document.createElement('div');b.className='bubble';if(textValue)b.append(document.createTextNode(textValue));var t=document.createElement('time');t.textContent=fmtTime(iso||new Date().toISOString());b.append(t);r.append(b);msgs.append(r);return b}
 function setBubbleText(b,value){var t=b.querySelector('time');b.textContent='';if(value)b.append(document.createTextNode(value));if(t)b.append(t)}
-function attachMedia(b,media){if(!media||!media.url)return;var i=new Image;i.src=media.url;i.alt=media.alt||'';if(media.delivery_id)i.setAttribute('data-delivery-id',media.delivery_id);i.loading='lazy';var t=b.querySelector('time');b.insertBefore(i,t)}
+function attachMedia(b,media){if(!media||!media.url)return;var t=b.querySelector('time');var i=new Image;i.alt=media.alt||'';if(media.delivery_id)i.setAttribute('data-delivery-id',media.delivery_id);i.loading='lazy';var tries=0;
+ i.onerror=function(){if(i.parentNode)i.parentNode.removeChild(i);if(b.querySelector('.photo-retry'))return;var n=document.createElement('button');n.type='button';n.className='photo-retry';n.textContent=tries?'Still not loading. Try again':'Photo didn\u2019t load. Tap to retry';n.onclick=function(){tries++;n.remove();i.src=media.url+(media.url.indexOf('?')<0?'?':'&')+'_r='+Date.now();b.insertBefore(i,b.querySelector('time'))};b.insertBefore(n,b.querySelector('time'))};
+ b.insertBefore(i,t);i.src=media.url}
 function render(m){var who=(m.sender==='user'||String(m.sender)===String(cfg.uid))?'user':'aimee';daySeparator(m.created_at);var b=row(m.message_text||'',who,m.created_at);attachMedia(b,m.media);if(m.voice_note&&m.voice_note.audio_url){var a=document.createElement('audio');a.controls=true;a.src=m.voice_note.audio_url;b.insertBefore(a,b.querySelector('time'))}if(m.message_id)lastMessageId=Math.max(lastMessageId,Number(m.message_id)||0)}
 function signature(list){return JSON.stringify((list||[]).map(function(m){return[m.message_id||0,m.sender||'',m.created_at||'',(m.message_text||'').length,m.media&&(m.media.key||m.media.url)||'']}))}
 

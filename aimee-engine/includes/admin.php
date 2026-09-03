@@ -136,6 +136,38 @@ function aimee_engine_admin_page() {
         <p><em>No GoCardless errors recorded since activation. Try the checkout again and refresh this page.</em></p>
         <?php endif; ?>
 
+        <h2>Photo delivery diagnostics</h2>
+        <p>Why a private photograph or the header portrait was refused by Aimee Global's media controller. Recorded only when a request is refused; no image bytes, keys or account data leave this table.</p>
+        <?php $media = aimee_engine_media_diagnostics(); if ($media): ?>
+        <table class="widefat striped" style="max-width:1100px">
+            <thead><tr><th>When (UTC)</th><th>User</th><th>Key</th><th>Delivery</th><th>Outcome</th><th>Reason</th><th>Facts</th></tr></thead>
+            <tbody>
+            <?php foreach ($media as $row): ?>
+                <tr>
+                    <td><?php echo esc_html($row['at'] ?? ''); ?></td>
+                    <td><?php echo intval($row['user_id'] ?? 0) ?: '<em>signed out</em>'; ?></td>
+                    <td><code><?php echo esc_html($row['key'] ?? ''); ?></code></td>
+                    <td><?php echo esc_html($row['delivery'] ?? ''); ?></td>
+                    <td><?php echo esc_html($row['outcome'] ?? ''); ?></td>
+                    <td><?php echo esc_html($row['reason'] ?? ''); ?></td>
+                    <td><?php
+                        $pairs = [];
+                        foreach ((array) ($row['facts'] ?? []) as $name => $value) $pairs[] = $name . '=' . $value;
+                        echo esc_html(implode(', ', $pairs));
+                    ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:8px">
+            <input type="hidden" name="action" value="aimee_engine_clear_media_diagnostics">
+            <?php wp_nonce_field('aimee_engine_clear_media'); ?>
+            <?php submit_button('Clear photo diagnostics', 'secondary', 'submit', false); ?>
+        </form>
+        <?php else: ?>
+        <p><em>No refused photograph requests recorded. If an image is broken and nothing appears here, the request never reached WordPress (check the browser's network tab for the status code).</em></p>
+        <?php endif; ?>
+
         <h2>Built-in character card</h2>
         <details><summary>Show</summary><pre style="white-space:pre-wrap;background:#fff;padding:12px;border:1px solid #ddd;max-width:900px"><?php echo esc_html(aimee_engine_default_character_card()); ?></pre></details>
 
