@@ -106,6 +106,34 @@ function aimee_engine_admin_page() {
             <?php submit_button('Save settings'); ?>
         </form>
 
+        <h2>Bank checkout diagnostics</h2>
+        <p>GoCardless errors captured from Aimee Global's checkout, status, cancel and portal calls. Aimee Global reports a failed create as "ambiguous"; the provider's actual reason is recorded here. Tokens and bank details are never stored.</p>
+        <?php $gc = aimee_engine_gc_diagnostics(); if ($gc): ?>
+        <table class="widefat striped" style="max-width:1100px">
+            <thead><tr><th>When (UTC)</th><th>User</th><th>Request</th><th>Status</th><th>Type</th><th>Message</th><th>Field errors</th></tr></thead>
+            <tbody>
+            <?php foreach ($gc as $row): ?>
+                <tr>
+                    <td><?php echo esc_html($row['at'] ?? ''); ?></td>
+                    <td><?php echo intval($row['user_id'] ?? 0); ?></td>
+                    <td><code><?php echo esc_html(($row['method'] ?? '') . ' ' . ($row['path'] ?? '')); ?></code></td>
+                    <td><?php echo intval($row['status'] ?? 0) ?: 'none'; ?></td>
+                    <td><?php echo esc_html($row['type'] ?? ''); ?></td>
+                    <td><?php echo esc_html($row['message'] ?? ''); ?></td>
+                    <td><?php echo esc_html(implode('; ', (array) ($row['fields'] ?? []))); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:8px">
+            <input type="hidden" name="action" value="aimee_engine_clear_gc_diagnostics">
+            <?php wp_nonce_field('aimee_engine_clear_gc'); ?>
+            <?php submit_button('Clear diagnostics', 'secondary', 'submit', false); ?>
+        </form>
+        <?php else: ?>
+        <p><em>No GoCardless errors recorded since activation. Try the checkout again and refresh this page.</em></p>
+        <?php endif; ?>
+
         <h2>Built-in character card</h2>
         <details><summary>Show</summary><pre style="white-space:pre-wrap;background:#fff;padding:12px;border:1px solid #ddd;max-width:900px"><?php echo esc_html(aimee_engine_default_character_card()); ?></pre></details>
 
