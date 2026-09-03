@@ -50,6 +50,26 @@ POST /aimee/v1/message
   └─ Same response shape as Aimee Global + engine: "v2"
 ```
 
+## Streaming
+
+`POST /aimee-engine/v1/stream` runs the same turn with an emitter. The primary
+call is made with `stream: true` through cURL multi, with the classifier in
+the same multi handle. Text deltas are held until the classifier answers; if
+the route is still `everyday` they are released and the rest streams live,
+otherwise the primary handle is dropped and the turn continues on the
+sequential path (specialist, or a fresh primary call with the moment named).
+A refusal after text has been shown sends `replace` so the client clears the
+bubble before the re-routed reply. `done` carries the same JSON as `/message`.
+
+## The engine chat page
+
+`template_include` at priority 100 swaps Aimee Global's chat template for
+`templates/chat.php` when the signed-in user is enrolled. The page is the
+engine's own (streaming client, membership panel, mobile menu) and keeps
+Global's injected helpers that do real work: media delivery acknowledgements,
+gallery discovery, release feedback, the public statement notice and the
+billing migration UI.
+
 ## Why the reply model returns prose, not JSON
 
 In Aimee Global the conversation model must fill thirty fields per reply:

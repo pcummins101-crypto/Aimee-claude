@@ -7,9 +7,11 @@ API keys are read from the same `wp-config.php` constants Aimee Global uses.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| Enable engine | off | Master switch. Off means every request goes to Aimee Global. |
+| Enable engine | on | Master switch. Off means every request goes to Aimee Global. |
 | Who is enrolled | allowlist | `allowlist`: only listed IDs and per-user opt-ins. `all`: everyone except per-user opt-outs. |
-| Allowlist user IDs | empty | Comma-separated WordPress user IDs. |
+| Allowlist user IDs | 121 | Comma-separated WordPress user IDs. |
+| Serve the engine chat page | on | Enrolled users get the engine's own chat page. Off keeps the theme app and swaps only the reply engine. |
+| Stream replies | on | Word-by-word replies over server-sent events. Needs PHP cURL; degrades automatically. |
 | Per-user override | follow rollout | On each user's WordPress profile screen (administrators only): *Always use Aimee Engine*, *Always use Aimee Global*, or follow the rollout. Stored as user meta `aimee_engine_v2`. |
 
 An administrator can force one request with the HTTP header `X-Aimee-Engine: legacy` or `X-Aimee-Engine: engine`.

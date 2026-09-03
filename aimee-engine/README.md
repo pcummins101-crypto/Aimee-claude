@@ -1,6 +1,8 @@
-# Aimee Engine 0.1.2
+# Aimee Engine 0.2.0
 
-0.1.2 cuts turn latency: the classifier now runs in parallel with the main model call instead of before it, headlines and weather are cached for fifteen minutes instead of fetched on every turn, and the settings page shows a per-phase timing breakdown for recent turns.
+0.2.0 adds streaming replies and the engine's own chat page for enrolled users, ships enabled with user 121 on the allowlist, and includes a beta audit of the chat and membership surfaces (`BETA-AUDIT.md`).
+
+0.1.2 cut turn latency: the classifier now runs in parallel with the main model call instead of before it, headlines and weather are cached for fifteen minutes instead of fetched on every turn, and the settings page shows a per-phase timing breakdown for recent turns.
 
 0.1.1 fixes a double-processing bug: 0.1.0 hooked `rest_request_before_callbacks`, which does not stop the original route callback, so Aimee Global answered every message a second time. The engine now hooks `rest_dispatch_request`, which replaces the callback.
 
@@ -34,12 +36,14 @@ declines those honestly instead of sending an interim message).
 
 ## Install
 
-1. Upload the `aimee-engine` folder to `wp-content/plugins/` next to `aimee-global`.
+1. Upload the `aimee-engine` folder to `wp-content/plugins/` next to `aimee-global` (or upload the zip under Plugins → Add New).
 2. Activate **Aimee Engine**. Aimee Global must stay active.
 3. `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` in `wp-config.php` are shared with Aimee Global; nothing new is required.
-4. Go to **Settings → Aimee Engine**, tick *Enable engine*, and either add tester user IDs to the allowlist or set individual users to *Always use Aimee Engine* on their WordPress profile screen.
+4. The plugin ships enabled with user **121** on the allowlist. Sign in as that user and open `/chat/`. Add more tester IDs under **Settings → Aimee Engine**, or set individual users to *Always use Aimee Engine* on their WordPress profile screen.
 
 Nobody else is affected until you switch the rollout to *Everyone*.
+
+What an enrolled user gets: the engine's chat page (streaming replies, day separators, a header menu on phones, a membership panel that shows real status and handles the GoCardless return) and the new reply engine. Everything else is Aimee Global.
 
 ## Testing side by side
 

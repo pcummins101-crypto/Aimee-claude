@@ -166,7 +166,12 @@ function aimee_engine_run_primary(array $ctx) {
                 'effort'     => (string) $ctx['effort'],
                 'tools'      => $tools,
             ]);
-            $result = aimee_engine_anthropic_request($body, 120);
+            if (is_callable($ctx['stream'] ?? null)) {
+                $streamed = aimee_engine_anthropic_stream($body, $ctx['stream'], [], null, 120);
+                $result = $streamed['primary'];
+            } else {
+                $result = aimee_engine_anthropic_request($body, 120);
+            }
         }
         $out['calls']++;
         $out['latency_ms'] += intval($result['latency_ms']);
@@ -189,6 +194,7 @@ function aimee_engine_run_primary(array $ctx) {
         }
 
         if ($photo_call && $out['photo'] === null) {
+            if (is_callable($ctx['emit'] ?? null)) $ctx['emit']('status', ['state' => 'photo']);
             $delivery = aimee_engine_deliver_photo(
                 $ctx['user_id'],
                 (string) ($photo_call['input']['key'] ?? ''),
@@ -359,20 +365,25 @@ function aimee_engine_intimacy_snapshot($profile, $current_stage) {
     return $snapshot;
 }
 
-function aimee_engine_error_response($code, $message, $status, $is_error = true) {
-    return $is_error
-        ? new WP_Error($code, $message, ['status' => $status])
-        : new WP_REST_Response(['status' => $code, 'message' => $message], $status);
+function aimee_engine_error_response($code, $message, $status) {
+    return new WP_Error($code, $message, ['status' => $status]);
 }
 
 /**
  * The turn. Same request and response contract as Aimee Global's
  * handle_aimee_message for the in-app channel, so the chat UI is unchanged.
  */
-function aimee_engine_handle_message(WP_REST_Request $request) {
+function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
     global $wpdb;
 
     $started = microtime(true);
+    $streaming = is_callable($emit) && aimee_engine_setting('streaming') && aimee_engine_streaming_available();
+    $emitted_text = '';
+    $emit_delta = function ($text) use (&$emitted_text, $emit) {
+        if ($text === '' || !is_callable($emit)) return;
+        $emitted_text .= $text;
+        $emit('delta', ['text' => $text]);
+    };
     $params = $request->get_json_params();
     if (!is_array($params)) $params = [];
     $user_id = get_current_user_id();
@@ -623,7 +634,38 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
     $initial_primary = null;
     $classifier_body = aimee_engine_classifier_body($classify_text, $rows, $current_stage);
 
-    if ($provisional['route'] === 'everyday') {
+    if ($provisional['route'] === 'everyday' && $streaming) {
+        // Text is held back until the classifier has spoken, then released
+        // live. If the classifier changes the moment, the stream is dropped
+        // before a single word reaches him.
+        $held = '';
+        $release = false;
+        $on_text = function ($text) use (&$held, &$release, $emit_delta) {
+            if ($release) { $emit_delta($text); return; }
+            $held .= $text;
+        };
+        $on_extra = function ($key, $result) use (&$classification, &$held, &$release, $classify_text, $history_string, $emit_delta, $emit) {
+            $classification = aimee_engine_classification_from_result($result, $classify_text, $history_string);
+            if ($classification['route'] !== 'everyday') return false;
+            $release = true;
+            if (is_callable($emit)) $emit('status', ['state' => 'writing']);
+            if ($held !== '') { $emit_delta($held); $held = ''; }
+            return true;
+        };
+        $streamed = aimee_engine_anthropic_stream(aimee_engine_primary_body($ctx), $on_text, ['classifier' => $classifier_body], $on_extra, 120);
+        if ($classification === null) {
+            $classification = aimee_engine_classification_from_result($streamed['extras']['classifier'] ?? ['ok' => false, 'error_type' => 'incomplete'], $classify_text, $history_string);
+        }
+        if (!$streamed['aborted']) {
+            $initial_primary = $streamed['primary'];
+            if (!$release && !empty($initial_primary['ok']) && $initial_primary['stop_reason'] !== 'refusal') {
+                // Classifier finished after the primary; release now.
+                $release = true;
+                if (is_callable($emit)) $emit('status', ['state' => 'writing']);
+                if ($held !== '') { $emit_delta($held); $held = ''; }
+            }
+        }
+    } elseif ($provisional['route'] === 'everyday') {
         $results = aimee_engine_anthropic_request_multiple([
             'classifier' => $classifier_body,
             'primary'    => aimee_engine_primary_body($ctx),
@@ -717,6 +759,11 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
             $initial_primary = null;
         }
         $ctx['initial_result'] = $initial_primary;
+        if ($streaming) {
+            if (is_callable($emit)) $emit('status', ['state' => 'writing']);
+            $ctx['stream'] = $emit_delta;
+            $ctx['emit'] = $emit;
+        }
         $p = aimee_engine_run_primary($ctx);
         $attempts[] = ['route' => 'primary', 'ok' => $p['ok'], 'model' => $p['model'], 'error' => $p['error_type'], 'refusal' => $p['refusal_category'], 'ms' => $p['latency_ms'], 'calls' => $p['calls'], 'parallel' => $initial_primary !== null];
         $photo = $p['photo'];
@@ -730,6 +777,7 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
             // A refusal is a routing signal: the specialist if the relationship
             // allows it, otherwise the same model with the moment named plainly.
             if ($specialist_eligible && !$specialist_tried) {
+                if ($emitted_text !== '' && is_callable($emit)) { $emit('replace', ['text' => '']); $emitted_text = ''; }
                 $s = aimee_engine_run_specialist($ctx);
                 $attempts[] = ['route' => 'intimacy_specialist', 'ok' => $s['ok'], 'model' => $s['model'], 'error' => $s['error_type'], 'ms' => $s['latency_ms']];
                 if ($s['ok']) {
@@ -741,6 +789,7 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
                 }
             }
             if ($reply === '' && $photo === null) {
+                if ($emitted_text !== '' && is_callable($emit)) { $emit('replace', ['text' => '']); $emitted_text = ''; }
                 $retry = $ctx;
                 $retry['tool'] = null;
                 $retry['initial_result'] = null;
@@ -853,6 +902,7 @@ function aimee_engine_handle_message(WP_REST_Request $request) {
         'reply_characters'    => mb_strlen($reply),
         'observer'            => $observer,
         'provisional_route'   => $provisional['route'],
+        'streamed'            => $streaming,
         'timings'             => $timings + ['persist_ms' => intval((microtime(true) - $phase) * 1000)],
         'total_ms'            => intval((microtime(true) - $started) * 1000),
     ]);

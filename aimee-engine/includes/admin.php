@@ -73,6 +73,8 @@ function aimee_engine_admin_page() {
                     'all'       => 'Everyone except per-user opt-outs',
                 ]);
                 aimee_engine_admin_field('allowlist', 'Allowlist user IDs', 'text', 'Comma-separated WordPress user IDs to route through the new engine.');
+                aimee_engine_admin_field('chat_page', 'Serve the engine chat page', 'checkbox', 'Enrolled users get Aimee Engine\'s own chat page (streaming replies, mobile menu, membership panel). Untick to keep the theme app and only swap the reply engine.');
+                aimee_engine_admin_field('streaming', 'Stream replies', 'checkbox', 'Send her words as they are written. Needs PHP cURL; falls back to a single reply automatically.');
                 ?>
             </table>
 

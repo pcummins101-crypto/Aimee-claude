@@ -3,9 +3,11 @@ defined('ABSPATH') || exit;
 
 function aimee_engine_default_settings() {
     return [
-        'enabled'                => 0,
+        'enabled'                => 1,
         'cohort_mode'            => 'allowlist',
-        'allowlist'              => '',
+        'allowlist'              => '121',
+        'streaming'              => 1,
+        'chat_page'              => 1,
         'primary_model'          => 'claude-opus-5',
         'primary_effort'         => 'low',
         'classifier_model'       => 'claude-haiku-4-5',
@@ -82,6 +84,8 @@ function aimee_engine_sanitize_settings($input) {
         : 'async';
     $out['character_card'] = trim(wp_kses_post((string) ($input['character_card'] ?? '')));
     $out['debug_log'] = !empty($input['debug_log']) ? 1 : 0;
+    $out['streaming'] = !empty($input['streaming']) ? 1 : 0;
+    $out['chat_page'] = !empty($input['chat_page']) ? 1 : 0;
 
     return $out;
 }
