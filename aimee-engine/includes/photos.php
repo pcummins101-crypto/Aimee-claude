@@ -31,22 +31,78 @@ function aimee_engine_last_photo_sent_seconds_ago($user_id) {
         'aimee-media:%'
     ));
     if (!$last) return PHP_INT_MAX;
-    $ts = strtotime((string) $last . ' UTC');
+    $ts = aimee_engine_row_timestamp($last);
     return $ts ? max(0, time() - $ts) : PHP_INT_MAX;
+}
+
+/**
+ * Did he actually ask for a photo? A cooldown exists to stop Aimee pushing
+ * pictures unprompted; it should never make her refuse a direct request.
+ */
+function aimee_engine_user_asked_for_photo($user_text, $recent_history = '') {
+    $user_text = (string) $user_text;
+    if (trim($user_text) === '') return false;
+    if (function_exists('aimee_user_requests_aimee_photo')) {
+        return (bool) aimee_user_requests_aimee_photo($user_text, (string) $recent_history);
+    }
+    return (bool) preg_match(
+        '/\b(?:send|share|show|got|have)\b[^.?!]{0,40}\b(?:photo|photograph|picture|pic|selfie|image)\b/i',
+        $user_text
+    );
 }
 
 /**
  * Catalogue items this user may receive this turn, according to Aimee
  * Global's entitlement and relationship policy, minus the engine's own
  * cooldown. The route name matters: explicit items require the specialist.
+ *
+ * $reason is filled with why nothing is available, for telemetry.
  */
-function aimee_engine_eligible_photos($user_id, $profile, $route, array $legacy_classification, array $intimacy) {
+function aimee_engine_eligible_photos($user_id, $profile, $route, array $legacy_classification, array $intimacy, $asked = false, &$reason = null) {
+    $reason = '';
     $cooldown = intval(aimee_engine_setting('photo_cooldown_minutes')) * 60;
-    if ($cooldown > 0 && aimee_engine_last_photo_sent_seconds_ago($user_id) < $cooldown) {
-        return [];
+    if (!$asked && $cooldown > 0) {
+        $since = aimee_engine_last_photo_sent_seconds_ago($user_id);
+        if ($since < $cooldown) {
+            $reason = 'cooldown_' . max(1, (int) ceil(($cooldown - $since) / 60)) . 'm_left';
+            return [];
+        }
     }
+
     $eligible = aimee_get_eligible_private_media_catalog($user_id, $profile, $route, $legacy_classification, $intimacy);
-    return is_array($eligible) ? $eligible : [];
+    $eligible = is_array($eligible) ? $eligible : [];
+    if ($eligible) return $eligible;
+
+    // Separate "the catalogue is unavailable" from "policy said no".
+    $catalogue = function_exists('aimee_private_media_catalog') ? (array) aimee_private_media_catalog() : [];
+    $sendable = 0;
+    $on_disk = 0;
+    foreach ($catalogue as $key => $item) {
+        if (function_exists('aimee_private_media_key_is_profile_asset') && aimee_private_media_key_is_profile_asset($key)) continue;
+        $sendable++;
+        if (function_exists('aimee_private_media_path') && aimee_private_media_path($key)) $on_disk++;
+    }
+    if ($sendable === 0) {
+        $reason = 'catalogue_empty';
+    } elseif ($on_disk === 0) {
+        $reason = 'no_catalogue_files_on_disk';
+    } else {
+        $access = 'unknown';
+        if ($profile) {
+            if (function_exists('aimee_is_admin_user') && aimee_is_admin_user($profile)) $access = 'admin';
+            elseif (function_exists('aimee_subscription_is_active') && aimee_subscription_is_active($profile)) $access = 'member';
+            elseif (function_exists('aimee_free_preview_is_active') && aimee_free_preview_is_active($profile)) {
+                $remaining = function_exists('aimee_free_preview_safe_images_remaining')
+                    ? intval(aimee_free_preview_safe_images_remaining($user_id, $profile))
+                    : 1;
+                $access = $remaining > 0 ? 'preview' : 'preview_image_allowance_used';
+            } else {
+                $access = 'no_access';
+            }
+        }
+        $reason = 'policy_' . $access . '_stage_' . sanitize_key((string) ($intimacy['stage'] ?? '')) . '_score_' . intval($intimacy['score'] ?? 0);
+    }
+    return [];
 }
 
 function aimee_engine_catalogue_alts() {

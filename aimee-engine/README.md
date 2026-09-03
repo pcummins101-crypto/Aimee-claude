@@ -1,4 +1,12 @@
-# Aimee Engine 0.2.5
+# Aimee Engine 0.2.6
+
+0.2.6 fixes two things that made Aimee say she had no photo to send. The engine
+now measures the database clock instead of assuming stored timestamps are UTC
+(an install whose MySQL session runs in local time shifted every displayed
+time, every judgement of how long it had been, and every cooldown by the
+offset), and a direct request for a photo no longer runs into the
+anti-spam cooldown. Telemetry records why no photo was available.
+
 
 0.2.5 records why a private photograph was refused (Settings → Aimee Engine → Photo delivery diagnostics), serves the header portrait from the engine's own endpoint rather than the delivery pipeline, and offers a retry when an image fails to load.
 

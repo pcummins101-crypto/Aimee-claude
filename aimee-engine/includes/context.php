@@ -49,12 +49,60 @@ function aimee_engine_timezone() {
     }
 }
 
+/**
+ * How far the database clock runs ahead of real UTC, in seconds.
+ *
+ * Message rows are stamped by MySQL's own CURRENT_TIMESTAMP, and Aimee
+ * Global reads those strings as UTC. On an install whose database session
+ * runs in local time the two disagree, which silently shifts every displayed
+ * time, every "how long has it been" judgement and every cooldown by the
+ * offset. Measure it once rather than assume it.
+ */
+function aimee_engine_db_time_offset() {
+    $cached = get_transient('aimee_engine_db_time_offset');
+    if (is_numeric($cached)) return (int) $cached;
+
+    global $wpdb;
+    $offset = 0;
+    $db_now = $wpdb ? $wpdb->get_var('SELECT NOW()') : '';
+    $db_now = is_string($db_now) ? trim($db_now) : '';
+    if ($db_now !== '' && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $db_now)) {
+        $stamped = strtotime($db_now . ' UTC');
+        if ($stamped) {
+            // Real offsets are whole quarter hours; round away request latency.
+            $offset = (int) (round(($stamped - time()) / 900) * 900);
+        }
+    }
+    if (abs($offset) > 14 * HOUR_IN_SECONDS) $offset = 0;
+    set_transient('aimee_engine_db_time_offset', $offset, HOUR_IN_SECONDS);
+    return $offset;
+}
+
+/**
+ * A stored message timestamp as a real UTC unix time, or 0.
+ */
+function aimee_engine_row_timestamp($stored) {
+    $stored = trim((string) $stored);
+    if ($stored === '' || strpos($stored, '0000-00-00') === 0) return 0;
+    $parsed = strtotime($stored . ' UTC');
+    if (!$parsed) return 0;
+    return $parsed - aimee_engine_db_time_offset();
+}
+
+/**
+ * The same value as a true-UTC MySQL string, for Aimee Global helpers that
+ * expect one.
+ */
+function aimee_engine_row_utc_string($stored) {
+    $ts = aimee_engine_row_timestamp($stored);
+    return $ts ? gmdate('Y-m-d H:i:s', $ts) : '';
+}
+
 function aimee_engine_local_datetime($mysql_utc) {
-    $mysql_utc = trim((string) $mysql_utc);
-    if ($mysql_utc === '' || strpos($mysql_utc, '0000-00-00') === 0) return null;
+    $ts = aimee_engine_row_timestamp($mysql_utc);
+    if (!$ts) return null;
     try {
-        $dt = new DateTimeImmutable($mysql_utc, new DateTimeZone('UTC'));
-        return $dt->setTimezone(aimee_engine_timezone());
+        return (new DateTimeImmutable('@' . $ts))->setTimezone(aimee_engine_timezone());
     } catch (Exception $e) {
         return null;
     }

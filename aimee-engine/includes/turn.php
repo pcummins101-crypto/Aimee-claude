@@ -116,6 +116,8 @@ function aimee_engine_build_facts(array $in) {
         );
     } elseif ($eligible_count > 0) {
         $facts[] = 'She has photos she could share in this message, using the send_photo tool. It delivers the photo for her; she writes what goes with it. One at a time, only when it genuinely fits or he asks, and she never says a photo is coming unless the tool delivered it.';
+    } elseif (!empty($in['asked'])) {
+        $facts[] = 'He has asked for a photo and she has none she can share in this message. She says so plainly and warmly in her own words, without apologising twice, without inventing a reason, and without promising a specific one later.';
     } else {
         $facts[] = 'She has no photo she can send right now. If he asks for one, she says so lightly in her own words, and never claims one is on its way.';
     }
@@ -568,15 +570,20 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
         && $image_data_uri === '' && !$discussion_only;
 
     $live_data = aimee_engine_live_context();
-    $gap = function_exists('aimee_conversation_gap_snapshot') ? aimee_conversation_gap_snapshot($last_created_at, $live_data) : [];
+    // Global reads a stored timestamp as UTC; hand it a true-UTC string.
+    $gap = function_exists('aimee_conversation_gap_snapshot')
+        ? aimee_conversation_gap_snapshot(aimee_engine_row_utc_string($last_created_at), $live_data)
+        : [];
     if (!is_array($gap)) $gap = [];
     $inner_state = function_exists('aimee_load_inner_state') ? aimee_load_inner_state($user_id) : [];
     if (!is_array($inner_state)) $inner_state = [];
 
     $sent = aimee_engine_previously_sent_photos($user_id);
+    $asked_for_photo = aimee_engine_user_asked_for_photo($user_text, $history_string);
     $eligible = [];
-    if (!$discussion_only && $provisional['route'] === 'everyday') {
-        $eligible = aimee_engine_eligible_photos($user_id, $profile, 'primary', $provisional_legacy, $snapshot);
+    $photo_block = $discussion_only ? 'camera_roll_discussion' : ($provisional['route'] === 'everyday' ? '' : 'route_' . $provisional['route']);
+    if ($photo_block === '') {
+        $eligible = aimee_engine_eligible_photos($user_id, $profile, 'primary', $provisional_legacy, $snapshot, $asked_for_photo, $photo_block);
     }
 
     $memory_context = aimee_memory_context_for_turn($user_id, $user_text);
@@ -603,6 +610,7 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
             'sent_count'          => count($sent),
             'user_message_count'  => $user_message_count,
             'web'                 => (bool) aimee_engine_setting('web_tools'),
+            'asked'               => $asked_for_photo,
         ]);
     };
     $card = aimee_engine_character_card();
@@ -752,7 +760,7 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
     $ctx['intimacy'] = $intimacy;
     $ctx['legacy_classification'] = $legacy_classification;
     $ctx['specialist_eligible_photos'] = $specialist_eligible
-        ? aimee_engine_eligible_photos($user_id, $profile, 'intimacy_specialist', $legacy_classification, $intimacy)
+        ? aimee_engine_eligible_photos($user_id, $profile, 'intimacy_specialist', $legacy_classification, $intimacy, $asked_for_photo)
         : [];
     $timings['relationship_ms'] = intval((microtime(true) - $phase) * 1000);
 
@@ -929,6 +937,9 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
         'stage'               => $intimacy['stage'] ?? '',
         'score'               => intval($intimacy['score'] ?? 0),
         'photo_offered'       => count($eligible),
+        'photo_requested'     => $asked_for_photo,
+        'photo_unavailable'   => $photo_block,
+        'db_time_offset'      => aimee_engine_db_time_offset(),
         'photo_key'           => $media_key,
         'photo_reason'        => $photo ? ($photo['reason'] ?? '') : '',
         'has_image'           => $image_data_uri !== '',

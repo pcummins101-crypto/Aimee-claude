@@ -80,6 +80,29 @@ and a separate cheap observer call does the bookkeeping afterwards using the
 same storage functions Aimee Global already has. The memory engine and the
 inner-life tables are unchanged; they are just fed from a different place.
 
+## What has to be true before Aimee can send a photo
+
+In order, per turn:
+
+1. **Not a Camera Roll turn.** A message that references an existing photo is discussion only.
+2. **Route is everyday.** Abusive and unsafe turns offer nothing; explicit turns use the specialist's own list.
+3. **Cooldown**, engine-owned, default 20 minutes since the last photo — skipped entirely when he actually asked for one.
+4. **Aimee Global's entitlement and relationship policy** (`aimee_media_item_is_eligible`), per catalogue item: the file resolves on disk; the account is an administrator, a member, or an active preview; a preview account sees only `safe` items and only within its image allowance; the relationship meets the item's `minimum_score` and `minimum_stage`; the turn's intent is in the item's `allowed_intents`; and for flirty and above, adult assurance, trust, chemistry and no active rupture.
+5. **The model chooses.** Only then is `send_photo` offered, with the surviving keys as its enum.
+
+When the list comes back empty the engine records why (`photo_unavailable` in
+turn telemetry, shown on the settings page): the cooldown and its remaining
+minutes, `no_catalogue_files_on_disk`, or `policy_<access>_stage_<stage>_score_<n>`.
+
+## The database clock
+
+Message rows are stamped by MySQL's `CURRENT_TIMESTAMP` and Aimee Global reads
+those strings as UTC. Where the database session is not UTC the two disagree,
+which shifts displayed times, the "how long has it been" context and the photo
+cooldown by the offset. The engine measures the offset once an hour
+(`aimee_engine_db_time_offset`) and applies it on read, server-side and in the
+chat page, rather than assuming.
+
 ## Why photos are a tool
 
 The old engine asks the model for a `media_key` and then spends a great deal

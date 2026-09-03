@@ -1,4 +1,28 @@
 <?php
+// The database clock probe: a session running in local time must not shift
+// stored timestamps. Pin it to zero for the transcript assertions below.
+test_reset();
+$GLOBALS['wpdb']->db_now = gmdate('Y-m-d H:i:s');
+assert_same(0, aimee_engine_db_time_offset(), 'a UTC database reports no offset');
+
+test_reset();
+$GLOBALS['wpdb']->db_now = gmdate('Y-m-d H:i:s', time() + 3600);
+assert_same(3600, aimee_engine_db_time_offset(), 'a database an hour ahead is measured');
+$stored = gmdate('Y-m-d H:i:s', time() + 3600 - 2400);
+assert_true(abs(aimee_engine_row_timestamp($stored) - (time() - 2400)) <= 2, 'a row stamped by that clock resolves to the real time');
+assert_true(abs(strtotime(aimee_engine_row_utc_string($stored) . ' UTC') - (time() - 2400)) <= 2, 'and to a true-UTC string for Global');
+
+test_reset();
+$GLOBALS['wpdb']->db_now = gmdate('Y-m-d H:i:s', time() + 37);
+assert_same(0, aimee_engine_db_time_offset(), 'request latency is not mistaken for a timezone');
+test_reset();
+$GLOBALS['wpdb']->db_now = null;
+assert_same(0, aimee_engine_db_time_offset(), 'an unreadable clock falls back to UTC');
+assert_same(0, aimee_engine_row_timestamp(''), 'empty timestamp');
+assert_same('', aimee_engine_row_utc_string('0000-00-00 00:00:00'), 'zero timestamp');
+
+test_reset();
+$GLOBALS['wpdb']->db_now = gmdate('Y-m-d H:i:s');
 $rows = [
     (object) ['sender' => 'aimee', 'message_text' => 'Hello, I am Aimee.', 'image_url' => null, 'created_at' => '2026-09-01 18:00:00'],
     (object) ['sender' => 'user', 'message_text' => 'Hi', 'image_url' => null, 'created_at' => '2026-09-01 18:01:00'],

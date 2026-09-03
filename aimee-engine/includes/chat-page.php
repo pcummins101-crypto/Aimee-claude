@@ -63,6 +63,7 @@ function aimee_engine_chat_page_data($market) {
         'symbol'          => (string) ($config['symbol'] ?? '£'),
         'uid'             => $uid,
         'nonce'           => wp_create_nonce('wp_rest'),
+        'db_offset'       => aimee_engine_db_time_offset(),
         'profile'         => $profile,
         'first'           => $first,
         'photo'           => $photo,

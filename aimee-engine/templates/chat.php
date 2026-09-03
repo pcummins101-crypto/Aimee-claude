@@ -6,6 +6,7 @@ $config_json = wp_json_encode([
     'rest'     => esc_url_raw($d['urls']['rest']),
     'stream'   => esc_url_raw($d['urls']['stream']),
     'nonce'    => $d['nonce'],
+    'dbOffset' => intval($d['db_offset']),
     'market'   => $d['market'],
     'uid'      => $d['uid'],
     'checkout' => $d['checkout_supported'],
@@ -229,7 +230,10 @@ function toast(message,ms){toastEl.textContent=message;toastEl.classList.add('sh
 function setStatus(label,busy){statusEl.textContent=label;statusEl.classList.toggle('busy',!!busy)}
 function scrollBottom(force){var near=(msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight)<220;if(force||near)msgs.scrollTop=msgs.scrollHeight}
 function fmtTime(iso){if(!iso)return'';var d=parseDate(iso);return d?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):''}
-function parseDate(v){if(!v)return null;var s=String(v);if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s))s=s.replace(' ','T')+'Z';var d=new Date(s);return isNaN(d)?null:d}
+function parseDate(v){if(!v)return null;var s=String(v),stored=false;if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)){s=s.replace(' ','T')+'Z';stored=true}var d=new Date(s);if(isNaN(d))return null;
+ /* Stored rows carry the database clock, which may not be UTC. */
+ if(stored&&cfg.dbOffset)d=new Date(d.getTime()-cfg.dbOffset*1000);
+ return d}
 function dayLabel(d){var today=new Date(),y=new Date();y.setDate(today.getDate()-1);var k=d.toDateString();if(k===today.toDateString())return'Today';if(k===y.toDateString())return'Yesterday';return d.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long'})}
 function daySeparator(iso){var d=parseDate(iso);if(!d)return;var key=d.toDateString();if(key===lastDayKey)return;lastDayKey=key;var el=document.createElement('div');el.className='day';var s=document.createElement('span');s.textContent=dayLabel(d);el.append(s);msgs.append(el)}
 function row(textValue,who,iso){var r=document.createElement('div');r.className='row '+who;var b=document.createElement('div');b.className='bubble';if(textValue)b.append(document.createTextNode(textValue));var t=document.createElement('time');t.textContent=fmtTime(iso||new Date().toISOString());b.append(t);r.append(b);msgs.append(r);return b}

@@ -6,10 +6,28 @@
 define('ABSPATH', '/');
 define('AIMEE_ENGINE_VERSION', 'test');
 define('MINUTE_IN_SECONDS', 60);
+define('HOUR_IN_SECONDS', 3600);
+define('DAY_IN_SECONDS', 86400);
 define('ANTHROPIC_API_KEY', 'test-key');
 
 $GLOBALS['aimee_test_options'] = [];
+$GLOBALS['aimee_test_transients'] = [];
 $GLOBALS['aimee_test_http'] = [];
+
+function get_transient($key) { return $GLOBALS['aimee_test_transients'][$key] ?? false; }
+function set_transient($key, $value, $ttl = 0) { $GLOBALS['aimee_test_transients'][$key] = $value; return true; }
+function delete_transient($key) { unset($GLOBALS['aimee_test_transients'][$key]); return true; }
+function trailingslashit($v) { return rtrim((string) $v, '/\\') . '/'; }
+
+/** Minimal $wpdb: only the database clock probe is exercised here. */
+class Aimee_Test_Wpdb {
+    public $db_now = null;
+    public function get_var($sql) { return strpos((string) $sql, 'NOW()') !== false ? $this->db_now : null; }
+    public function prepare($sql) { return $sql; }
+    public function get_results($sql) { return []; }
+    public function get_row($sql) { return null; }
+}
+$GLOBALS['wpdb'] = new Aimee_Test_Wpdb();
 
 function add_action() {}
 function add_filter() {}
@@ -70,5 +88,7 @@ function test_reset() {
     $GLOBALS['aimee_test_http'] = [];
     $GLOBALS['aimee_test_http_response'] = null;
     $GLOBALS['aimee_test_http_sequence'] = [];
+    $GLOBALS['aimee_test_transients'] = [];
+    $GLOBALS['wpdb']->db_now = null;
     aimee_engine_reset_settings_cache();
 }

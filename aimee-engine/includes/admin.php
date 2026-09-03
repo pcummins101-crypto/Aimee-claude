@@ -174,7 +174,7 @@ function aimee_engine_admin_page() {
         <?php $recent = aimee_engine_recent_turns(); if ($recent): ?>
         <h2>Recent turns</h2>
         <table class="widefat striped">
-            <thead><tr><th>When (UTC)</th><th>User</th><th>Route</th><th>Classifier</th><th>Model</th><th>Refusal</th><th>Photo</th><th>Stage</th><th>Classifier ms</th><th>Generate ms</th><th>Other ms</th><th>Total ms</th></tr></thead>
+            <thead><tr><th>When (UTC)</th><th>User</th><th>Route</th><th>Classifier</th><th>Model</th><th>Refusal</th><th>Photo</th><th>Why no photo</th><th>Stage</th><th>Classifier ms</th><th>Generate ms</th><th>Other ms</th><th>Total ms</th></tr></thead>
             <tbody>
             <?php foreach ($recent as $turn): ?>
                 <tr>
@@ -185,6 +185,7 @@ function aimee_engine_admin_page() {
                     <td><?php echo esc_html($turn['actual_model'] ?? ''); ?></td>
                     <td><?php echo esc_html($turn['refusal_category'] ?? ''); ?></td>
                     <td><?php echo esc_html(($turn['photo_key'] ?? '') ?: (intval($turn['photo_offered'] ?? 0) ? 'offered ' . intval($turn['photo_offered']) : '')); ?></td>
+                    <td><?php echo esc_html((string) ($turn['photo_unavailable'] ?? '')) . (!empty($turn['photo_requested']) ? ' (he asked)' : ''); ?></td>
                     <td><?php echo esc_html(($turn['stage'] ?? '') . ' ' . intval($turn['score'] ?? 0)); ?></td>
                     <?php $t = is_array($turn['timings'] ?? null) ? $turn['timings'] : []; $total = intval($turn['total_ms'] ?? 0); ?>
                     <td><?php echo intval($t['classify_ms'] ?? 0); ?></td>
