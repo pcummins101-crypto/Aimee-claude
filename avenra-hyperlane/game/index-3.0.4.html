@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#020306" />
+    <meta name="description" content="The next-generation first-person Avenrà EVO game with photographic 2.5D Living Roads across City, Rural and M1 routes." />
+    <meta name="avenra-hyperlane-build" content="3.3.15" />
+    <link rel="manifest" href="./manifest-3.3.15.webmanifest" />
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <title>Avenrà Hyperlane: The Game · 3.3.15</title>
+    <script src="./assets/hyperlane-perf-v3315.js"></script>
+    <script src="./assets/hyperlane-dynamics-audio-v3315.js"></script>
+    <script src="./assets/hyperlane-visual-v336.js"></script>
+    <script src="./assets/hyperlane-traffic-sprites-v338.js"></script>
+    <script src="./assets/hyperlane-journey-gameplay-v320.js"></script>
+    <script src="./assets/hyperlane-world-v3315.js"></script>
+    <script src="./assets/hyperlane-traffic-brain-v320.js"></script>
+    <script src="./assets/hyperlane-uk-v320.js"></script>
+    <script src="./assets/hyperlane-uk-language-v330.js"></script>
+    <script src="./assets/hyperlane-lighting-v337.js"></script>
+    <script src="./assets/hyperlane-home-v320.js"></script>
+    <script type="module" crossorigin src="./assets/index-e80690ba-v3315.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-19b0d037-v3315.css">
+    <link rel="stylesheet" href="./assets/hyperlane-cockpit-v320.css">
+    <link rel="stylesheet" href="./assets/hyperlane-home-v320.css">
+    <style>
+      #hyperlane-build-marker { display: none; position: fixed; z-index: 9999; top: max(8px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); color: rgba(235, 244, 246, .56); font: 700 9px/1.2 Arial, sans-serif; letter-spacing: .16em; pointer-events: none; }
+      body:has(#root .phase-idle) #hyperlane-build-marker { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="hyperlane-build-marker" aria-hidden="true">BUILD 3.3.15</div>
+  </body>
+</html>

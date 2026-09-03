@@ -1,0 +1,20 @@
+{
+  "id": "./index.html",
+  "name": "Avenrà Hyperlane: The Game",
+  "short_name": "Hyperlane",
+  "description": "The next-generation first-person Avenrà EVO game with photographic 2.5D Living Roads, Rider Dynamics 2.0 and Weekly Works Runs across City, Rural and M1 routes.",
+  "lang": "en-GB",
+  "start_url": "./index-3.3.15.html?source=pwa&build=3.3.15",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#020306",
+  "theme_color": "#020306",
+  "categories": ["games", "sports"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,139 @@
+Avenrà Hyperlane — Third-Party Notices
+======================================
+
+The compiled game bundle includes the direct and transitive runtime code
+listed below. Versions and licence identifiers were taken from the package
+metadata installed for the production build. Identical licence texts are
+shared where noted.
+
+React 19.2.6
+Copyright Meta Platforms, Inc. and affiliates.
+Licence: MIT
+Licence file: licenses/React-MIT.txt
+Source: https://github.com/facebook/react
+
+React DOM 19.2.6
+Copyright Meta Platforms, Inc. and affiliates.
+Licence: MIT
+Licence file: licenses/React-DOM-MIT.txt
+Source: https://github.com/facebook/react
+
+Scheduler 0.27.0
+Copyright Meta Platforms, Inc. and affiliates.
+Licence: MIT
+Licence file: licenses/Scheduler-MIT.txt
+Source: https://github.com/facebook/react/tree/main/packages/scheduler
+
+Lucide React 1.31.0
+Copyright Lucide Contributors.
+Licence: ISC
+Licence file: licenses/Lucide-ISC.txt
+Source: https://github.com/lucide-icons/lucide
+
+Radix UI Primitives
+Copyright (c) 2022 WorkOS
+Licence: MIT
+Licence file: licenses/Radix-UI-MIT.txt
+Source: https://github.com/radix-ui/primitives
+
+The radix-ui 1.6.7 entry package and its tree-shaken dependencies contribute
+the following packages to the compiled bundle:
+
+* @radix-ui/primitive 1.1.7
+* @radix-ui/react-collection 1.1.15
+* @radix-ui/react-compose-refs 1.1.5
+* @radix-ui/react-context 1.2.2
+* @radix-ui/react-dialog 1.1.23
+* @radix-ui/react-direction 1.1.4
+* @radix-ui/react-dismissable-layer 1.1.19
+* @radix-ui/react-focus-guards 1.1.6
+* @radix-ui/react-focus-scope 1.1.16
+* @radix-ui/react-id 1.1.4
+* @radix-ui/react-portal 1.1.17
+* @radix-ui/react-presence 1.1.10
+* @radix-ui/react-primitive 2.1.10
+* @radix-ui/react-progress 1.1.16
+* @radix-ui/react-radio-group 1.4.7
+* @radix-ui/react-roving-focus 1.1.19
+* @radix-ui/react-slot 1.3.3
+* @radix-ui/react-use-callback-ref 1.1.4
+* @radix-ui/react-use-controllable-state 1.2.6
+* @radix-ui/react-use-effect-event 0.0.5
+* @radix-ui/react-use-is-hydrated 0.1.3
+* @radix-ui/react-use-layout-effect 1.1.4
+* @radix-ui/react-use-size 1.1.4
+
+Class Variance Authority 0.7.1
+Copyright Joe Bell.
+Licence: Apache-2.0
+Licence file: licenses/Class-Variance-Authority-Apache-2.0.txt
+Source: https://github.com/joe-bell/cva
+
+clsx 2.1.1
+Copyright Luke Edwards.
+Licence: MIT
+Licence file: licenses/clsx-MIT.txt
+Source: https://github.com/lukeed/clsx
+
+tailwind-merge 3.6.0
+Copyright Dany Castillo.
+Licence: MIT
+Licence file: licenses/tailwind-merge-MIT.txt
+Source: https://github.com/dcastil/tailwind-merge
+
+shadcn/ui Tailwind theme stylesheet 4.13.0 and adapted UI component source
+Copyright (c) 2023 shadcn
+Licence: MIT
+Licence file: licenses/Shadcn-Tailwind-MIT.txt
+Source: https://github.com/shadcn-ui/ui
+
+aria-hidden 1.2.6
+react-remove-scroll 2.7.2
+react-remove-scroll-bar 2.3.8
+react-style-singleton 2.2.3
+use-callback-ref 1.3.3
+use-sidecar 1.1.3
+Copyright (c) 2017 Anton Korzunov
+Licence: MIT
+Licence file: licenses/Anton-Korzunov-MIT.txt
+Sources:
+https://github.com/theKashey/aria-hidden
+https://github.com/theKashey/react-remove-scroll
+https://github.com/theKashey/react-remove-scroll-bar
+https://github.com/theKashey/react-style-singleton
+https://github.com/theKashey/use-callback-ref
+https://github.com/theKashey/use-sidecar
+
+get-nonce 1.0.1
+Copyright (c) 2020 Anton Korzunov
+Licence: MIT
+Licence file: licenses/Get-Nonce-MIT.txt
+Source: https://github.com/theKashey/get-nonce
+
+tslib 2.8.1
+Copyright (c) Microsoft Corporation.
+Licence: 0BSD
+Licence file: licenses/tslib-0BSD.txt
+Source: https://github.com/microsoft/tslib
+
+Tailwind CSS 4.2.1
+Copyright (c) Tailwind Labs, Inc.
+Licence: MIT
+Licence file: licenses/Tailwind-CSS-MIT.txt
+Source: https://github.com/tailwindlabs/tailwindcss
+
+Vite 8.0.13 generated module-preload runtime
+Copyright (c) 2019-present, VoidZero Inc. and Vite contributors
+Licence: MIT
+Licence file: licenses/Vite-MIT.txt
+Source: https://github.com/vitejs/vite
+
+Vite and Tailwind CSS are build tools, but the distributed browser output
+contains Vite's generated module-preload helper and compiled Tailwind CSS.
+Their notices are therefore included above. TypeScript and PostCSS are used
+only during the build; their executable packages are not shipped. The tslib
+runtime helper that is present in the browser bundle is listed separately.
+
+Avenrà names, logos, motorcycles and supplied campaign imagery remain the
+property of their respective owner and are not relicensed by the notices
+above.

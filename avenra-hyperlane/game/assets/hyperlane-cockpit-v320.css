@@ -1,0 +1,67 @@
+/* Avenrà Hyperlane 3.2.0 — stable-eye cockpit spring composition.
+   The road/camera remains the visual anchor; RAF updates the independent
+   translate/rotate properties of the photographed EVO beneath it. */
+.cockpit,
+[data-evo-cockpit],
+.evo-cockpit,
+.cockpit-shell {
+  transform-origin: 50% 81%;
+  backface-visibility: hidden;
+  transform-style: flat;
+  will-change: transform, translate, rotate;
+  transition: none;
+}
+
+.cockpit > img,
+[data-evo-cockpit] > img,
+.evo-cockpit > img,
+.cockpit-shell > img {
+  image-rendering: auto;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.cockpit > .cockpit-cluster {
+  backface-visibility: hidden;
+  will-change: opacity;
+}
+
+/* A lower pivot on large touch displays makes fork dive and squat read as
+   chassis movement without swinging the mirrors across the horizon. */
+@media (any-pointer: coarse) and (min-width: 700px) {
+  .cockpit,
+  [data-evo-cockpit],
+  .evo-cockpit,
+  .cockpit-shell {
+    transform-origin: 50% 84%;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .cockpit,
+  [data-evo-cockpit],
+  .evo-cockpit,
+  .cockpit-shell {
+    transform-origin: 50% 86%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpit {
+    transform: translateX(-50%) !important;
+  }
+
+  .cockpit,
+  [data-evo-cockpit],
+  .evo-cockpit,
+  .cockpit-shell {
+    translate: 0 0 !important;
+    rotate: 0deg !important;
+    will-change: auto;
+  }
+
+  .cockpit > .cockpit-cluster {
+    will-change: auto;
+  }
+}
