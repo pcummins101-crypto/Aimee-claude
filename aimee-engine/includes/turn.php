@@ -122,6 +122,9 @@ function aimee_engine_build_facts(array $in) {
     if (intval($in['sent_count'] ?? 0) > 0) {
         $facts[] = sprintf('She has shared %d photo%s with him before; the thread shows which.', intval($in['sent_count']), intval($in['sent_count']) === 1 ? '' : 's');
     }
+    if (!empty($in['web'])) {
+        $facts[] = 'She can look things up online when it genuinely helps: what is on, a score, a place, something he asked about. She uses what she finds the way a person would, in her own words, and does not announce that she searched or list sources.';
+    }
 
     // The moment.
     $classification = is_array($in['classification'] ?? null) ? $in['classification'] : [];
@@ -148,7 +151,8 @@ function aimee_engine_build_facts(array $in) {
  */
 function aimee_engine_run_primary(array $ctx) {
     $messages = $ctx['messages'];
-    $tools = !empty($ctx['tool']) ? [$ctx['tool']] : [];
+    $tools = aimee_engine_ctx_tools($ctx);
+    $web_tools = is_array($ctx['web_tools'] ?? null) ? $ctx['web_tools'] : [];
     $model = (string) $ctx['model'];
     $out = [
         'ok' => false, 'reply' => '', 'photo' => null, 'model' => $model, 'provider' => 'anthropic',
@@ -157,7 +161,7 @@ function aimee_engine_run_primary(array $ctx) {
 
     $initial = is_array($ctx['initial_result'] ?? null) ? $ctx['initial_result'] : null;
 
-    for ($i = 0; $i < 3; $i++) {
+    for ($i = 0; $i < 5; $i++) {
         if ($initial !== null && $i === 0) {
             $result = $initial;
         } else {
@@ -167,7 +171,7 @@ function aimee_engine_run_primary(array $ctx) {
                 'tools'      => $tools,
             ]);
             if (is_callable($ctx['stream'] ?? null)) {
-                $streamed = aimee_engine_anthropic_stream($body, $ctx['stream'], [], null, 120);
+                $streamed = aimee_engine_anthropic_stream($body, $ctx['stream'], [], null, 120, $ctx['on_block'] ?? null);
                 $result = $streamed['primary'];
             } else {
                 $result = aimee_engine_anthropic_request($body, 120);
@@ -186,6 +190,12 @@ function aimee_engine_run_primary(array $ctx) {
         if ($result['stop_reason'] === 'refusal') {
             $out['refusal_category'] = $result['refusal_category'];
             return $out;
+        }
+        if ($result['stop_reason'] === 'pause_turn') {
+            // The server-side search loop paused; resend the assistant turn
+            // as-is and the server resumes where it left off.
+            $messages[] = ['role' => 'assistant', 'content' => $result['content']];
+            continue;
         }
 
         $photo_call = null;
@@ -218,8 +228,8 @@ function aimee_engine_run_primary(array $ctx) {
                 'tool_use_id' => $photo_call['id'],
                 'content'     => $tool_text,
             ]]];
-            // One photo per message; take the tool away for the follow-up.
-            $tools = [];
+            // One photo per message; take the photo tool away for the follow-up.
+            $tools = $web_tools;
             continue;
         }
 
@@ -231,7 +241,7 @@ function aimee_engine_run_primary(array $ctx) {
             }
             $messages[] = ['role' => 'assistant', 'content' => $result['content']];
             $messages[] = ['role' => 'user', 'content' => $blocks];
-            $tools = [];
+            $tools = $web_tools;
             continue;
         }
 
@@ -336,12 +346,33 @@ function aimee_engine_run_specialist(array $ctx) {
     return $out;
 }
 
+function aimee_engine_ctx_tools(array $ctx) {
+    $tools = !empty($ctx['tool']) ? [$ctx['tool']] : [];
+    if (!empty($ctx['web_tools']) && is_array($ctx['web_tools'])) $tools = array_merge($tools, $ctx['web_tools']);
+    return $tools;
+}
+
 function aimee_engine_primary_body(array $ctx) {
     return aimee_engine_anthropic_build_body((string) $ctx['model'], $ctx['system_blocks'], $ctx['messages'], [
         'max_tokens' => intval($ctx['max_tokens']),
         'effort'     => (string) $ctx['effort'],
-        'tools'      => !empty($ctx['tool']) ? [$ctx['tool']] : [],
+        'tools'      => aimee_engine_ctx_tools($ctx),
     ]);
+}
+
+/**
+ * Header state while a server-side search or fetch is running.
+ */
+function aimee_engine_on_block_emitter($emit) {
+    if (!is_callable($emit)) return null;
+    return function ($type, $block) use ($emit) {
+        if ($type === 'server_tool_use') {
+            $name = (string) ($block['name'] ?? '');
+            $emit('status', ['state' => $name === 'web_fetch' ? 'reading' : 'searching']);
+        } elseif ($type === 'text') {
+            $emit('status', ['state' => 'writing']);
+        }
+    };
 }
 
 /**
@@ -571,6 +602,7 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
             'eligible_count'      => count($eligible),
             'sent_count'          => count($sent),
             'user_message_count'  => $user_message_count,
+            'web'                 => (bool) aimee_engine_setting('web_tools'),
         ]);
     };
     $card = aimee_engine_character_card();
@@ -614,6 +646,8 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
         'system_blocks'              => $system_blocks,
         'messages'                   => $messages,
         'tool'                       => aimee_engine_photo_tool($eligible, $sent),
+        'web_tools'                  => aimee_engine_web_tools(strtolower(trim((string) ($profile->market ?? 'uk')))),
+        'on_block'                   => $streaming ? aimee_engine_on_block_emitter($emit) : null,
         'eligible'                   => $eligible,
         'specialist_eligible_photos' => [],
         'sent'                       => $sent,
@@ -652,7 +686,7 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
             if ($held !== '') { $emit_delta($held); $held = ''; }
             return true;
         };
-        $streamed = aimee_engine_anthropic_stream(aimee_engine_primary_body($ctx), $on_text, ['classifier' => $classifier_body], $on_extra, 120);
+        $streamed = aimee_engine_anthropic_stream(aimee_engine_primary_body($ctx), $on_text, ['classifier' => $classifier_body], $on_extra, 120, $ctx['on_block']);
         if ($classification === null) {
             $classification = aimee_engine_classification_from_result($streamed['extras']['classifier'] ?? ['ok' => false, 'error_type' => 'incomplete'], $classify_text, $history_string);
         }
@@ -903,6 +937,7 @@ function aimee_engine_handle_message(WP_REST_Request $request, $emit = null) {
         'observer'            => $observer,
         'provisional_route'   => $provisional['route'],
         'streamed'            => $streaming,
+        'web_tools'           => (bool) aimee_engine_setting('web_tools'),
         'timings'             => $timings + ['persist_ms' => intval((microtime(true) - $phase) * 1000)],
         'total_ms'            => intval((microtime(true) - $started) * 1000),
     ]);

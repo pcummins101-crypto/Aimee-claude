@@ -1,4 +1,6 @@
-# Aimee Engine 0.2.0
+# Aimee Engine 0.2.4
+
+0.2.4 gives Aimee the web through Anthropic's server-side search and fetch tools on the primary model: no Brave key, no second round trip, results and citations arrive inside the same reply, and the header shows "looking that up…" while it happens. Switch it off or cap searches per reply under Settings → Aimee Engine.
 
 0.2.0 adds streaming replies and the engine's own chat page for enrolled users, ships enabled with user 121 on the allowlist, and includes a beta audit of the chat and membership surfaces (`BETA-AUDIT.md`).
 

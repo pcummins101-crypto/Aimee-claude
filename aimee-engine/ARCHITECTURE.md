@@ -95,6 +95,10 @@ delivery records so history, acknowledgements and private serving all work.
 
 One ordinary turn costs one round trip of the slowest call (the main model) plus database work. The classifier rides alongside it, headlines and weather are cached for fifteen minutes, and Aimee Global's helpers in the path make no network calls. Telemetry records `timings` per turn (gates, context, classify, relationship, generate, persist) and the settings page shows the breakdown.
 
+## Looking things up
+
+The primary call declares Anthropic's server-side `web_search` and `web_fetch` tools next to `send_photo`. Search and fetch run on Anthropic's side; their results come back as content blocks in the same reply, so Aimee can check a score or a fact mid-sentence. When streaming, a `server_tool_use` block switches the header to "looking that up…" or "reading…" and the first text block switches it back to "typing…". A long server loop can end with `stop_reason: pause_turn`; the runner resends the assistant turn unchanged and the server resumes. Aimee Global's Brave search is not used.
+
 ## Why the classifier still exists
 
 Claude will not write explicit sexual content. On the current models that

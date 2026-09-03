@@ -38,6 +38,8 @@ The colleague persona (Georgia) always stays on Aimee Global.
 | History character cap | 60,000 | Oldest turns dropped beyond this. |
 | Reply max tokens | 1024 | Hard ceiling per reply. |
 | Photo cooldown (minutes) | 20 | No photo offered again within this window. 0 disables. |
+| Let Aimee look things up online | on | Declares Anthropic's `web_search_20260209` and `web_fetch_20260209` tools on the primary call. Searches carry a per-use fee on top of tokens. |
+| Searches per reply (max) | 3 | `max_uses` on the search tool, 1 to 10. Fetch is capped at 2 pages of 20,000 tokens. |
 | Observer mode | async | `async` (WP-Cron), `inline` (before the reply returns; use for testing), `off`. |
 | Character card override | empty | Replaces the built-in card. Write facts, not rules. |
 | Keep recent turn telemetry | off | Last 40 turns on the settings page. Never message text. |
@@ -57,4 +59,4 @@ The colleague persona (Georgia) always stays on Aimee Global.
 
 - Generated-on-demand photos (media sidecar `pending` status) are declined for this turn rather than delivered later.
 - Replies are not streamed; the chat UI expects a single JSON response.
-- Web search is not wired in. The facts block carries the day's headlines and weather from Aimee Global's live context.
+- Web search uses Anthropic's server-side tools rather than Aimee Global's Brave integration; the Brave key is not read by the engine.

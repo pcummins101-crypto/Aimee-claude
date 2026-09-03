@@ -8,6 +8,8 @@ function aimee_engine_default_settings() {
         'allowlist'              => '121',
         'streaming'              => 1,
         'chat_page'              => 1,
+        'web_tools'              => 1,
+        'web_search_uses'        => 3,
         'primary_model'          => 'claude-opus-5',
         'primary_effort'         => 'low',
         'classifier_model'       => 'claude-haiku-4-5',
@@ -86,6 +88,8 @@ function aimee_engine_sanitize_settings($input) {
     $out['debug_log'] = !empty($input['debug_log']) ? 1 : 0;
     $out['streaming'] = !empty($input['streaming']) ? 1 : 0;
     $out['chat_page'] = !empty($input['chat_page']) ? 1 : 0;
+    $out['web_tools'] = !empty($input['web_tools']) ? 1 : 0;
+    $out['web_search_uses'] = max(1, min(10, intval($input['web_search_uses'] ?? $defaults['web_search_uses'])));
 
     return $out;
 }

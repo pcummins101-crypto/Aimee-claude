@@ -29,7 +29,11 @@ function wp_json_encode($data) { return json_encode($data, JSON_UNESCAPED_SLASHE
 function current_time($type, $gmt = 0) { return gmdate('Y-m-d H:i:s'); }
 function home_url() { return 'https://example.test'; }
 function is_wp_error($thing) { return $thing instanceof WP_Error; }
-function wp_remote_post($url, $args) { $GLOBALS['aimee_test_http'][] = ['url' => $url, 'args' => $args]; return $GLOBALS['aimee_test_http_response'] ?? ['code' => 200, 'body' => '{}']; }
+function wp_remote_post($url, $args) {
+    $GLOBALS['aimee_test_http'][] = ['url' => $url, 'args' => $args];
+    if (!empty($GLOBALS['aimee_test_http_sequence'])) return array_shift($GLOBALS['aimee_test_http_sequence']);
+    return $GLOBALS['aimee_test_http_response'] ?? ['code' => 200, 'body' => '{}'];
+}
 function wp_remote_retrieve_response_code($r) { return $r['code'] ?? 0; }
 function wp_remote_retrieve_body($r) { return $r['body'] ?? ''; }
 
@@ -65,5 +69,6 @@ function test_reset() {
     $GLOBALS['aimee_test_options'] = [];
     $GLOBALS['aimee_test_http'] = [];
     $GLOBALS['aimee_test_http_response'] = null;
+    $GLOBALS['aimee_test_http_sequence'] = [];
     aimee_engine_reset_settings_cache();
 }

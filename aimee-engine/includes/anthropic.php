@@ -296,12 +296,15 @@ function aimee_engine_sse_parser_feed(array &$state, $chunk) {
                 $index = intval($data['index'] ?? count($state['blocks']));
                 $block = is_array($data['content_block'] ?? null) ? $data['content_block'] : ['type' => 'text'];
                 $btype = (string) ($block['type'] ?? 'text');
-                $entry = ['type' => $btype];
+                // Keep every field the server sent (search results and fetch
+                // results arrive complete here) so the block can be replayed.
+                $entry = $block;
+                $entry['type'] = $btype;
                 if ($btype === 'text') $entry['text'] = (string) ($block['text'] ?? '');
-                if ($btype === 'tool_use') { $entry['id'] = (string) ($block['id'] ?? ''); $entry['name'] = (string) ($block['name'] ?? ''); $entry['input'] = []; $entry['_json'] = ''; }
+                if ($btype === 'tool_use' || $btype === 'server_tool_use') { $entry['id'] = (string) ($block['id'] ?? ''); $entry['name'] = (string) ($block['name'] ?? ''); $entry['input'] = is_array($block['input'] ?? null) ? $block['input'] : []; $entry['_json'] = ''; }
                 if ($btype === 'thinking') { $entry['thinking'] = (string) ($block['thinking'] ?? ''); $entry['signature'] = (string) ($block['signature'] ?? ''); }
-                if ($btype === 'redacted_thinking') { $entry['data'] = (string) ($block['data'] ?? ''); }
                 $state['blocks'][$index] = $entry;
+                if (is_callable($state['on_block'] ?? null)) $state['on_block']($btype, $entry);
                 break;
             case 'content_block_delta':
                 $index = intval($data['index'] ?? 0);
@@ -322,9 +325,12 @@ function aimee_engine_sse_parser_feed(array &$state, $chunk) {
                 break;
             case 'content_block_stop':
                 $index = intval($data['index'] ?? 0);
-                if (isset($state['blocks'][$index]) && ($state['blocks'][$index]['type'] ?? '') === 'tool_use') {
-                    $decoded = json_decode((string) ($state['blocks'][$index]['_json'] ?? ''), true);
-                    $state['blocks'][$index]['input'] = is_array($decoded) ? $decoded : [];
+                if (isset($state['blocks'][$index]) && in_array($state['blocks'][$index]['type'] ?? '', ['tool_use', 'server_tool_use'], true)) {
+                    $json = (string) ($state['blocks'][$index]['_json'] ?? '');
+                    if ($json !== '') {
+                        $decoded = json_decode($json, true);
+                        $state['blocks'][$index]['input'] = is_array($decoded) ? $decoded : [];
+                    }
                     unset($state['blocks'][$index]['_json']);
                 }
                 break;
@@ -392,7 +398,7 @@ function aimee_engine_streaming_available() {
  *
  * Returns ['primary' => result, 'extras' => [key => result], 'aborted' => bool].
  */
-function aimee_engine_anthropic_stream(array $body, callable $on_text, array $extras = [], $on_extra = null, $timeout = 120) {
+function aimee_engine_anthropic_stream(array $body, callable $on_text, array $extras = [], $on_extra = null, $timeout = 120, $on_block = null) {
     $api_key = defined('ANTHROPIC_API_KEY') ? trim((string) ANTHROPIC_API_KEY) : '';
     $out = ['primary' => null, 'extras' => [], 'aborted' => false];
 
@@ -421,6 +427,7 @@ function aimee_engine_anthropic_stream(array $body, callable $on_text, array $ex
 
     $body['stream'] = true;
     $parser = aimee_engine_sse_parser_create();
+    if (is_callable($on_block)) $parser['on_block'] = $on_block;
     $primary = curl_init('https://api.anthropic.com/v1/messages');
     curl_setopt_array($primary, [
         CURLOPT_POST           => true,
@@ -517,4 +524,22 @@ function aimee_engine_anthropic_stream(array $body, callable $on_text, array $ex
         error_log('[Aimee Engine] anthropic stream error type=' . sanitize_text_field($out['primary']['error_type']) . ' message=' . sanitize_text_field(mb_substr($out['primary']['error'], 0, 200)));
     }
     return $out;
+}
+
+/**
+ * Anthropic's server-side web tools. Search and fetch run on Anthropic's
+ * side and their results come back inside the same reply, so Aimee can look
+ * something up mid-sentence without a second round trip or a third-party
+ * search key.
+ */
+function aimee_engine_web_tools($market = 'uk') {
+    if (!aimee_engine_setting('web_tools')) return [];
+    $uses = max(1, min(10, intval(aimee_engine_setting('web_search_uses'))));
+    $location = $market === 'us'
+        ? ['type' => 'approximate', 'country' => 'US', 'timezone' => 'America/New_York']
+        : ['type' => 'approximate', 'country' => 'GB', 'city' => 'London', 'timezone' => 'Europe/London'];
+    return [
+        ['type' => 'web_search_20260209', 'name' => 'web_search', 'max_uses' => $uses, 'user_location' => $location],
+        ['type' => 'web_fetch_20260209', 'name' => 'web_fetch', 'max_uses' => 2, 'max_content_tokens' => 20000],
+    ];
 }

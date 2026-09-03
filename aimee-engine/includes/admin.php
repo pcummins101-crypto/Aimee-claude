@@ -98,6 +98,8 @@ function aimee_engine_admin_page() {
                 aimee_engine_admin_field('history_characters', 'History character cap', 'number', 'Oldest messages are dropped once the transcript exceeds this many characters.');
                 aimee_engine_admin_field('reply_max_tokens', 'Reply max tokens', 'number', 'Hard ceiling for one reply. 1024 is plenty for a text-message voice.');
                 aimee_engine_admin_field('photo_cooldown_minutes', 'Photo cooldown (minutes)', 'number', 'After a photo is shared, no photo is offered again for this long. 0 disables.');
+                aimee_engine_admin_field('web_tools', 'Let Aimee look things up online', 'checkbox', 'Anthropic\'s server-side web search and page fetch on the primary model. No third-party search key. Each search carries a small per-use fee on top of tokens.');
+                aimee_engine_admin_field('web_search_uses', 'Searches per reply (max)', 'number', '1 to 10. Three is plenty for a companion.');
                 aimee_engine_admin_field('observer_mode', 'Observer mode', 'select', 'Async uses WP-Cron a few seconds after the turn. Inline runs before the reply is returned (slower, but deterministic for testing).', ['async' => 'async', 'inline' => 'inline', 'off' => 'off']);
                 aimee_engine_admin_field('character_card', 'Character card override', 'textarea', 'Leave empty to use the built-in card. This is who she is, written as facts, not a list of rules.');
                 aimee_engine_admin_field('debug_log', 'Keep recent turn telemetry', 'checkbox', 'Store the last 40 turns (routes, models, timings; never message text) for the table below.');

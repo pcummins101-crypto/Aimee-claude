@@ -95,6 +95,8 @@ Not verified here, and needed before opening the beta beyond user 121:
 
 ## Reply engine
 
+0.2.4: web search and fetch through Anthropic's server-side tools on the primary model, replacing Aimee Global's Brave search for enrolled users. Per-search fees apply on top of tokens; the cap per reply is a setting.
+
 Unchanged from 0.1.2 apart from streaming: character card as facts, Global's
 memory dossier, parallel classifier, refusal re-routing, specialist via
 OpenRouter, photos as a tool, post-turn observer into Global's tables.
