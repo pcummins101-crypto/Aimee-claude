@@ -66,7 +66,7 @@ function aimee_engine_chat_page_data($market) {
         'profile'         => $profile,
         'first'           => $first,
         'photo'           => $photo,
-        'portrait'        => defined('AIMEE_GLOBAL_URL') ? AIMEE_GLOBAL_URL . 'assets/pwa/aimee-icon-512.png' : '',
+        'portrait'        => aimee_engine_portrait_url($uid, $profile),
         'phone'           => $phone,
         'sms_opt_in'      => $profile ? intval($profile->sms_opt_in ?? 0) : 0,
         'sms_override'    => $profile ? intval($profile->sms_override ?? 0) : 0,
@@ -111,4 +111,37 @@ function aimee_engine_chat_page_injections($market) {
 
 function aimee_engine_money($minor, $symbol) {
     return $symbol . number_format(intval($minor) / 100, 2, '.', ',');
+}
+
+/**
+ * Aimee's own portrait for the chat header. Aimee Global's bundled template
+ * showed the PWA app icon here (the "A" tile). The real portrait is the
+ * catalogue's profile asset, which every signed-in profile may view, so it
+ * is served through Global's private media controller. Falls back to the
+ * public uploads copy the landing page uses, then to the app icon.
+ */
+function aimee_engine_portrait_url($user_id, $profile) {
+    if (defined('AIMEE_PORTRAIT_URL') && trim((string) AIMEE_PORTRAIT_URL) !== '') return (string) AIMEE_PORTRAIT_URL;
+
+    $key = 'portrait';
+    if (defined('AIMEE_PROFILE_MEDIA_KEYS')) {
+        $keys = array_values(array_filter(array_map('sanitize_key', (array) AIMEE_PROFILE_MEDIA_KEYS)));
+        if ($keys) $key = $keys[0];
+    }
+    if (function_exists('aimee_media_item_is_viewable') && function_exists('aimee_private_media_url')
+        && $profile && aimee_media_item_is_viewable($user_id, $key, $profile)) {
+        $url = aimee_private_media_url($key);
+        if ($url !== '') return $url;
+    }
+    if (function_exists('aimee_private_media_catalog')) {
+        $catalog = aimee_private_media_catalog();
+        $relative = ltrim(str_replace('\\', '/', (string) ($catalog[$key]['source_relative'] ?? '')), '/');
+        if ($relative !== '' && strpos($relative, '..') === false) {
+            $uploads = wp_upload_dir();
+            if (!empty($uploads['basedir']) && is_readable(trailingslashit($uploads['basedir']) . $relative)) {
+                return trailingslashit($uploads['baseurl']) . $relative;
+            }
+        }
+    }
+    return defined('AIMEE_GLOBAL_URL') ? AIMEE_GLOBAL_URL . 'assets/pwa/aimee-icon-512.png' : '';
 }

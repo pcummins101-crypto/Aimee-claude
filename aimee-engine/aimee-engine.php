@@ -3,7 +3,7 @@
  * Plugin Name: Aimee Engine
  * Plugin URI: https://aimee-ai.com
  * Description: A prompt-light conversation engine for Aimee. Runs alongside Aimee Global and takes over the in-app chat turn for enrolled users only. Everything else (pages, billing, gallery, SMS, voice, memory tables) stays with Aimee Global.
- * Version: 0.2.2
+ * Version: 0.2.3
  * Author: Engram Intelligence
  * Requires at least: 6.4
  * Requires PHP: 7.4
@@ -13,7 +13,7 @@
 
 defined('ABSPATH') || exit;
 
-define('AIMEE_ENGINE_VERSION', '0.2.2');
+define('AIMEE_ENGINE_VERSION', '0.2.3');
 define('AIMEE_ENGINE_FILE', __FILE__);
 define('AIMEE_ENGINE_DIR', plugin_dir_path(__FILE__));
 define('AIMEE_ENGINE_URL', plugin_dir_url(__FILE__));

@@ -109,7 +109,8 @@ button,input,textarea{font:inherit}button{touch-action:manipulation;cursor:point
 .sheet .panel .gallery{background:var(--rose-soft);color:#9f1239}.sheet .panel .danger{color:#9f1239;background:#fff;border:1px solid var(--line)}
 .sheet .grip{width:40px;height:4px;border-radius:999px;background:#d4d4d8;margin:0 auto 8px}
 @media(max-width:860px){
-  .shell{padding:0;display:block}.app{height:100dvh;border-radius:0;grid-template-columns:1fr;box-shadow:none;border:0}
+  html,body{height:100%;overflow:hidden;position:fixed;inset:0;width:100%}
+  .shell{padding:0;display:block;height:var(--app-h,100dvh)}.app{height:var(--app-h,100dvh);border-radius:0;grid-template-columns:1fr;box-shadow:none;border:0}
   .side{display:none}.head-menu{display:grid;place-items:center}.chat-head{min-height:64px;padding-left:12px}
   .chat-head img{width:42px;height:42px}#aimee-chat-gallery-link span{display:none}#aimee-chat-gallery-link{min-width:40px;padding:8px 11px}
   .messages{padding:12px 10px 10px}.bubble{max-width:88%}.plans{grid-template-columns:1fr}.modal{padding:20px;border-radius:20px}.settings-grid{grid-template-columns:1fr}
@@ -309,8 +310,11 @@ function sendMessage(){if(sending)return;if(galleryReference&&!galleryFresh(gall
  daySeparator(new Date().toISOString());if(message||outImage){var ub=row(message,'user');if(outImage){var i=new Image;i.src=outImage;i.alt='';ub.insertBefore(i,ub.querySelector('time'))}}
  text.value='';autosize();clearImage();var bubble=typingBubble();setStatus('thinking…',true);
  var payload={message:message,image:outImage,image_event_id:outImage?outEventId:'',market:cfg.market,request_id:newImageEventId()};if(refKey)payload.referenced_media_key=refKey;
- streamTurn(payload,bubble).then(function(d){handleDone(d,bubble)}).catch(function(e){var d=e&&e.data||{};if(d.status&&['trial_ended','subscription_required','billing_reactivation_required'].indexOf(d.status)>=0){handleDone(d,bubble);return}bubble.parentElement.remove();toast(e.message||'Connection interrupted. Please try again.',4200);history(true)}).then(function(){sending=false;sendBtn.disabled=false;setStatus('online',false);text.focus({preventScroll:true})})}
-sendBtn.onclick=sendMessage;
+ streamTurn(payload,bubble).then(function(d){handleDone(d,bubble)}).catch(function(e){var d=e&&e.data||{};if(d.status&&['trial_ended','subscription_required','billing_reactivation_required'].indexOf(d.status)>=0){handleDone(d,bubble);return}bubble.parentElement.remove();toast(e.message||'Connection interrupted. Please try again.',4200);history(true)}).then(function(){sending=false;sendBtn.disabled=false;setStatus('online',false);if(!coarse)text.focus({preventScroll:true});scrollBottom(true)})}
+sendBtn.onclick=function(){if(coarse)text.blur();sendMessage()};
+/* Keep the thread above the on-screen keyboard: size the app to the visual viewport and pin the page. */
+(function(){var vv=window.visualViewport;if(!vv)return;var raf=0;function fit(){cancelAnimationFrame(raf);raf=requestAnimationFrame(function(){var h=Math.round(vv.height);document.documentElement.style.setProperty('--app-h',h+'px');if(window.scrollY)window.scrollTo(0,0);scrollBottom(false)})}vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,350)});fit()})();
+text.addEventListener('focus',function(){setTimeout(function(){scrollBottom(true)},350)});
 
 /* Voice notes stay on Aimee Global's endpoint. */
 q('#voice-btn').onclick=function(){var btn=q('#voice-btn');if(recorder&&recorder.state==='recording'){recorder.stop();btn.classList.remove('rec');btn.textContent='🎙';return}clearGallery(true);
