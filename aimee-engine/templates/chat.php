@@ -201,7 +201,7 @@ button,input,textarea{font:inherit}button{touch-action:manipulation;cursor:point
       </div>
     <?php endforeach; ?>
   </div>
-  <p class="field-note" style="margin-top:12px">UK membership is set up securely through GoCardless bank payment. You will be taken to GoCardless and brought straight back here.</p>
+  <p class="field-note" style="margin-top:12px">UK membership is set up by Direct Debit through GoCardless. You will be taken to GoCardless and brought straight back here. Your access starts as soon as the mandate is authorised; the first collection follows in a few working days.</p>
   <?php else: ?>
   <span class="checkout-unavailable" style="margin-top:16px">New paid membership checkout is currently available for UK profiles only.</span>
   <?php endif; ?>

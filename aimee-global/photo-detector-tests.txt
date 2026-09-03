@@ -1,0 +1,35 @@
+Aimee Global 1.4.8 photo detector regression cases
+
+EXPECTED TRUE "Oh babe, I've also given you some more pictures too. Wanna send me one and we can see if you recognise it as a new one? Xx"
+EXPECTED TRUE "Hehe okay, send me whichever one you think might be new xx"
+EXPECTED TRUE "Okay one of you with Sarah xx"
+EXPECTED TRUE "Nope, you'll just have to send one...any of them"
+EXPECTED TRUE "Surprise me" when recent photo context exists
+EXPECTED TRUE "Send me one" when recent photo context exists
+EXPECTED TRUE "I would love to see a photo 👀 x"
+EXPECTED TRUE "Can I see a photo?"
+EXPECTED TRUE "I'd love a photo of you"
+EXPECTED TRUE "I barely know what you look like x"
+EXPECTED TRUE "Is it not possible to see ANY photos of you without signing up?"
+EXPECTED TRUE contextual "you know I would love it though x"
+EXPECTED TRUE contextual "let me see it then x"
+
+EXPECTED FALSE "Can you send the invoice one?"
+EXPECTED FALSE "Don't send me one"
+EXPECTED FALSE "Do you ever send photos?"
+EXPECTED FALSE "I would love to see a photo of the bike"
+EXPECTED FALSE "Can I see a picture of your dog?"
+EXPECTED FALSE "Show me an image of London"
+EXPECTED FALSE "Surprise me" without recent photo context
+
+PASS first eligible safe preview request is guaranteed when zero safe images have been sent
+PASS later safe preview requests retain Aimee's reasoned discretion
+PASS profile media key `portrait` is excluded from chat delivery
+PASS default preview safe-image limit is 2 and prompt copy is dynamic
+
+PASS hold 3 days
+PASS do not hold 1 day
+PASS do not hold after user
+PASS acknowledged absence
+PASS reasoned decline
+PASS weak stall no reason

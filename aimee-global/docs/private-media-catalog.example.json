@@ -1,0 +1,34 @@
+{
+  "portrait": {
+    "source_relative": "2026/06/file_000000007aa071f481b107387cd6c09d.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "night_out": {
+    "source_relative": "2026/06/file_00000000b5c0720a919cda7f7bf10d942.jpg",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "pub_day": {
+    "source_relative": "2026/06/file_0000000082f871f4a9a74658cc78463e.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "breakfast": {
+    "source_relative": "2026/06/file_00000000cac07243b3537ebe5c13fc66.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "football_night": {
+    "source_relative": "2026/06/ChatGPT-Image-Jun-23-2026-05_48_30-AM.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "sunday_morning": {
+    "source_relative": "2026/06/ChatGPT-Image-Jun-23-2026-05_51_30-AM.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "park_throwback_18_01": {
+    "source_relative": "REPLACE_WITH_UPLOADS_RELATIVE_PATH/aimee-park-throwback-18-01.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  },
+  "black_lingerie_mirror_selfie_01": {
+    "source_relative": "REPLACE_WITH_UPLOADS_RELATIVE_PATH/aimee-black-lingerie-mirror-selfie-01.png",
+    "sha256": "REPLACE_WITH_64_HEX_SHA256"
+  }
+}

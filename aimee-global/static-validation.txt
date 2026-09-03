@@ -1,0 +1,23 @@
+PASS Plugin version is 1.8.10
+PASS Schema version is 2026.08.20.3
+PASS Relationship policy version is 2.2.1
+PASS Active goodwill access overrides future reactivation flags in customer-facing UI
+PASS Expired-August chat card is absent while goodwill access is active
+PASS Membership and pricing controls show temporary in-app access without a checkout CTA
+PASS Goodwill boundary refresh restores the genuine membership prompt only after expiry
+PASS Goodwill access grant creates no subscription and schedules no payment
+PASS Evidence-bound user-27 relationship restoration remains unchanged
+PASS Model-only coercion labels cannot persist relationship harm or rupture events
+PASS Deterministic coercion and invitation safeguards remain enforced
+PASS New registrations require exactly six digits; historical sign-in remains compatible
+PASS Registration completes locally before optional AI, email and carrier work
+PASS New UK/GBP membership checkout is GoCardless-only
+PASS New US paid and SMS-bundle checkout fail closed without provider creation
+PASS Production PHP contains zero direct Stripe Checkout Session create calls
+PASS Legacy Stripe runoff remains exact-owner and terminal-proved
+PASS Private profile, catalogue and voice storage hardening remains present
+PASS Source tree: 17 audit commands; 5792 assertions passed, 0 failed
+PASS Production PHP parsed 48/48 on PHP 8.3 and 48/48 on PHP 7.4
+PASS Clean archive: 17 audit commands; 5792 assertions passed, 0 failed
+PASS Archive: 168 entries, 0 unsafe paths, 0 symlinks; unzip integrity passed
+PASS Final SHA-256 published in the sibling manifest and alongside deliverable

@@ -47,6 +47,9 @@ are done natively by the page and it would otherwise mount a duplicate chip.
 
 ## Membership and payments
 
+**Update for Aimee Global 1.8.11.** The first sandbox checkout from the engine page failed at the provider with `Sweeping is required for a VRP mandate`: the creditor is not enabled for commercial VRP. Aimee Global 1.8.11 switches the mandate scheme to Bacs Direct Debit by default and grants access provisionally while the first collection clears. See `aimee-global/GOCARDLESS-DIRECT-DEBIT-1.8.11.md`. The engine page copy now explains Direct Debit timing.
+
+
 Reviewed in code, not executed: `/subscription-checkout`, `/subscription-status`,
 `/subscription-cancel`, `/billing-portal`, the GoCardless billing request flow,
 the return redirect and the subscription snapshot.
