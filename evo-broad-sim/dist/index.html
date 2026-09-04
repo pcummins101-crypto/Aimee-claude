@@ -601,6 +601,223 @@ EVO.tex.giveWayTriangle = function giveWayTriangle() {
   return texture(c, { repeat: false });
 };
 
+/* ======================================================================
+ * Vegetation and vehicle detail textures (scenery upgrade)
+ * ====================================================================== */
+
+// Species leaf outline drawn at the origin, pointing +y, length ~1.
+function leafPath(ctx, species, r) {
+  ctx.beginPath();
+  if (species === 'oak') {
+    // lobed oak leaf: radius varies around the outline
+    for (let i = 0; i <= 40; i += 1) {
+      const t = i / 40 * Math.PI * 2;
+      const rr = r * (0.55 + 0.45 * Math.abs(Math.sin(t))) * (0.82 + 0.18 * Math.abs(Math.sin(t * 3.5)));
+      const x = Math.sin(t) * rr * 0.62, y = -Math.cos(t) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+  } else if (species === 'hawthorn') {
+    // small three-lobed leaf
+    ctx.moveTo(0, -r);
+    ctx.quadraticCurveTo(r * 0.55, -r * 0.7, r * 0.3, -r * 0.3);
+    ctx.quadraticCurveTo(r * 0.7, -r * 0.1, r * 0.25, r * 0.4);
+    ctx.quadraticCurveTo(r * 0.1, r * 0.7, 0, r);
+    ctx.quadraticCurveTo(-r * 0.1, r * 0.7, -r * 0.25, r * 0.4);
+    ctx.quadraticCurveTo(-r * 0.7, -r * 0.1, -r * 0.3, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.55, -r * 0.7, 0, -r);
+  } else if (species === 'ash') {
+    // narrow pointed leaflet
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.42, -r * 0.6, r * 0.42, r * 0.5, 0, r);
+    ctx.bezierCurveTo(-r * 0.42, r * 0.5, -r * 0.42, -r * 0.6, 0, -r);
+  } else {
+    // beech / generic oval
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.7, -r * 0.6, r * 0.7, r * 0.6, 0, r);
+    ctx.bezierCurveTo(-r * 0.7, r * 0.6, -r * 0.7, -r * 0.6, 0, -r);
+  }
+  ctx.closePath();
+}
+
+/* Leaf cluster card: a dense clump of individually shaded leaves with a
+ * matching normal map, used for tree canopies and hedge foliage. */
+EVO.tex.leafCluster = function leafCluster(species = 'oak', seed = 11) {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const nc = canvas(S, S), nctx = nc.getContext('2d');
+  ctx.clearRect(0, 0, S, S); nctx.clearRect(0, 0, S, S);
+  const rnd = EVO.rng(seed);
+  const base = { oak: [62, 96, 34], hawthorn: [58, 100, 38], ash: [78, 116, 46], beech: [70, 118, 40] }[species] || [64, 100, 36];
+  const size = { oak: 22, hawthorn: 11, ash: 17, beech: 20 }[species] || 18;
+  const count = { oak: 240, hawthorn: 620, ash: 380, beech: 260 }[species] || 260;
+  // twigs first (behind the leaves)
+  nctx.fillStyle = 'rgb(128,128,255)';
+  ctx.strokeStyle = 'rgba(58,44,30,0.9)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let k = 0; k < 9; k += 1) {
+    const a = rnd() * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(S / 2 + (rnd() - 0.5) * 40, S / 2 + (rnd() - 0.5) * 40);
+    ctx.quadraticCurveTo(S / 2 + Math.cos(a) * S * 0.25, S / 2 + Math.sin(a) * S * 0.25 + 20, S / 2 + Math.cos(a) * S * 0.46, S / 2 + Math.sin(a) * S * 0.46);
+    ctx.stroke();
+    nctx.strokeStyle = 'rgb(128,128,255)'; nctx.lineWidth = 3; nctx.beginPath(); nctx.moveTo(S / 2, S / 2); nctx.lineTo(S / 2 + Math.cos(a) * S * 0.46, S / 2 + Math.sin(a) * S * 0.46); nctx.stroke();
+  }
+  // leaves sorted back to front so the front ones are brightest
+  const leaves = [];
+  for (let k = 0; k < count; k += 1) {
+    const a = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.6) * S * 0.46;
+    leaves.push({ x: S / 2 + Math.cos(a) * rad, y: S / 2 + Math.sin(a) * rad * 0.94, depth: rnd(), rot: rnd() * Math.PI * 2, r: size * (0.7 + rnd() * 0.6), edge: rad / (S * 0.46) });
+  }
+  leaves.sort((p, q) => p.depth - q.depth);
+  for (const L of leaves) {
+    const top = 1 - L.y / S; // leaves higher on the card catch more sun
+    const shade = 0.42 + 0.58 * L.depth * (0.75 + 0.25 * top);
+    const warm = rnd() * 0.25;
+    const rC = base[0] * shade * (1 + warm * 0.9), gC = base[1] * shade * (1 + warm * 0.35), bC = base[2] * shade * (1 - warm * 0.3);
+    ctx.save(); ctx.translate(L.x, L.y); ctx.rotate(L.rot);
+    const g = ctx.createLinearGradient(-L.r * 0.5, 0, L.r * 0.5, 0);
+    g.addColorStop(0, `rgb(${rC * 0.78},${gC * 0.82},${bC * 0.8})`);
+    g.addColorStop(0.5, `rgb(${rC},${gC},${bC})`);
+    g.addColorStop(1, `rgb(${rC * 1.12},${gC * 1.1},${bC * 0.95})`);
+    ctx.fillStyle = g;
+    leafPath(ctx, species, L.r); ctx.fill();
+    // midrib
+    ctx.strokeStyle = `rgba(${rC * 1.3},${gC * 1.25},${bC * 1.1},0.55)`; ctx.lineWidth = Math.max(1, L.r * 0.06);
+    ctx.beginPath(); ctx.moveTo(0, -L.r * 0.85); ctx.lineTo(0, L.r * 0.8); ctx.stroke();
+    ctx.restore();
+    // normal: each leaf tilts a little differently
+    const nx = (rnd() - 0.5) * 0.9, ny = (rnd() - 0.5) * 0.9, nz = Math.sqrt(Math.max(0.2, 1 - nx * nx - ny * ny));
+    nctx.save(); nctx.translate(L.x, L.y); nctx.rotate(L.rot);
+    nctx.fillStyle = `rgb(${(nx * 0.5 + 0.5) * 255},${(ny * 0.5 + 0.5) * 255},${(nz * 0.5 + 0.5) * 255})`;
+    leafPath(nctx, species, L.r); nctx.fill();
+    nctx.restore();
+  }
+  return { map: texture(c, { repeat: false }), normalMap: texture(nc, { repeat: false, srgb: false }) };
+};
+
+/* Bark: vertical fissured trunk texture, 1 m x 2 m tile. */
+EVO.tex.bark = function bark() {
+  const W = 256, H = 512;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H), d = img.data;
+  const height = new Float32Array(W * H);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const px = x / W * 16, py = y / H * 32;
+      const ridge = EVO.noise2(px * 1.6, py * 0.25) * 0.6 + EVO.noise2(px * 4 + 3, py * 0.8) * 0.3 + EVO.noise2(px * 12, py * 3) * 0.1;
+      const fissure = smoothstep(0.35, 0.5, ridge);
+      const v = 0.22 + fissure * 0.3 + EVO.noise2(px * 30, py * 30) * 0.08;
+      const i = (y * W + x) * 4;
+      d[i] = v * 255 * 1.05; d[i + 1] = v * 255 * 0.86; d[i + 2] = v * 255 * 0.68; d[i + 3] = 255;
+      height[y * W + x] = ridge;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { map: texture(c), normalMap: texture(normalFromHeight(height, W, H, 3), { srgb: false }) };
+};
+
+/* Hedge body: dense hawthorn mass with a bumpy normal map, 2 m tile. */
+EVO.tex.hedgeBody = function hedgeBody() {
+  const S = 1024;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const nc = canvas(S, S), nctx = nc.getContext('2d');
+  ctx.fillStyle = '#1b3212'; ctx.fillRect(0, 0, S, S);
+  nctx.fillStyle = 'rgb(128,128,255)'; nctx.fillRect(0, 0, S, S);
+  const rnd = EVO.rng(21);
+  const blobs = [];
+  for (let k = 0; k < 900; k += 1) blobs.push({ x: rnd() * S, y: rnd() * S, r: 18 + rnd() * 46, depth: rnd() });
+  blobs.sort((a, b) => a.depth - b.depth);
+  // leaf clumps: darker deep, brighter proud; each clump gets a dome normal
+  for (const b of blobs) {
+    const shade = 0.45 + b.depth * 0.6;
+    for (let k = 0; k < 26; k += 1) {
+      const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * b.r;
+      const x = b.x + Math.cos(a) * rr, y = b.y + Math.sin(a) * rr;
+      const s = shade * (0.85 + rnd() * 0.3);
+      ctx.fillStyle = `rgb(${52 * s + 10},${102 * s + 12},${34 * s + 6})`;
+      ctx.save(); ctx.translate(x % S, y % S); ctx.rotate(rnd() * Math.PI * 2);
+      leafPath(ctx, 'hawthorn', 5 + rnd() * 5); ctx.fill(); ctx.restore();
+      const nx = (x - b.x) / b.r * 0.7, ny = (y - b.y) / b.r * 0.7;
+      nctx.fillStyle = `rgb(${(nx * 0.5 + 0.5) * 255},${(-ny * 0.5 + 0.5) * 255},${(Math.sqrt(Math.max(0.15, 1 - nx * nx - ny * ny)) * 0.5 + 0.5) * 255})`;
+      nctx.save(); nctx.translate(x % S, y % S); nctx.rotate(rnd() * Math.PI * 2);
+      leafPath(nctx, 'hawthorn', 5 + rnd() * 5); nctx.fill(); nctx.restore();
+    }
+  }
+  return { map: texture(c), normalMap: texture(nc, { srgb: false }) };
+};
+
+/* Cow parsley / hogweed card for the verges: white umbels on green stems. */
+EVO.tex.umbel = function umbel() {
+  const S = 256;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  const rnd = EVO.rng(61);
+  for (let k = 0; k < 5; k += 1) {
+    const x0 = 40 + rnd() * 176, top = 30 + rnd() * 60;
+    ctx.strokeStyle = 'rgba(96,128,52,0.95)'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(x0 + (rnd() - 0.5) * 30, S); ctx.quadraticCurveTo(x0, S * 0.6, x0, top + 20); ctx.stroke();
+    // umbel: spokes then florets
+    for (let s = 0; s < 9; s += 1) {
+      const a = -Math.PI * (0.15 + 0.7 * s / 8), len = 18 + rnd() * 10;
+      const ex = x0 + Math.cos(a) * len, ey = top + 20 + Math.sin(a) * len * 0.55;
+      ctx.strokeStyle = 'rgba(110,140,60,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, top + 20); ctx.lineTo(ex, ey); ctx.stroke();
+      for (let f = 0; f < 7; f += 1) {
+        ctx.fillStyle = rnd() < 0.8 ? 'rgba(246,246,236,0.95)' : 'rgba(228,232,210,0.9)';
+        ctx.beginPath(); ctx.arc(ex + (rnd() - 0.5) * 9, ey + (rnd() - 0.5) * 6, 1.6 + rnd() * 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // a few fern-like leaves low down
+    ctx.strokeStyle = 'rgba(84,124,48,0.9)'; ctx.lineWidth = 1.5;
+    for (let l = 0; l < 4; l += 1) { const y = S * 0.62 + rnd() * S * 0.3; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + (rnd() - 0.5) * 60, y - 10 - rnd() * 16); ctx.stroke(); }
+  }
+  return texture(c, { repeat: false });
+};
+
+/* Alloy wheel face: five twin spokes, hub cap, tyre sidewall ring. */
+EVO.tex.alloy = function alloy() {
+  const S = 256;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  const cx = S / 2, cy = S / 2;
+  ctx.fillStyle = '#17181a'; ctx.beginPath(); ctx.arc(cx, cy, 126, 0, Math.PI * 2); ctx.fill(); // tyre sidewall
+  ctx.fillStyle = '#2a2c30'; ctx.beginPath(); ctx.arc(cx, cy, 88, 0, Math.PI * 2); ctx.fill(); // rim well
+  ctx.fillStyle = '#c9ccd1';
+  for (let s = 0; s < 5; s += 1) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(s / 5 * Math.PI * 2);
+    ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-13, -84); ctx.lineTo(13, -84); ctx.lineTo(9, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.lineWidth = 8; ctx.strokeStyle = '#b8bcc2'; ctx.beginPath(); ctx.arc(cx, cy, 84, 0, Math.PI * 2); ctx.stroke(); // rim lip
+  ctx.fillStyle = '#9a9ea4'; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2f36'; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fill();
+  return texture(c, { repeat: false });
+};
+
+/* Car body decal: white with panel gaps, handles and fuel flap. u wraps around
+ * the body section (0 = left sill, 0.5 = roof centre, 1 = right sill), v runs
+ * from the tail (0) to the nose (1). Multiplied with the paint colour. */
+EVO.tex.carDecal = function carDecal(kind = 'hatch') {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, S, S);
+  const doors = kind === 'van' ? [0.22, 0.5, 0.72] : kind === 'suv' ? [0.24, 0.5, 0.74] : [0.26, 0.5, 0.73];
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2;
+  for (const v of doors) {
+    const y = (1 - v) * S; // v=1 is the nose
+    for (const [u0, u1] of [[0.04, 0.4], [0.6, 0.96]]) { ctx.beginPath(); ctx.moveTo(u0 * S, y); ctx.lineTo(u1 * S, y); ctx.stroke(); }
+  }
+  // handles
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  for (const v of [doors[1] - 0.03, doors[2] - 0.03]) for (const u of [0.2, 0.8]) ctx.fillRect(u * S - 4, (1 - v) * S - 16, 8, 14);
+  // fuel flap
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.strokeRect(0.19 * S, (1 - 0.14) * S - 12, 16, 16);
+  // black plastic sills and bumpers
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 0, 0.055 * S, S); ctx.fillRect(0.945 * S, 0, 0.055 * S, S);
+  ctx.fillRect(0, 0, S, 0.045 * S); ctx.fillRect(0, 0.955 * S, S, 0.045 * S);
+  // shut lines around bonnet and boot
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.moveTo(0.42 * S, (1 - 0.86) * S); ctx.lineTo(0.42 * S, (1 - 0.99) * S); ctx.moveTo(0.58 * S, (1 - 0.86) * S); ctx.lineTo(0.58 * S, (1 - 0.99) * S); ctx.stroke();
+  return texture(c, { repeat: false });
+};
+
 }
 
 /* ---- 10-route.js ---- */
@@ -939,7 +1156,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const L = RT.length;
   const T = {
     asphalt: EVO.tex.asphalt(), wear: EVO.tex.roadWear(), grass: EVO.tex.grass(), leaf: EVO.tex.hedgeLeaf(),
-    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), tree1: EVO.tex.tree(5), tree2: EVO.tex.tree(19),
+    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), haw: EVO.tex.leafCluster('hawthorn', 37), umbel: EVO.tex.umbel(),
     blade: EVO.tex.blade(), cone: EVO.tex.cone()
   };
 
@@ -958,11 +1175,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge, roughness: 0.95, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.35 });
-  const leafMat = new THREE.MeshStandardMaterial({ map: T.leaf, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9, metalness: 0, emissive: 0x24350f, emissiveIntensity: 0.45 });
+  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge.map, normalMap: T.hedge.normalMap, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 0.92, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.3 });
+  const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.35 });
+  const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
-  const treeMat1 = new THREE.MeshStandardMaterial({ map: T.tree1, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x1a2a0c, emissiveIntensity: 0.4 });
-  const treeMat2 = new THREE.MeshStandardMaterial({ map: T.tree2, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x1a2a0c, emissiveIntensity: 0.4 });
   const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, emissive: 0x2a3a10, emissiveIntensity: 0.5 });
   const windUniform = { value: 0 };
   bladeMat.onBeforeCompile = (shader) => {
@@ -1242,7 +1458,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ---------------------------------------------- boundaries and fences */
   const hedgeSink = new GeoSink(), wallSink = new GeoSink();
-  const cardInstances = [], postInstances = [], treeInstances = [[], []];
+  const cardInstances = [], underInstances = [], flowerInstances = [], postInstances = [], treePlacements = [];
   const wireSegments = [];
   const hedgeHeight = (s, H) => H * (0.86 + EVO.noise2(s / 7.5, 0.5) * 0.3);
 
@@ -1262,17 +1478,21 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       ]);
     }
     if (rows.length > 1) stripRows(hedgeSink, orientRows(rows, samples));
-    // foliage cards on the road-facing side and along the top
+    // foliage cards: base, mid and top rows, plus brambles and nettles at the foot
     for (let k = 0; k < samples.length - 1; k += 1) {
       const p = samples[k];
-      if (rnd() < 0.15) continue;
       const h = hedgeHeight(p.s, H);
-      for (let row = 0; row < 2; row += 1) {
-        const y = row === 0 ? p.y + 0.35 + rnd() * (h - 0.7) : p.y + h - 0.38 + rnd() * 0.3;
-        const off = row === 0 ? -0.42 - rnd() * 0.2 : (rnd() - 0.5) * 0.6;
-        const yaw = Math.atan2(-p.nx, -p.nz) + (rnd() - 0.5) * 1.3;
-        const size = 0.6 + rnd() * 0.55;
-        cardInstances.push({ x: p.x + p.nx * off, y, z: p.z + p.nz * off, yaw, tilt: (rnd() - 0.5) * 0.5, size });
+      for (let row = 0; row < 3; row += 1) {
+        if (rnd() < 0.12) continue;
+        const y = row === 0 ? p.y + 0.15 + rnd() * 0.45 : row === 1 ? p.y + 0.55 + rnd() * Math.max(0.2, h - 0.95) : p.y + h - 0.32 + rnd() * 0.32;
+        const off = row === 2 ? (rnd() - 0.5) * 0.7 : -0.45 - rnd() * 0.22;
+        const yaw = Math.atan2(-p.nx, -p.nz) + (rnd() - 0.5) * 1.4;
+        const size = row === 2 ? 0.9 + rnd() * 0.6 : 0.55 + rnd() * 0.5;
+        cardInstances.push({ x: p.x + p.nx * off + (rnd() - 0.5) * 0.3, y, z: p.z + p.nz * off + (rnd() - 0.5) * 0.3, yaw, tilt: (rnd() - 0.5) * 0.6, size, tint: 0.85 + rnd() * 0.3 });
+      }
+      if (k % 2 === 0 && rnd() < 0.8) {
+        const off = -0.95 - rnd() * 0.5;
+        underInstances.push({ x: p.x + p.nx * off, y: p.y - 0.05 + rnd() * 0.15, z: p.z + p.nz * off, yaw: rnd() * Math.PI * 2, tilt: (rnd() - 0.5) * 0.4, size: 0.45 + rnd() * 0.4, tint: 0.55 + rnd() * 0.3 });
       }
     }
   }
@@ -1338,37 +1558,68 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       hedgeRun(run, 1.7);
     }
   }
-  // trees: in and behind boundaries, plus scattered field trees
-  for (let s = 12; s < L; s += 18 + rnd() * 40) {
+  // cow parsley and hogweed along the verges
+  for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
     const side = rnd() < 0.5 ? 1 : -1;
-    if (RT.inJunctionMouth(s, side, 40)) continue;
-    const b = RT.boundaryAt(s, side);
-    const d = b.type === 'fence' ? RT.HEDGE_OFFSET + 2 + rnd() * 8 : RT.HEDGE_OFFSET + (rnd() < 0.35 ? 0.4 : 2.5 + rnd() * 9);
-    const g = groundAt(s, side * d);
-    treeInstances[rnd() < 0.5 ? 0 : 1].push({ x: g.x, y: g.y - 0.3, z: g.z, h: 8 + rnd() * 6.5, yaw: rnd() * Math.PI * 2 });
+    if (RT.inJunctionMouth(s, side, 12)) continue;
+    const g = groundAt(s, side * (3.5 + rnd() * 1.1));
+    flowerInstances.push({ x: g.x, y: g.y - 0.05, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.7 + rnd() * 0.6 });
   }
-  for (let k = 0; k < 140; k += 1) {
-    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 32 + rnd() * 170;
+  // trees: roadside and hedgerow (dense), scattered field trees and copses
+  const placeTree = (x, y, z, species, scale) => treePlacements.push({ x, y, z, species, scale, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+  for (let s = 8; s < L; s += 9 + rnd() * 20) {
+    const side = rnd() < 0.5 ? 1 : -1;
+    if (RT.inJunctionMouth(s, side, 36)) continue;
+    const b = RT.boundaryAt(s, side);
+    const inLine = b.type !== 'fence' && rnd() < 0.45;
+    const d = inLine ? RT.HEDGE_OFFSET + 0.3 : RT.HEDGE_OFFSET + 1.8 + rnd() * 10;
+    const g = groundAt(s, side * d);
+    const r = rnd();
+    const species = inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
+    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.8 + rnd() * 0.6 : 0.8 + rnd() * 0.5);
+  }
+  for (let k = 0; k < 220; k += 1) {
+    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
     const near = RT.nearest(x, z);
-    if (near && near.dist < 26) continue;
-    treeInstances[rnd() < 0.5 ? 0 : 1].push({ x, y: RT.terrainHeight(x, z) - 0.3, z, h: 9 + rnd() * 8, yaw: rnd() * Math.PI * 2 });
+    if (near && near.dist < 24) continue;
+    placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.55 ? 'oak' : 'ash', 0.9 + rnd() * 0.6);
+  }
+  for (let c = 0; c < 12; c += 1) {
+    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 45 + rnd() * 160;
+    const f = RT.frame(s);
+    const cx = f.x + f.nx * side * d, cz = f.z + f.nz * side * d;
+    const n = 4 + Math.floor(rnd() * 6);
+    for (let k = 0; k < n; k += 1) {
+      const x = cx + (rnd() - 0.5) * 22, z = cz + (rnd() - 0.5) * 22;
+      const near = RT.nearest(x, z);
+      if (near && near.dist < 24) continue;
+      placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.6 ? 'oak' : 'ash', 0.8 + rnd() * 0.6);
+    }
   }
   {
     const hedge = new THREE.Mesh(hedgeSink.build(), hedgeMat); hedge.castShadow = true; hedge.receiveShadow = true; hedge.name = 'hedge'; scene.add(hedge);
     const wall = new THREE.Mesh(wallSink.build(), stoneMat); wall.castShadow = true; wall.receiveShadow = true; wall.name = 'wall'; scene.add(wall);
-    // foliage cards
+    // foliage cards, brambles and verge flowers
     const cardGeo = new THREE.PlaneGeometry(1, 1);
-    const cards = new THREE.InstancedMesh(cardGeo, leafMat, cardInstances.length);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
-    cardInstances.forEach((c, k) => {
-      e.set(c.tilt, c.yaw, 0, 'YXZ'); q.setFromEuler(e); pos.set(c.x, c.y, c.z); sc.set(c.size, c.size, c.size);
-      m.compose(pos, q, sc); cards.setMatrixAt(k, m);
-    });
-    cards.castShadow = true; cards.receiveShadow = true;
-    cards.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: T.leaf, alphaTest: 0.45 });
-    scene.add(cards);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+    const instanceCards = (list, mat, tex, upright) => {
+      const im = new THREE.InstancedMesh(cardGeo, mat, Math.max(1, list.length));
+      list.forEach((c, k) => {
+        e.set(upright ? 0 : c.tilt, c.yaw, 0, 'YXZ'); q.setFromEuler(e); pos.set(c.x, c.y + (upright ? c.size * 0.5 : 0), c.z); sc.set(c.size, c.size, c.size);
+        m.compose(pos, q, sc); im.setMatrixAt(k, m);
+        const t = c.tint ?? 1; col.setRGB(t, 0.55 + t * 0.45, t * 0.95); im.setColorAt(k, col);
+      });
+      im.castShadow = true; im.receiveShadow = true;
+      im.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
+      scene.add(im);
+      return im;
+    };
+    instanceCards(cardInstances, leafMat, T.haw.map, false);
+    instanceCards(underInstances, leafMat, T.haw.map, false);
+    const flowers = instanceCards(flowerInstances.map((f) => ({ ...f, tint: 1 })), umbelMat, T.umbel, true);
+    flowers.castShadow = false;
     // fence posts and wire
     const postGeo = new THREE.BoxGeometry(0.09, 1.15, 0.09); postGeo.translate(0, 0.575, 0);
     const posts = new THREE.InstancedMesh(postGeo, woodMat, Math.max(1, postInstances.length));
@@ -1378,18 +1629,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wireSegments, 3));
       scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x4a4d50, transparent: true, opacity: 0.55 })));
     }
-    // trees: two crossed cards
-    const tg = new THREE.PlaneGeometry(1, 1); tg.translate(0, 0.5, 0);
-    const tg2 = tg.clone(); tg2.rotateY(Math.PI / 2);
-    const treeGeo = mergeGeometries([tg, tg2]);
-    [treeMat1, treeMat2].forEach((mat, ti) => {
-      const list = treeInstances[ti];
-      const im = new THREE.InstancedMesh(treeGeo, mat, Math.max(1, list.length));
-      list.forEach((t, k) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); pos.set(t.x, t.y, t.z); sc.set(t.h * 0.72, t.h, t.h * 0.72); m.compose(pos, q, sc); im.setMatrixAt(k, m); });
-      im.castShadow = true; im.receiveShadow = false;
-      im.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: mat.map, alphaTest: 0.5 });
-      scene.add(im);
-    });
+    EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
   }
   function mergeGeometries(list) {
     const p = [], n = [], uv = [], idx = [];
@@ -1418,12 +1658,13 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       for (let t = 0; t < len; t += 4.2) {
         const px = x + dx * t, pz = z + dz * t;
         const near = RT.nearest(px, pz);
-        if (near && near.dist < 30) break;
-        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang, h: 1.5 + EVO.noise2(t / 9, k) * 0.8 });
+        if (near && near.dist < 48) break;
+        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang, h: 1.2 + EVO.noise2(t / 9, k) * 0.7 });
       }
     }
     const geo = new THREE.BoxGeometry(4.4, 1, 1.5); geo.translate(0, 0.5, 0);
     const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false;
+    const Y2 = new THREE.Vector3(0, 1, 0);
     const im = new THREE.InstancedMesh(geo, farHedgeMat, Math.max(1, segs.length));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
     segs.forEach((p, k) => { q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(1, p.h, 1); m.compose(pos, q, sc); im.setMatrixAt(k, m); });
@@ -1643,6 +1884,138 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   return { scene, sun, sunDir, sky, update, materials: { roadMat, grassMat } };
+};
+
+}
+
+/* ---- 25-vegetation.js ---- */
+{
+
+/*
+ * AVENRÀ EVO · B-ROAD — volumetric trees.
+ *
+ * Each tree is a trunk with a few branches and a canopy of leaf-cluster cards
+ * scattered through an ellipsoid.  The cards carry "spherical" normals (the
+ * direction from the canopy centre), so the whole crown shades like a solid
+ * volume under the sun instead of a set of flat cut-outs.  Three species with
+ * two seeded variants each, instanced with per-tree colour variation.
+ */
+const EVO = window.EVO;
+const { lerp } = EVO;
+
+const SPECIES = {
+  oak: { trunkH: 3.0, trunkR: 0.28, canopy: 5.7, rx: 3.7, ry: 3.0, clusters: 34, card: [2.0, 2.9], branches: 5, leaf: 'oak', seed: 11, tint: [0.92, 1.05, 0.9] },
+  ash: { trunkH: 4.3, trunkR: 0.21, canopy: 7.6, rx: 2.8, ry: 3.8, clusters: 30, card: [1.7, 2.5], branches: 4, leaf: 'ash', seed: 23, tint: [1.0, 1.05, 0.92] },
+  hawthorn: { trunkH: 1.3, trunkR: 0.13, canopy: 3.0, rx: 2.3, ry: 1.9, clusters: 24, card: [1.2, 1.8], branches: 4, leaf: 'hawthorn', seed: 37, tint: [0.95, 1.0, 0.95] }
+};
+
+class Sink {
+  constructor() { this.p = []; this.n = []; this.uv = []; this.idx = []; }
+  addGeometry(g, matrix) {
+    const gg = g.clone(); if (matrix) gg.applyMatrix4(matrix);
+    const pa = gg.getAttribute('position'), na = gg.getAttribute('normal'), ua = gg.getAttribute('uv');
+    const base = this.p.length / 3;
+    for (let i = 0; i < pa.count; i += 1) { this.p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); this.n.push(na.getX(i), na.getY(i), na.getZ(i)); this.uv.push(ua.getX(i), ua.getY(i)); }
+    const ix = gg.getIndex(); for (let i = 0; i < ix.count; i += 1) this.idx.push(ix.getX(i) + base);
+  }
+  quad(corners, normal) {
+    const base = this.p.length / 3;
+    for (let i = 0; i < 4; i += 1) { this.p.push(corners[i].x, corners[i].y, corners[i].z); this.n.push(normal.x, normal.y, normal.z); }
+    this.uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+    this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  build() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setIndex(this.idx); g.computeBoundingSphere();
+    return g;
+  }
+}
+
+function buildTree(spec, seed) {
+  const rnd = EVO.rng(seed);
+  const wood = new Sink(), leaves = new Sink();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  // trunk, sunk a little into the ground and reaching up into the crown
+  const trunkLen = spec.trunkH + spec.ry * 0.9;
+  const trunk = new THREE.CylinderGeometry(spec.trunkR * 0.5, spec.trunkR, trunkLen, 9, 1);
+  trunk.translate(0, trunkLen / 2 - 0.25, 0);
+  wood.addGeometry(trunk);
+  // branches from the trunk top outward and upward
+  for (let b = 0; b < spec.branches; b += 1) {
+    const az = (b / spec.branches) * Math.PI * 2 + rnd() * 0.8, el = 0.45 + rnd() * 0.6;
+    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+    const len = spec.rx * (0.7 + rnd() * 0.45);
+    const br = new THREE.CylinderGeometry(0.035, spec.trunkR * 0.42, len, 6, 1);
+    br.translate(0, len / 2, 0);
+    q.setFromUnitVectors(up, dir);
+    m.compose(new THREE.Vector3(0, spec.trunkH + 0.2 + rnd() * 1.0, 0), q, new THREE.Vector3(1, 1, 1));
+    wood.addGeometry(br, m);
+  }
+  // canopy cards
+  const centre = new THREE.Vector3(0, spec.canopy, 0);
+  const e = new THREE.Euler(), c = new THREE.Vector3(), nrm = new THREE.Vector3();
+  const corners = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  for (let k = 0; k < spec.clusters; k += 1) {
+    const th = rnd() * Math.PI * 2, ph = Math.acos(1 - 2 * rnd()) * 0.92; // slight bias upward
+    const u = 0.35 + 0.65 * Math.sqrt(rnd());
+    c.set(Math.cos(th) * Math.sin(ph) * spec.rx * u, Math.cos(ph) * spec.ry * u, Math.sin(th) * Math.sin(ph) * spec.rx * u).add(centre);
+    const size = lerp(spec.card[0], spec.card[1], rnd());
+    e.set((rnd() - 0.5) * 1.2, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.8, 'YXZ');
+    m.makeRotationFromEuler(e);
+    const hx = size / 2, hy = size * 0.42;
+    corners[0].set(-hx, -hy, 0); corners[1].set(hx, -hy, 0); corners[2].set(hx, hy, 0); corners[3].set(-hx, hy, 0);
+    for (const v of corners) v.applyMatrix4(m).add(c);
+    nrm.copy(c).sub(centre); nrm.x /= spec.rx; nrm.y /= spec.ry; nrm.z /= spec.rx; nrm.y += 0.35; nrm.normalize();
+    leaves.quad(corners, nrm);
+  }
+  return { wood: wood.build(), leaves: leaves.build(), height: spec.canopy + spec.ry };
+}
+
+EVO.vegetation = {
+  SPECIES,
+  /* placements: [{x, y, z, species, scale, yaw, tint?}] */
+  createTreeMeshes(scene, placements, opts = {}) {
+    const bark = EVO.tex.bark();
+    const barkMat = new THREE.MeshStandardMaterial({ map: bark.map, normalMap: bark.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95 });
+    const groups = new Map();
+    for (const p of placements) {
+      const variant = (Math.abs(Math.round(p.x * 7 + p.z * 13)) % 2);
+      const key = `${p.species}:${variant}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+    const leafTex = {};
+    const meshes = [];
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+    for (const [key, list] of groups) {
+      const [species, variant] = key.split(':');
+      const spec = SPECIES[species];
+      const geo = buildTree(spec, spec.seed * 7 + Number(variant) * 101);
+      leafTex[species] = leafTex[species] || EVO.tex.leafCluster(spec.leaf, spec.seed);
+      const leafMat = new THREE.MeshStandardMaterial({
+        map: leafTex[species].map, normalMap: leafTex[species].normalMap, normalScale: new THREE.Vector2(0.55, 0.55),
+        alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0, emissive: 0x16240a, emissiveIntensity: 0.35
+      });
+      const wood = new THREE.InstancedMesh(geo.wood, barkMat, list.length);
+      const leaves = new THREE.InstancedMesh(geo.leaves, leafMat, list.length);
+      list.forEach((p, k) => {
+        q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(p.scale, p.scale, p.scale);
+        m.compose(pos, q, sc); wood.setMatrixAt(k, m); leaves.setMatrixAt(k, m);
+        const t = p.tint ?? 1;
+        col.setRGB(spec.tint[0] * t, spec.tint[1] * (0.9 + (t - 1) * 0.5 + 0.1), spec.tint[2] * (2 - t) * 0.5 + 0.5);
+        leaves.setColorAt(k, col);
+      });
+      wood.castShadow = true; wood.receiveShadow = true;
+      leaves.castShadow = true; leaves.receiveShadow = false;
+      leaves.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafTex[species].map, alphaTest: 0.5 });
+      scene.add(wood, leaves);
+      meshes.push(wood, leaves);
+    }
+    return meshes;
+  }
 };
 
 }
@@ -2165,91 +2538,195 @@ EVO.createAudio = function createAudio() {
 {
 
 /*
- * AVENRÀ EVO · B-ROAD — light oncoming traffic.
+ * AVENRÀ EVO · B-ROAD — oncoming traffic.
  *
- * A handful of cars circulate the loop in the opposite direction, keeping to
- * their own lane and slowing for the bends the way a sensible driver would.
- * Stray onto the wrong side of the road in front of one and you will meet it.
+ * Cars are lofted from a smooth cross-section swept along a roof-line profile
+ * (hatchback, SUV and van), split into clearcoat paint and dark reflective
+ * glass that mirror an environment map generated from the sky.  Arched sills,
+ * dark wheel wells, alloy wheels, lights, plates, mirrors, an interior with a
+ * driver and a soft contact shadow finish them.  They keep to their own lane,
+ * slow for bends and junctions, and will hit you if you are on their side.
  */
 const EVO = window.EVO;
-const { clamp, lerp, mod } = EVO;
+const { clamp, lerp, mod, smoothstep } = EVO;
 const RT = EVO.route;
 
 const ONCOMING_D = -1.55;          // their lane centre, in our road coordinates
-const CAR_HALF_WIDTH = 0.9;
+const CAR_HALF_WIDTH = 0.92;
 
-function mergeParts(parts) {
-  // parts: [{geo, x, y, z, rx, ry, rz}] → one BufferGeometry (position, normal, uv)
-  const p = [], n = [], uv = [], idx = [];
-  const m = new THREE.Matrix4(), e = new THREE.Euler(), nm = new THREE.Matrix3();
-  let base = 0;
-  for (const part of parts) {
-    const g = part.geo.clone();
-    e.set(part.rx || 0, part.ry || 0, part.rz || 0);
-    m.makeRotationFromEuler(e); m.setPosition(part.x, part.y, part.z);
-    g.applyMatrix4(m);
-    const pa = g.getAttribute('position'), na = g.getAttribute('normal'), ua = g.getAttribute('uv');
-    for (let i = 0; i < pa.count; i += 1) { p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); n.push(na.getX(i), na.getY(i), na.getZ(i)); uv.push(ua.getX(i), ua.getY(i)); }
-    const ix = g.getIndex(); for (let i = 0; i < ix.count; i += 1) idx.push(ix.getX(i) + base);
-    base += pa.count;
+// Roof-line profiles: [normalised z (-1 tail … +1 nose), height in metres]
+const VARIANTS = {
+  hatch: { L: 4.3, W: 1.78, floor: 0.34, waist: 0.97, wheelR: 0.33, wheelZ: 1.32, sideGlass: [-0.86, 0.5], screen: [0.28, 0.56], rear: [-0.92, -0.74],
+    top: [[-1, 1.0], [-0.92, 1.22], [-0.74, 1.45], [-0.2, 1.47], [0.28, 1.44], [0.56, 1.02], [0.62, 0.93], [0.92, 0.86], [1, 0.7]] },
+  suv: { L: 4.65, W: 1.9, floor: 0.42, waist: 1.08, wheelR: 0.37, wheelZ: 1.42, sideGlass: [-0.9, 0.42], screen: [0.2, 0.5], rear: [-0.94, -0.78], rails: true,
+    top: [[-1, 1.28], [-0.94, 1.62], [-0.78, 1.74], [0.2, 1.74], [0.5, 1.5], [0.56, 1.12], [0.62, 1.06], [0.92, 1.0], [1, 0.84]] },
+  van: { L: 5.1, W: 1.98, floor: 0.4, waist: 1.14, wheelR: 0.35, wheelZ: 1.58, sideGlass: [0.36, 0.62], screen: [0.62, 0.76], rear: null, van: true,
+    top: [[-1, 1.75], [-0.97, 2.02], [0.5, 2.06], [0.62, 1.95], [0.76, 1.36], [0.82, 1.2], [0.95, 1.1], [1, 0.94]] }
+};
+
+function profileHeight(v, z) {
+  const t = v.top;
+  if (z <= t[0][0]) return t[0][1];
+  for (let i = 0; i < t.length - 1; i += 1) if (z <= t[i + 1][0]) {
+    const u = (z - t[i][0]) / (t[i + 1][0] - t[i][0]);
+    return lerp(t[i][1], t[i + 1][1], u * u * (3 - 2 * u));
   }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); out.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3)); out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); out.setIndex(idx);
-  return out;
+  return t[t.length - 1][1];
 }
 
-const CAR_GEO = {};
-function carGeometries() {
-  if (CAR_GEO.paint) return CAR_GEO;
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-  const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.24, 18);
-  const hub = new THREE.CylinderGeometry(0.19, 0.19, 0.26, 12);
-  const wheels = [[-0.82, 1.35], [0.82, 1.35], [-0.82, -1.35], [0.82, -1.35]];
-  // local +z is the car's forward direction
-  CAR_GEO.paint = mergeParts([
-    { geo: box(1.78, 0.5, 4.3), x: 0, y: 0.62, z: 0 }, { geo: box(1.7, 0.16, 1.3), x: 0, y: 0.94, z: 1.35 }, { geo: box(1.62, 0.5, 1.9), x: 0, y: 1.15, z: -0.2 }]);
-  CAR_GEO.glass = mergeParts([
-    { geo: box(1.5, 0.52, 0.08), x: 0, y: 1.16, z: 0.86, rx: -0.55 }, { geo: box(1.5, 0.44, 0.06), x: 0, y: 1.16, z: -1.2, rx: 0.5 },
-    { geo: box(0.05, 0.36, 1.5), x: -0.82, y: 1.16, z: -0.2 }, { geo: box(0.05, 0.36, 1.5), x: 0.82, y: 1.16, z: -0.2 }]);
-  CAR_GEO.trim = mergeParts([
-    { geo: box(1.8, 0.16, 0.5), x: 0, y: 0.33, z: 2.1 }, { geo: box(1.8, 0.16, 0.5), x: 0, y: 0.33, z: -2.1 },
-    { geo: box(0.06, 0.04, 0.5), x: -0.9, y: 0.9, z: 1.0 }, { geo: box(0.06, 0.04, 0.5), x: 0.9, y: 0.9, z: 1.0 },
-    ...wheels.map(([x, z]) => ({ geo: wheel, x, y: 0.33, z, rz: Math.PI / 2 }))]);
-  CAR_GEO.hub = mergeParts(wheels.map(([x, z]) => ({ geo: hub, x, y: 0.33, z, rz: Math.PI / 2 })));
-  CAR_GEO.lamp = mergeParts([{ geo: box(0.34, 0.16, 0.06), x: -0.62, y: 0.66, z: 2.16 }, { geo: box(0.34, 0.16, 0.06), x: 0.62, y: 0.66, z: 2.16 }, { geo: box(0.5, 0.11, 0.03), x: 0, y: 0.44, z: 2.17 }]);
-  CAR_GEO.tail = mergeParts([{ geo: box(0.3, 0.14, 0.06), x: -0.66, y: 0.68, z: -2.16 }, { geo: box(0.3, 0.14, 0.06), x: 0.66, y: 0.68, z: -2.16 }]);
-  return CAR_GEO;
-}
-
-function makeCar(paint) {
-  const g = new THREE.Group();
-  const geo = carGeometries();
-  const mats = {
-    paint: new THREE.MeshStandardMaterial({ color: paint, metalness: 0.55, roughness: 0.32 }),
-    glass: new THREE.MeshStandardMaterial({ color: 0x1a232b, metalness: 0.2, roughness: 0.15 }),
-    trim: new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.85 }),
-    hub: new THREE.MeshStandardMaterial({ color: 0xa7abb0, metalness: 0.8, roughness: 0.35 }),
-    lamp: new THREE.MeshStandardMaterial({ color: 0xf6f3e6, emissive: 0xfff4d6, emissiveIntensity: 1.6, roughness: 0.3 }),
-    tail: new THREE.MeshStandardMaterial({ color: 0x8a1420, emissive: 0x6a0812, emissiveIntensity: 0.8, roughness: 0.4 })
+/* Lofted body: returns { paint, glass } geometries sharing vertex arrays. */
+function loftBody(v) {
+  const SECT = 40, J = 17;
+  const zs = [];
+  for (let i = 0; i <= SECT; i += 1) zs.push(-1 + 2 * i / SECT);
+  zs.unshift(-1.03); zs.push(1.03); // end caps
+  const positions = [], uvs = [];
+  const halfL = v.L / 2;
+  const sectionPoints = (z) => {
+    const cap = Math.abs(z) > 1;
+    const taper = 1 - 0.3 * Math.pow(smoothstep(0.7, 1.0, Math.abs(z)), 1.6);
+    const w = cap ? v.W * 0.06 : v.W / 2 * taper;
+    const top = cap ? (v.floor + profileHeight(v, Math.sign(z))) / 2 : profileHeight(v, z);
+    // sills rise over the wheels to read as arches
+    const zm = z * halfL;
+    const arch = Math.max(Math.exp(-Math.pow((zm - v.wheelZ) / 0.55, 2)), Math.exp(-Math.pow((zm + v.wheelZ) / 0.55, 2)));
+    const floor = v.floor + arch * (v.wheelR * 0.95);
+    const waist = Math.min(v.waist, top - 0.06);
+    const glassy = top > v.waist + 0.12;
+    const shoulder = waist + 0.07;
+    const pts = [];
+    const side = (sgn) => [
+      [sgn * w * 0.9, floor], [sgn * w * 0.995, floor + 0.16], [sgn * w, waist * 0.78], [sgn * w * 0.99, waist],
+      [sgn * w * 0.94, glassy ? shoulder : lerp(waist, top, 0.35)],
+      [sgn * w * 0.86, glassy ? lerp(shoulder, top, 0.45) : lerp(waist, top, 0.7)],
+      [sgn * w * 0.72, glassy ? top - 0.03 : top - 0.01],
+      [sgn * w * 0.38, top]
+    ];
+    const left = side(1), right = side(-1).reverse();
+    pts.push(...left, [0, top + 0.005], ...right);
+    return pts;
   };
-  for (const key of Object.keys(mats)) {
-    const m = new THREE.Mesh(geo[key], mats[key]); m.castShadow = true; m.receiveShadow = true; g.add(m);
+  zs.forEach((z) => {
+    const pts = sectionPoints(z);
+    pts.forEach((p, j) => { positions.push(p[0], p[1], z * halfL); uvs.push(j / (J - 1), (z + 1) / 2); });
+  });
+  const rows = zs.length;
+  const paintIdx = [], glassIdx = [], allIdx = [];
+  const inRange = (z, r) => r && z >= r[0] && z <= r[1];
+  for (let i = 0; i < rows - 1; i += 1) {
+    const zm = (zs[i] + zs[i + 1]) / 2;
+    for (let j = 0; j < J - 1; j += 1) {
+      const a = i * J + j, b = a + J;
+      const upper = j >= 4 && j <= 11;                 // above the shoulder line
+      const sideOnly = (j >= 4 && j <= 5) || (j >= 10 && j <= 11);
+      let glass = false;
+      if (upper && (inRange(zm, v.screen) || inRange(zm, v.rear))) glass = true;
+      if (sideOnly && inRange(zm, v.sideGlass)) glass = true;
+      // winding: nose is +z and the section climbs the left (+x) side first,
+      // so (a, a+1, b+1) / (a, b+1, b) face outward
+      const tri = [a, a + 1, b + 1, a, b + 1, b];
+      (glass ? glassIdx : paintIdx).push(...tri); allIdx.push(...tri);
+    }
   }
+  const full = new THREE.BufferGeometry();
+  const posAttr = new THREE.Float32BufferAttribute(positions, 3), uvAttr = new THREE.Float32BufferAttribute(uvs, 2);
+  full.setAttribute('position', posAttr); full.setAttribute('uv', uvAttr); full.setIndex(allIdx);
+  full.computeVertexNormals();
+  const make = (idx) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', posAttr); g.setAttribute('normal', full.getAttribute('normal')); g.setAttribute('uv', uvAttr); g.setIndex(idx); g.computeBoundingSphere(); return g; };
+  return { paint: make(paintIdx), glass: make(glassIdx) };
+}
+
+function contactShadowTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 32, 6, 64, 32, 60);
+  g.addColorStop(0, 'rgba(0,0,0,0.75)'); g.addColorStop(0.55, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.scale(1, 1); ctx.fillRect(0, 0, 128, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+const CACHE = { bodies: {}, decals: {}, alloy: null, shadow: null };
+
+function makeCar(kind, paint, envMap) {
+  const v = VARIANTS[kind];
+  CACHE.bodies[kind] = CACHE.bodies[kind] || loftBody(v);
+  CACHE.decals[kind] = CACHE.decals[kind] || EVO.tex.carDecal(kind);
+  CACHE.alloy = CACHE.alloy || EVO.tex.alloy();
+  CACHE.shadow = CACHE.shadow || contactShadowTexture();
+  const body = CACHE.bodies[kind];
+  const g = new THREE.Group();
+  const paintMat = new THREE.MeshPhysicalMaterial({ color: paint, map: CACHE.decals[kind], metalness: 0.35, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.06, envMap, envMapIntensity: 1.1 });
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0b1014, metalness: 0.1, roughness: 0.04, envMap, envMapIntensity: 1.4 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.82 });
+  const wellMat = new THREE.MeshStandardMaterial({ color: 0x08090a, roughness: 1 });
+  const tyreMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.92 });
+  const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.3, envMap, envMapIntensity: 0.8 });
+  const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: 1.3, roughness: 0.08, metalness: 0.2, envMap, envMapIntensity: 1 });
+  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x9c1520, emissive: 0x7a0a14, emissiveIntensity: 0.7, roughness: 0.12, envMap });
+  const plateFront = new THREE.MeshStandardMaterial({ color: 0xf4f2e6, roughness: 0.5 });
+  const plateRear = new THREE.MeshStandardMaterial({ color: 0xf2d24a, roughness: 0.5 });
+  const interiorMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.95 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xb98a6a, roughness: 0.8 });
+  const add = (geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, shadow = true) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz);
+    m.castShadow = shadow; m.receiveShadow = shadow; g.add(m); return m;
+  };
+  add(body.paint, paintMat);
+  add(body.glass, glassMat);
+  const halfL = v.L / 2, halfW = v.W / 2;
+  // wheels: tyre torus, alloy face both sides, dark well behind
+  const tyre = new THREE.TorusGeometry(v.wheelR - 0.075, 0.08, 10, 26);
+  const rim = new THREE.CircleGeometry(v.wheelR - 0.11, 24);
+  const well = new THREE.BoxGeometry(0.42, v.wheelR * 1.9, v.wheelR * 2.2);
+  for (const sx of [1, -1]) for (const sz of [1, -1]) {
+    const x = sx * (halfW - 0.17), z = sz * v.wheelZ;
+    add(tyre, tyreMat, x, v.wheelR, z, 0, Math.PI / 2, 0);
+    add(rim, alloyMat, x + sx * 0.1, v.wheelR, z, 0, sx * Math.PI / 2, 0, false);
+    add(new THREE.CylinderGeometry(v.wheelR - 0.1, v.wheelR - 0.1, 0.18, 18), trimMat, x, v.wheelR, z, 0, 0, Math.PI / 2, false);
+    add(well, wellMat, x - sx * 0.12, v.wheelR + 0.1, z, 0, 0, 0, false);
+  }
+  add(new THREE.BoxGeometry(v.W * 0.86, 0.1, v.L * 0.8), wellMat, 0, v.floor - 0.02, 0, 0, 0, 0, false); // underbody
+  // lights, grille, plates
+  const noseY = lerp(v.floor, profileHeight(v, 0.97), 0.62);
+  for (const sx of [1, -1]) {
+    add(new THREE.BoxGeometry(0.46, 0.15, 0.12), lampMat, sx * (halfW * 0.62), noseY, halfL - 0.02, 0.35, sx * 0.25, 0, false);
+    add(new THREE.BoxGeometry(0.3, 0.13, 0.08), tailMat, sx * (halfW * 0.7), lerp(v.floor, profileHeight(v, -0.97), 0.62), -halfL + 0.01, 0, 0, 0, false);
+    add(new THREE.BoxGeometry(0.12, 0.09, 0.2), trimMat, sx * (halfW + 0.12), v.waist + 0.16, v.screen[0] * halfL - 0.1, 0, 0, 0, false); // mirrors
+  }
+  add(new THREE.BoxGeometry(0.62, 0.12, 0.05), trimMat, 0, noseY - 0.24, halfL - 0.03, 0.3, 0, 0, false); // grille
+  add(new THREE.BoxGeometry(0.52, 0.11, 0.02), plateFront, 0, v.floor + 0.14, halfL - 0.01, 0.2, 0, 0, false);
+  add(new THREE.BoxGeometry(0.52, 0.11, 0.02), plateRear, 0, v.floor + 0.2, -halfL + 0.005, 0, Math.PI, 0, false);
+  if (v.rails) for (const sx of [1, -1]) add(new THREE.BoxGeometry(0.05, 0.06, v.L * 0.42), trimMat, sx * halfW * 0.66, profileHeight(v, -0.2) + 0.03, -0.15, 0, 0, 0, false);
+  // interior and driver (UK: right-hand seat)
+  // interior sits under the flat part of the roof only, so it never pokes through the screens
+  const cabZ0 = (v.rear ? v.rear[1] : v.sideGlass[0]) * halfL, cabZ1 = v.screen[0] * halfL;
+  const cabH = (Math.min(profileHeight(v, cabZ0 / halfL), profileHeight(v, cabZ1 / halfL)) - v.waist) * 0.8;
+  add(new THREE.BoxGeometry(v.W * 0.78, cabH, cabZ1 - cabZ0), interiorMat, 0, v.waist + cabH * 0.5, (cabZ0 + cabZ1) / 2, 0, 0, 0, false);
+  const seatZ = v.screen[0] * halfL - 0.55;
+  add(new THREE.SphereGeometry(0.11, 10, 8), skinMat, -0.37, v.waist + 0.42, seatZ, 0, 0, 0, false);
+  add(new THREE.BoxGeometry(0.42, 0.34, 0.24), new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.9 }), -0.37, v.waist + 0.14, seatZ, 0, 0, 0, false);
+  // contact shadow
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(v.L * 1.06, v.W * 1.35), new THREE.MeshBasicMaterial({ map: CACHE.shadow, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; shadow.renderOrder = 1;
+  g.add(shadow);
   return g;
 }
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
-  const count = opts.count ?? 4;
+  const count = opts.count ?? 5;
   const L = RT.length;
-  const paints = [0xb9bcc2, 0x1f3a6e, 0x8c1a1f, 0xe8e6df, 0x2a2b2e, 0x4c6b3c];
+  const envMap = opts.envMap || null;
+  const paints = [0xc9ccd1, 0x1f3a6e, 0x8c1a1f, 0xe9e7e0, 0x26282b, 0x4c6b3c, 0x8a8f96, 0x2f4f8f];
+  const kinds = ['hatch', 'hatch', 'suv', 'van', 'hatch', 'suv', 'hatch', 'van'];
   const rnd = EVO.rng(777);
   const cars = [];
   for (let i = 0; i < count; i += 1) {
-    const mesh = makeCar(paints[i % paints.length]);
+    const kind = kinds[i % kinds.length];
+    const mesh = makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
     scene.add(mesh);
     // spread them around the loop, none right on top of the rider at the start
-    const s = mod(bike.s + L * (0.32 + i / count * 0.9) + rnd() * 60, L);
-    cars.push({ mesh, s, v: 16 + rnd() * 4, cruise: 18 + rnd() * 5, lastRel: null });
+    const s = mod(bike.s + L * (0.28 + i / count * 0.92) + rnd() * 50, L);
+    cars.push({ mesh, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null });
   }
 
   const _p = new THREE.Vector3();
@@ -2257,7 +2734,7 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
     const f = RT.frame(car.s);
     RT.point(car.s, ONCOMING_D, 0, _p);
     car.mesh.position.copy(_p);
-    car.mesh.rotation.set(-Math.atan2(f.ty, 1) * 0, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    car.mesh.rotation.set(Math.atan2(f.ty, 1), Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
   }
   cars.forEach(place);
 
@@ -2274,6 +2751,12 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       }
       // ease off approaching the junction mouths
       for (const j of RT.JUNCTIONS) { const dj = Math.abs(mod(car.s - j.s + L / 2, L) - L / 2); if (dj < 30) limit = Math.min(limit, 11); }
+      // keep a gap to the car ahead in their direction
+      for (const other of cars) {
+        if (other === car) continue;
+        const gap = mod(car.s - other.s, L); // other is ahead of car (lower s) when gap is small and positive
+        if (gap > 0 && gap < 26) limit = Math.min(limit, other.v * (gap / 26));
+      }
       car.v = lerp(car.v, limit, 1 - Math.exp(-dt * 0.9));
       car.s = mod(car.s - car.v * dt, L);
       place(car);
@@ -2284,7 +2767,7 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
         events.passBy = { gap: Math.abs(bike.d - ONCOMING_D) - CAR_HALF_WIDTH, closing: bike.v + car.v };
       }
       car.lastRel = rel;
-      if (Math.abs(rel) < 2.4 && Math.abs(bike.d - ONCOMING_D) < CAR_HALF_WIDTH + 0.35) events.collision = car;
+      if (Math.abs(rel) < 2.5 && Math.abs(bike.d - ONCOMING_D) < CAR_HALF_WIDTH + 0.35) events.collision = car;
     }
     return events;
   }
@@ -2306,8 +2789,8 @@ function detectQuality() {
   const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
   const dpr = window.devicePixelRatio || 1;
   return coarse
-    ? { coarse, pixelRatio: Math.min(dpr, 1.5), shadow: 2048, blades: 24000 }
-    : { coarse, pixelRatio: Math.min(dpr, 2), shadow: 4096, blades: 44000 };
+    ? { coarse, pixelRatio: Math.min(dpr, 1.5), shadow: 2048, blades: 36000 }
+    : { coarse, pixelRatio: Math.min(dpr, 2), shadow: 4096, blades: 64000 };
 }
 
 const statusEl = document.getElementById('status');
@@ -2407,14 +2890,27 @@ function buildApp() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.info.autoReset = false;
 
+  const timings = {}; let tPhase = performance.now();
+  const lap = (name) => { timings[name] = Math.round(performance.now() - tPhase); tPhase = performance.now(); };
   const world = EVO.buildWorld(renderer, quality);
+  lap('world');
   EVO.applyAnisotropy(renderer);
+  // environment map from the sky, for car paint and glass reflections
+  try {
+    const pm = new THREE.PMREMGenerator(renderer);
+    const skyScene = new THREE.Scene(); skyScene.add(world.sky.clone());
+    EVO.envMap = pm.fromScene(skyScene, 0.04, 1, 4000).texture;
+    pm.dispose();
+  } catch (e) { EVO.envMap = null; console.warn('environment map unavailable', e); }
+  lap('envmap');
   const camera = new THREE.PerspectiveCamera(60, 1, 0.25, 2800);
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 4 : 5 });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, envMap: EVO.envMap });
   const hud = EVO.createHud(bike);
+  lap('traffic');
+  EVO.timings = timings;
 
   let cockpit = null;
   const cockpitUrl = window.EVO_COCKPIT_URL || './assets/cockpit.png';

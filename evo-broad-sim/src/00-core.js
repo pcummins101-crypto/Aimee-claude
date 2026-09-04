@@ -495,3 +495,220 @@ EVO.tex.giveWayTriangle = function giveWayTriangle() {
   ctx.beginPath(); ctx.moveTo(36, 34); ctx.lineTo(92, 34); ctx.lineTo(64, 170); ctx.closePath(); ctx.fill();
   return texture(c, { repeat: false });
 };
+
+/* ======================================================================
+ * Vegetation and vehicle detail textures (scenery upgrade)
+ * ====================================================================== */
+
+// Species leaf outline drawn at the origin, pointing +y, length ~1.
+function leafPath(ctx, species, r) {
+  ctx.beginPath();
+  if (species === 'oak') {
+    // lobed oak leaf: radius varies around the outline
+    for (let i = 0; i <= 40; i += 1) {
+      const t = i / 40 * Math.PI * 2;
+      const rr = r * (0.55 + 0.45 * Math.abs(Math.sin(t))) * (0.82 + 0.18 * Math.abs(Math.sin(t * 3.5)));
+      const x = Math.sin(t) * rr * 0.62, y = -Math.cos(t) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+  } else if (species === 'hawthorn') {
+    // small three-lobed leaf
+    ctx.moveTo(0, -r);
+    ctx.quadraticCurveTo(r * 0.55, -r * 0.7, r * 0.3, -r * 0.3);
+    ctx.quadraticCurveTo(r * 0.7, -r * 0.1, r * 0.25, r * 0.4);
+    ctx.quadraticCurveTo(r * 0.1, r * 0.7, 0, r);
+    ctx.quadraticCurveTo(-r * 0.1, r * 0.7, -r * 0.25, r * 0.4);
+    ctx.quadraticCurveTo(-r * 0.7, -r * 0.1, -r * 0.3, -r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.55, -r * 0.7, 0, -r);
+  } else if (species === 'ash') {
+    // narrow pointed leaflet
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.42, -r * 0.6, r * 0.42, r * 0.5, 0, r);
+    ctx.bezierCurveTo(-r * 0.42, r * 0.5, -r * 0.42, -r * 0.6, 0, -r);
+  } else {
+    // beech / generic oval
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.7, -r * 0.6, r * 0.7, r * 0.6, 0, r);
+    ctx.bezierCurveTo(-r * 0.7, r * 0.6, -r * 0.7, -r * 0.6, 0, -r);
+  }
+  ctx.closePath();
+}
+
+/* Leaf cluster card: a dense clump of individually shaded leaves with a
+ * matching normal map, used for tree canopies and hedge foliage. */
+EVO.tex.leafCluster = function leafCluster(species = 'oak', seed = 11) {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const nc = canvas(S, S), nctx = nc.getContext('2d');
+  ctx.clearRect(0, 0, S, S); nctx.clearRect(0, 0, S, S);
+  const rnd = EVO.rng(seed);
+  const base = { oak: [62, 96, 34], hawthorn: [58, 100, 38], ash: [78, 116, 46], beech: [70, 118, 40] }[species] || [64, 100, 36];
+  const size = { oak: 22, hawthorn: 11, ash: 17, beech: 20 }[species] || 18;
+  const count = { oak: 240, hawthorn: 620, ash: 380, beech: 260 }[species] || 260;
+  // twigs first (behind the leaves)
+  nctx.fillStyle = 'rgb(128,128,255)';
+  ctx.strokeStyle = 'rgba(58,44,30,0.9)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let k = 0; k < 9; k += 1) {
+    const a = rnd() * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(S / 2 + (rnd() - 0.5) * 40, S / 2 + (rnd() - 0.5) * 40);
+    ctx.quadraticCurveTo(S / 2 + Math.cos(a) * S * 0.25, S / 2 + Math.sin(a) * S * 0.25 + 20, S / 2 + Math.cos(a) * S * 0.46, S / 2 + Math.sin(a) * S * 0.46);
+    ctx.stroke();
+    nctx.strokeStyle = 'rgb(128,128,255)'; nctx.lineWidth = 3; nctx.beginPath(); nctx.moveTo(S / 2, S / 2); nctx.lineTo(S / 2 + Math.cos(a) * S * 0.46, S / 2 + Math.sin(a) * S * 0.46); nctx.stroke();
+  }
+  // leaves sorted back to front so the front ones are brightest
+  const leaves = [];
+  for (let k = 0; k < count; k += 1) {
+    const a = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.6) * S * 0.46;
+    leaves.push({ x: S / 2 + Math.cos(a) * rad, y: S / 2 + Math.sin(a) * rad * 0.94, depth: rnd(), rot: rnd() * Math.PI * 2, r: size * (0.7 + rnd() * 0.6), edge: rad / (S * 0.46) });
+  }
+  leaves.sort((p, q) => p.depth - q.depth);
+  for (const L of leaves) {
+    const top = 1 - L.y / S; // leaves higher on the card catch more sun
+    const shade = 0.42 + 0.58 * L.depth * (0.75 + 0.25 * top);
+    const warm = rnd() * 0.25;
+    const rC = base[0] * shade * (1 + warm * 0.9), gC = base[1] * shade * (1 + warm * 0.35), bC = base[2] * shade * (1 - warm * 0.3);
+    ctx.save(); ctx.translate(L.x, L.y); ctx.rotate(L.rot);
+    const g = ctx.createLinearGradient(-L.r * 0.5, 0, L.r * 0.5, 0);
+    g.addColorStop(0, `rgb(${rC * 0.78},${gC * 0.82},${bC * 0.8})`);
+    g.addColorStop(0.5, `rgb(${rC},${gC},${bC})`);
+    g.addColorStop(1, `rgb(${rC * 1.12},${gC * 1.1},${bC * 0.95})`);
+    ctx.fillStyle = g;
+    leafPath(ctx, species, L.r); ctx.fill();
+    // midrib
+    ctx.strokeStyle = `rgba(${rC * 1.3},${gC * 1.25},${bC * 1.1},0.55)`; ctx.lineWidth = Math.max(1, L.r * 0.06);
+    ctx.beginPath(); ctx.moveTo(0, -L.r * 0.85); ctx.lineTo(0, L.r * 0.8); ctx.stroke();
+    ctx.restore();
+    // normal: each leaf tilts a little differently
+    const nx = (rnd() - 0.5) * 0.9, ny = (rnd() - 0.5) * 0.9, nz = Math.sqrt(Math.max(0.2, 1 - nx * nx - ny * ny));
+    nctx.save(); nctx.translate(L.x, L.y); nctx.rotate(L.rot);
+    nctx.fillStyle = `rgb(${(nx * 0.5 + 0.5) * 255},${(ny * 0.5 + 0.5) * 255},${(nz * 0.5 + 0.5) * 255})`;
+    leafPath(nctx, species, L.r); nctx.fill();
+    nctx.restore();
+  }
+  return { map: texture(c, { repeat: false }), normalMap: texture(nc, { repeat: false, srgb: false }) };
+};
+
+/* Bark: vertical fissured trunk texture, 1 m x 2 m tile. */
+EVO.tex.bark = function bark() {
+  const W = 256, H = 512;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H), d = img.data;
+  const height = new Float32Array(W * H);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const px = x / W * 16, py = y / H * 32;
+      const ridge = EVO.noise2(px * 1.6, py * 0.25) * 0.6 + EVO.noise2(px * 4 + 3, py * 0.8) * 0.3 + EVO.noise2(px * 12, py * 3) * 0.1;
+      const fissure = smoothstep(0.35, 0.5, ridge);
+      const v = 0.22 + fissure * 0.3 + EVO.noise2(px * 30, py * 30) * 0.08;
+      const i = (y * W + x) * 4;
+      d[i] = v * 255 * 1.05; d[i + 1] = v * 255 * 0.86; d[i + 2] = v * 255 * 0.68; d[i + 3] = 255;
+      height[y * W + x] = ridge;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { map: texture(c), normalMap: texture(normalFromHeight(height, W, H, 3), { srgb: false }) };
+};
+
+/* Hedge body: dense hawthorn mass with a bumpy normal map, 2 m tile. */
+EVO.tex.hedgeBody = function hedgeBody() {
+  const S = 1024;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const nc = canvas(S, S), nctx = nc.getContext('2d');
+  ctx.fillStyle = '#1b3212'; ctx.fillRect(0, 0, S, S);
+  nctx.fillStyle = 'rgb(128,128,255)'; nctx.fillRect(0, 0, S, S);
+  const rnd = EVO.rng(21);
+  const blobs = [];
+  for (let k = 0; k < 900; k += 1) blobs.push({ x: rnd() * S, y: rnd() * S, r: 18 + rnd() * 46, depth: rnd() });
+  blobs.sort((a, b) => a.depth - b.depth);
+  // leaf clumps: darker deep, brighter proud; each clump gets a dome normal
+  for (const b of blobs) {
+    const shade = 0.45 + b.depth * 0.6;
+    for (let k = 0; k < 26; k += 1) {
+      const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * b.r;
+      const x = b.x + Math.cos(a) * rr, y = b.y + Math.sin(a) * rr;
+      const s = shade * (0.85 + rnd() * 0.3);
+      ctx.fillStyle = `rgb(${52 * s + 10},${102 * s + 12},${34 * s + 6})`;
+      ctx.save(); ctx.translate(x % S, y % S); ctx.rotate(rnd() * Math.PI * 2);
+      leafPath(ctx, 'hawthorn', 5 + rnd() * 5); ctx.fill(); ctx.restore();
+      const nx = (x - b.x) / b.r * 0.7, ny = (y - b.y) / b.r * 0.7;
+      nctx.fillStyle = `rgb(${(nx * 0.5 + 0.5) * 255},${(-ny * 0.5 + 0.5) * 255},${(Math.sqrt(Math.max(0.15, 1 - nx * nx - ny * ny)) * 0.5 + 0.5) * 255})`;
+      nctx.save(); nctx.translate(x % S, y % S); nctx.rotate(rnd() * Math.PI * 2);
+      leafPath(nctx, 'hawthorn', 5 + rnd() * 5); nctx.fill(); nctx.restore();
+    }
+  }
+  return { map: texture(c), normalMap: texture(nc, { srgb: false }) };
+};
+
+/* Cow parsley / hogweed card for the verges: white umbels on green stems. */
+EVO.tex.umbel = function umbel() {
+  const S = 256;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  const rnd = EVO.rng(61);
+  for (let k = 0; k < 5; k += 1) {
+    const x0 = 40 + rnd() * 176, top = 30 + rnd() * 60;
+    ctx.strokeStyle = 'rgba(96,128,52,0.95)'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(x0 + (rnd() - 0.5) * 30, S); ctx.quadraticCurveTo(x0, S * 0.6, x0, top + 20); ctx.stroke();
+    // umbel: spokes then florets
+    for (let s = 0; s < 9; s += 1) {
+      const a = -Math.PI * (0.15 + 0.7 * s / 8), len = 18 + rnd() * 10;
+      const ex = x0 + Math.cos(a) * len, ey = top + 20 + Math.sin(a) * len * 0.55;
+      ctx.strokeStyle = 'rgba(110,140,60,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, top + 20); ctx.lineTo(ex, ey); ctx.stroke();
+      for (let f = 0; f < 7; f += 1) {
+        ctx.fillStyle = rnd() < 0.8 ? 'rgba(246,246,236,0.95)' : 'rgba(228,232,210,0.9)';
+        ctx.beginPath(); ctx.arc(ex + (rnd() - 0.5) * 9, ey + (rnd() - 0.5) * 6, 1.6 + rnd() * 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // a few fern-like leaves low down
+    ctx.strokeStyle = 'rgba(84,124,48,0.9)'; ctx.lineWidth = 1.5;
+    for (let l = 0; l < 4; l += 1) { const y = S * 0.62 + rnd() * S * 0.3; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + (rnd() - 0.5) * 60, y - 10 - rnd() * 16); ctx.stroke(); }
+  }
+  return texture(c, { repeat: false });
+};
+
+/* Alloy wheel face: five twin spokes, hub cap, tyre sidewall ring. */
+EVO.tex.alloy = function alloy() {
+  const S = 256;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  const cx = S / 2, cy = S / 2;
+  ctx.fillStyle = '#17181a'; ctx.beginPath(); ctx.arc(cx, cy, 126, 0, Math.PI * 2); ctx.fill(); // tyre sidewall
+  ctx.fillStyle = '#2a2c30'; ctx.beginPath(); ctx.arc(cx, cy, 88, 0, Math.PI * 2); ctx.fill(); // rim well
+  ctx.fillStyle = '#c9ccd1';
+  for (let s = 0; s < 5; s += 1) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(s / 5 * Math.PI * 2);
+    ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-13, -84); ctx.lineTo(13, -84); ctx.lineTo(9, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.lineWidth = 8; ctx.strokeStyle = '#b8bcc2'; ctx.beginPath(); ctx.arc(cx, cy, 84, 0, Math.PI * 2); ctx.stroke(); // rim lip
+  ctx.fillStyle = '#9a9ea4'; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2f36'; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fill();
+  return texture(c, { repeat: false });
+};
+
+/* Car body decal: white with panel gaps, handles and fuel flap. u wraps around
+ * the body section (0 = left sill, 0.5 = roof centre, 1 = right sill), v runs
+ * from the tail (0) to the nose (1). Multiplied with the paint colour. */
+EVO.tex.carDecal = function carDecal(kind = 'hatch') {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, S, S);
+  const doors = kind === 'van' ? [0.22, 0.5, 0.72] : kind === 'suv' ? [0.24, 0.5, 0.74] : [0.26, 0.5, 0.73];
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2;
+  for (const v of doors) {
+    const y = (1 - v) * S; // v=1 is the nose
+    for (const [u0, u1] of [[0.04, 0.4], [0.6, 0.96]]) { ctx.beginPath(); ctx.moveTo(u0 * S, y); ctx.lineTo(u1 * S, y); ctx.stroke(); }
+  }
+  // handles
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  for (const v of [doors[1] - 0.03, doors[2] - 0.03]) for (const u of [0.2, 0.8]) ctx.fillRect(u * S - 4, (1 - v) * S - 16, 8, 14);
+  // fuel flap
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.strokeRect(0.19 * S, (1 - 0.14) * S - 12, 16, 16);
+  // black plastic sills and bumpers
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 0, 0.055 * S, S); ctx.fillRect(0.945 * S, 0, 0.055 * S, S);
+  ctx.fillRect(0, 0, S, 0.045 * S); ctx.fillRect(0, 0.955 * S, S, 0.045 * S);
+  // shut lines around bonnet and boot
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.moveTo(0.42 * S, (1 - 0.86) * S); ctx.lineTo(0.42 * S, (1 - 0.99) * S); ctx.moveTo(0.58 * S, (1 - 0.86) * S); ctx.lineTo(0.58 * S, (1 - 0.99) * S); ctx.stroke();
+  return texture(c, { repeat: false });
+};

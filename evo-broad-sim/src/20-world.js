@@ -61,7 +61,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const L = RT.length;
   const T = {
     asphalt: EVO.tex.asphalt(), wear: EVO.tex.roadWear(), grass: EVO.tex.grass(), leaf: EVO.tex.hedgeLeaf(),
-    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), tree1: EVO.tex.tree(5), tree2: EVO.tex.tree(19),
+    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), haw: EVO.tex.leafCluster('hawthorn', 37), umbel: EVO.tex.umbel(),
     blade: EVO.tex.blade(), cone: EVO.tex.cone()
   };
 
@@ -80,11 +80,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge, roughness: 0.95, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.35 });
-  const leafMat = new THREE.MeshStandardMaterial({ map: T.leaf, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9, metalness: 0, emissive: 0x24350f, emissiveIntensity: 0.45 });
+  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge.map, normalMap: T.hedge.normalMap, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 0.92, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.3 });
+  const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.35 });
+  const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
-  const treeMat1 = new THREE.MeshStandardMaterial({ map: T.tree1, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x1a2a0c, emissiveIntensity: 0.4 });
-  const treeMat2 = new THREE.MeshStandardMaterial({ map: T.tree2, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x1a2a0c, emissiveIntensity: 0.4 });
   const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, emissive: 0x2a3a10, emissiveIntensity: 0.5 });
   const windUniform = { value: 0 };
   bladeMat.onBeforeCompile = (shader) => {
@@ -364,7 +363,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ---------------------------------------------- boundaries and fences */
   const hedgeSink = new GeoSink(), wallSink = new GeoSink();
-  const cardInstances = [], postInstances = [], treeInstances = [[], []];
+  const cardInstances = [], underInstances = [], flowerInstances = [], postInstances = [], treePlacements = [];
   const wireSegments = [];
   const hedgeHeight = (s, H) => H * (0.86 + EVO.noise2(s / 7.5, 0.5) * 0.3);
 
@@ -384,17 +383,21 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       ]);
     }
     if (rows.length > 1) stripRows(hedgeSink, orientRows(rows, samples));
-    // foliage cards on the road-facing side and along the top
+    // foliage cards: base, mid and top rows, plus brambles and nettles at the foot
     for (let k = 0; k < samples.length - 1; k += 1) {
       const p = samples[k];
-      if (rnd() < 0.15) continue;
       const h = hedgeHeight(p.s, H);
-      for (let row = 0; row < 2; row += 1) {
-        const y = row === 0 ? p.y + 0.35 + rnd() * (h - 0.7) : p.y + h - 0.38 + rnd() * 0.3;
-        const off = row === 0 ? -0.42 - rnd() * 0.2 : (rnd() - 0.5) * 0.6;
-        const yaw = Math.atan2(-p.nx, -p.nz) + (rnd() - 0.5) * 1.3;
-        const size = 0.6 + rnd() * 0.55;
-        cardInstances.push({ x: p.x + p.nx * off, y, z: p.z + p.nz * off, yaw, tilt: (rnd() - 0.5) * 0.5, size });
+      for (let row = 0; row < 3; row += 1) {
+        if (rnd() < 0.12) continue;
+        const y = row === 0 ? p.y + 0.15 + rnd() * 0.45 : row === 1 ? p.y + 0.55 + rnd() * Math.max(0.2, h - 0.95) : p.y + h - 0.32 + rnd() * 0.32;
+        const off = row === 2 ? (rnd() - 0.5) * 0.7 : -0.45 - rnd() * 0.22;
+        const yaw = Math.atan2(-p.nx, -p.nz) + (rnd() - 0.5) * 1.4;
+        const size = row === 2 ? 0.9 + rnd() * 0.6 : 0.55 + rnd() * 0.5;
+        cardInstances.push({ x: p.x + p.nx * off + (rnd() - 0.5) * 0.3, y, z: p.z + p.nz * off + (rnd() - 0.5) * 0.3, yaw, tilt: (rnd() - 0.5) * 0.6, size, tint: 0.85 + rnd() * 0.3 });
+      }
+      if (k % 2 === 0 && rnd() < 0.8) {
+        const off = -0.95 - rnd() * 0.5;
+        underInstances.push({ x: p.x + p.nx * off, y: p.y - 0.05 + rnd() * 0.15, z: p.z + p.nz * off, yaw: rnd() * Math.PI * 2, tilt: (rnd() - 0.5) * 0.4, size: 0.45 + rnd() * 0.4, tint: 0.55 + rnd() * 0.3 });
       }
     }
   }
@@ -460,37 +463,68 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       hedgeRun(run, 1.7);
     }
   }
-  // trees: in and behind boundaries, plus scattered field trees
-  for (let s = 12; s < L; s += 18 + rnd() * 40) {
+  // cow parsley and hogweed along the verges
+  for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
     const side = rnd() < 0.5 ? 1 : -1;
-    if (RT.inJunctionMouth(s, side, 40)) continue;
-    const b = RT.boundaryAt(s, side);
-    const d = b.type === 'fence' ? RT.HEDGE_OFFSET + 2 + rnd() * 8 : RT.HEDGE_OFFSET + (rnd() < 0.35 ? 0.4 : 2.5 + rnd() * 9);
-    const g = groundAt(s, side * d);
-    treeInstances[rnd() < 0.5 ? 0 : 1].push({ x: g.x, y: g.y - 0.3, z: g.z, h: 8 + rnd() * 6.5, yaw: rnd() * Math.PI * 2 });
+    if (RT.inJunctionMouth(s, side, 12)) continue;
+    const g = groundAt(s, side * (3.5 + rnd() * 1.1));
+    flowerInstances.push({ x: g.x, y: g.y - 0.05, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.7 + rnd() * 0.6 });
   }
-  for (let k = 0; k < 140; k += 1) {
-    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 32 + rnd() * 170;
+  // trees: roadside and hedgerow (dense), scattered field trees and copses
+  const placeTree = (x, y, z, species, scale) => treePlacements.push({ x, y, z, species, scale, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+  for (let s = 8; s < L; s += 9 + rnd() * 20) {
+    const side = rnd() < 0.5 ? 1 : -1;
+    if (RT.inJunctionMouth(s, side, 36)) continue;
+    const b = RT.boundaryAt(s, side);
+    const inLine = b.type !== 'fence' && rnd() < 0.45;
+    const d = inLine ? RT.HEDGE_OFFSET + 0.3 : RT.HEDGE_OFFSET + 1.8 + rnd() * 10;
+    const g = groundAt(s, side * d);
+    const r = rnd();
+    const species = inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
+    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.8 + rnd() * 0.6 : 0.8 + rnd() * 0.5);
+  }
+  for (let k = 0; k < 220; k += 1) {
+    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
     const near = RT.nearest(x, z);
-    if (near && near.dist < 26) continue;
-    treeInstances[rnd() < 0.5 ? 0 : 1].push({ x, y: RT.terrainHeight(x, z) - 0.3, z, h: 9 + rnd() * 8, yaw: rnd() * Math.PI * 2 });
+    if (near && near.dist < 24) continue;
+    placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.55 ? 'oak' : 'ash', 0.9 + rnd() * 0.6);
+  }
+  for (let c = 0; c < 12; c += 1) {
+    const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 45 + rnd() * 160;
+    const f = RT.frame(s);
+    const cx = f.x + f.nx * side * d, cz = f.z + f.nz * side * d;
+    const n = 4 + Math.floor(rnd() * 6);
+    for (let k = 0; k < n; k += 1) {
+      const x = cx + (rnd() - 0.5) * 22, z = cz + (rnd() - 0.5) * 22;
+      const near = RT.nearest(x, z);
+      if (near && near.dist < 24) continue;
+      placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.6 ? 'oak' : 'ash', 0.8 + rnd() * 0.6);
+    }
   }
   {
     const hedge = new THREE.Mesh(hedgeSink.build(), hedgeMat); hedge.castShadow = true; hedge.receiveShadow = true; hedge.name = 'hedge'; scene.add(hedge);
     const wall = new THREE.Mesh(wallSink.build(), stoneMat); wall.castShadow = true; wall.receiveShadow = true; wall.name = 'wall'; scene.add(wall);
-    // foliage cards
+    // foliage cards, brambles and verge flowers
     const cardGeo = new THREE.PlaneGeometry(1, 1);
-    const cards = new THREE.InstancedMesh(cardGeo, leafMat, cardInstances.length);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
-    cardInstances.forEach((c, k) => {
-      e.set(c.tilt, c.yaw, 0, 'YXZ'); q.setFromEuler(e); pos.set(c.x, c.y, c.z); sc.set(c.size, c.size, c.size);
-      m.compose(pos, q, sc); cards.setMatrixAt(k, m);
-    });
-    cards.castShadow = true; cards.receiveShadow = true;
-    cards.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: T.leaf, alphaTest: 0.45 });
-    scene.add(cards);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+    const instanceCards = (list, mat, tex, upright) => {
+      const im = new THREE.InstancedMesh(cardGeo, mat, Math.max(1, list.length));
+      list.forEach((c, k) => {
+        e.set(upright ? 0 : c.tilt, c.yaw, 0, 'YXZ'); q.setFromEuler(e); pos.set(c.x, c.y + (upright ? c.size * 0.5 : 0), c.z); sc.set(c.size, c.size, c.size);
+        m.compose(pos, q, sc); im.setMatrixAt(k, m);
+        const t = c.tint ?? 1; col.setRGB(t, 0.55 + t * 0.45, t * 0.95); im.setColorAt(k, col);
+      });
+      im.castShadow = true; im.receiveShadow = true;
+      im.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
+      scene.add(im);
+      return im;
+    };
+    instanceCards(cardInstances, leafMat, T.haw.map, false);
+    instanceCards(underInstances, leafMat, T.haw.map, false);
+    const flowers = instanceCards(flowerInstances.map((f) => ({ ...f, tint: 1 })), umbelMat, T.umbel, true);
+    flowers.castShadow = false;
     // fence posts and wire
     const postGeo = new THREE.BoxGeometry(0.09, 1.15, 0.09); postGeo.translate(0, 0.575, 0);
     const posts = new THREE.InstancedMesh(postGeo, woodMat, Math.max(1, postInstances.length));
@@ -500,18 +534,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wireSegments, 3));
       scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x4a4d50, transparent: true, opacity: 0.55 })));
     }
-    // trees: two crossed cards
-    const tg = new THREE.PlaneGeometry(1, 1); tg.translate(0, 0.5, 0);
-    const tg2 = tg.clone(); tg2.rotateY(Math.PI / 2);
-    const treeGeo = mergeGeometries([tg, tg2]);
-    [treeMat1, treeMat2].forEach((mat, ti) => {
-      const list = treeInstances[ti];
-      const im = new THREE.InstancedMesh(treeGeo, mat, Math.max(1, list.length));
-      list.forEach((t, k) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); pos.set(t.x, t.y, t.z); sc.set(t.h * 0.72, t.h, t.h * 0.72); m.compose(pos, q, sc); im.setMatrixAt(k, m); });
-      im.castShadow = true; im.receiveShadow = false;
-      im.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: mat.map, alphaTest: 0.5 });
-      scene.add(im);
-    });
+    EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
   }
   function mergeGeometries(list) {
     const p = [], n = [], uv = [], idx = [];
@@ -540,12 +563,13 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       for (let t = 0; t < len; t += 4.2) {
         const px = x + dx * t, pz = z + dz * t;
         const near = RT.nearest(px, pz);
-        if (near && near.dist < 30) break;
-        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang, h: 1.5 + EVO.noise2(t / 9, k) * 0.8 });
+        if (near && near.dist < 48) break;
+        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang, h: 1.2 + EVO.noise2(t / 9, k) * 0.7 });
       }
     }
     const geo = new THREE.BoxGeometry(4.4, 1, 1.5); geo.translate(0, 0.5, 0);
     const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false;
+    const Y2 = new THREE.Vector3(0, 1, 0);
     const im = new THREE.InstancedMesh(geo, farHedgeMat, Math.max(1, segs.length));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
     segs.forEach((p, k) => { q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(1, p.h, 1); m.compose(pos, q, sc); im.setMatrixAt(k, m); });

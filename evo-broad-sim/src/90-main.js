@@ -8,8 +8,8 @@ function detectQuality() {
   const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
   const dpr = window.devicePixelRatio || 1;
   return coarse
-    ? { coarse, pixelRatio: Math.min(dpr, 1.5), shadow: 2048, blades: 24000 }
-    : { coarse, pixelRatio: Math.min(dpr, 2), shadow: 4096, blades: 44000 };
+    ? { coarse, pixelRatio: Math.min(dpr, 1.5), shadow: 2048, blades: 36000 }
+    : { coarse, pixelRatio: Math.min(dpr, 2), shadow: 4096, blades: 64000 };
 }
 
 const statusEl = document.getElementById('status');
@@ -109,14 +109,27 @@ function buildApp() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.info.autoReset = false;
 
+  const timings = {}; let tPhase = performance.now();
+  const lap = (name) => { timings[name] = Math.round(performance.now() - tPhase); tPhase = performance.now(); };
   const world = EVO.buildWorld(renderer, quality);
+  lap('world');
   EVO.applyAnisotropy(renderer);
+  // environment map from the sky, for car paint and glass reflections
+  try {
+    const pm = new THREE.PMREMGenerator(renderer);
+    const skyScene = new THREE.Scene(); skyScene.add(world.sky.clone());
+    EVO.envMap = pm.fromScene(skyScene, 0.04, 1, 4000).texture;
+    pm.dispose();
+  } catch (e) { EVO.envMap = null; console.warn('environment map unavailable', e); }
+  lap('envmap');
   const camera = new THREE.PerspectiveCamera(60, 1, 0.25, 2800);
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 4 : 5 });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, envMap: EVO.envMap });
   const hud = EVO.createHud(bike);
+  lap('traffic');
+  EVO.timings = timings;
 
   let cockpit = null;
   const cockpitUrl = window.EVO_COCKPIT_URL || './assets/cockpit.png';
