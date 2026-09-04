@@ -1,0 +1,497 @@
+import * as THREE from 'three';
+/*
+ * AVENRÀ EVO · B-ROAD — core utilities and procedural textures.
+ *
+ * Everything visual in this simulation except the cockpit photograph is
+ * generated at runtime: asphalt, grass, hedge foliage, dry-stone walls, trees,
+ * sky and every road sign.  Each generator returns ready-to-use Three.js
+ * textures so the world builder never touches a canvas directly.
+ */
+const EVO = (window.EVO = window.EVO || {});
+EVO.THREE = THREE;
+EVO.VERSION = '0.1.0';
+
+/* ------------------------------------------------------------------ maths */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mod = (a, n) => ((a % n) + n) % n;
+EVO.clamp = clamp; EVO.lerp = lerp; EVO.smoothstep = smoothstep; EVO.mod = mod;
+
+// Deterministic PRNG (mulberry32) so the road is identical on every device.
+EVO.rng = (seed) => {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+function hash2(x, y) {
+  const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
+EVO.noise2 = (x, y) => {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  return lerp(lerp(hash2(xi, yi), hash2(xi + 1, yi), u), lerp(hash2(xi, yi + 1), hash2(xi + 1, yi + 1), u), v);
+};
+EVO.fbm = (x, y, octaves = 4, lacunarity = 2, gain = 0.5) => {
+  let a = 0.5, f = 1, sum = 0, norm = 0;
+  for (let i = 0; i < octaves; i += 1) {
+    sum += a * EVO.noise2(x * f + i * 17.3, y * f - i * 9.1);
+    norm += a; a *= gain; f *= lacunarity;
+  }
+  return sum / norm;
+};
+
+/* --------------------------------------------------------------- canvases */
+function canvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+function texture(c, { srgb = true, repeat = true, aniso = true } = {}) {
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat) { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping; }
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.userData.aniso = aniso;
+  EVO.textures.push(t);
+  return t;
+}
+EVO.textures = [];
+EVO.applyAnisotropy = (renderer) => {
+  const max = renderer.capabilities.getMaxAnisotropy();
+  EVO.textures.forEach((t) => { if (t.userData.aniso) t.anisotropy = Math.min(8, max); });
+};
+
+// Normal map from a greyscale height canvas (tileable).
+function normalFromHeight(heightData, w, h, strength) {
+  const c = canvas(w, h);
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(w, h);
+  const d = out.data;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const l = heightData[y * w + ((x - 1 + w) % w)], r = heightData[y * w + ((x + 1) % w)];
+      const u = heightData[((y - 1 + h) % h) * w + x], b = heightData[((y + 1) % h) * w + x];
+      let nx = (l - r) * strength, ny = (u - b) * strength, nz = 1;
+      const len = Math.hypot(nx, ny, nz); nx /= len; ny /= len; nz /= len;
+      const i = (y * w + x) * 4;
+      d[i] = (nx * 0.5 + 0.5) * 255; d[i + 1] = (ny * 0.5 + 0.5) * 255; d[i + 2] = (nz * 0.5 + 0.5) * 255; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  return c;
+}
+
+EVO.tex = {};
+
+/* Asphalt: 6.2 m wide road tile that repeats every 6.2 m along the road.
+ * Wheel tracks are polished darker, the crown and edges carry loose chippings,
+ * and the outer 0.35 m breaks up into grass-bitten edge. */
+EVO.tex.asphalt = function asphalt() {
+  const S = 1024;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S), d = img.data;
+  const height = new Float32Array(S * S);
+  const rough = new Uint8ClampedArray(S * S);
+  const rnd = EVO.rng(101);
+  for (let y = 0; y < S; y += 1) {
+    for (let x = 0; x < S; x += 1) {
+      const u = x / S; // across: 0 = left edge, 1 = right edge
+      const across = Math.abs(u - 0.5) * 2; // 0 centre, 1 edge
+      // tileable noise: use periodic coordinates
+      const px = x / S * 64, py = y / S * 64;
+      const grain = EVO.noise2(px * 4, py * 4) * 0.55 + EVO.noise2(px * 9 + 3, py * 9) * 0.3 + EVO.noise2(px * 19, py * 19 + 7) * 0.15;
+      const mottle = EVO.fbm(px * 0.35 + 11, py * 0.35, 3);
+      // wheel tracks at |d| ≈ 1.05 m and 2.45 m from centre (both lanes)
+      const track = Math.max(
+        Math.exp(-Math.pow((across - 0.34) / 0.09, 2)),
+        Math.exp(-Math.pow((across - 0.79) / 0.08, 2)));
+      let base = 0.30 + grain * 0.22 + (mottle - 0.5) * 0.12;
+      base -= track * 0.07; // polished tracks are darker and smoother
+      base += smoothstep(0.86, 1.0, across) * (EVO.noise2(px * 3, py * 3) - 0.3) * 0.25; // loose broken edge
+      // occasional chipping highlights
+      const chip = rnd() < 0.012 ? 0.25 * rnd() : 0;
+      const v = clamp(base + chip, 0, 1);
+      const tint = (mottle - 0.5) * 0.06;
+      const i = (y * S + x) * 4;
+      d[i] = (v + tint * 0.4) * 255; d[i + 1] = (v + tint * 0.2) * 255; d[i + 2] = (v - tint * 0.3 + 0.01) * 255; d[i + 3] = 255;
+      height[y * S + x] = grain * (1 - track * 0.55) + chip * 2;
+      rough[y * S + x] = clamp(0.86 - track * 0.22 + (grain - 0.5) * 0.12, 0, 1) * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // painted repairs and worn patches ride on the separate wear map below
+  const rc = canvas(S, S), rctx = rc.getContext('2d');
+  const rimg = rctx.createImageData(S, S);
+  for (let i = 0; i < S * S; i += 1) { rimg.data[i * 4] = rough[i]; rimg.data[i * 4 + 1] = rough[i]; rimg.data[i * 4 + 2] = rough[i]; rimg.data[i * 4 + 3] = 255; }
+  rctx.putImageData(rimg, 0, 0);
+  return {
+    map: texture(c),
+    normalMap: texture(normalFromHeight(height, S, S, 1.6), { srgb: false }),
+    roughnessMap: texture(rc, { srgb: false })
+  };
+};
+
+/* Large-scale wear map: repeats every ~40 m along the road. Carries patch
+ * repairs, crack networks and subtle brightness drift so the 6.2 m asphalt
+ * tile never reads as a repeat. */
+EVO.tex.roadWear = function roadWear() {
+  const W = 256, H = 1024;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const n = EVO.fbm(x / W * 6 + 3, y / H * 24, 3);
+      const v = 0.86 + (n - 0.5) * 0.28;
+      const i = (y * W + x) * 4; d[i] = d[i + 1] = d[i + 2] = v * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const rnd = EVO.rng(77);
+  // patch repairs: darker rectangles with soft edges
+  for (let k = 0; k < 7; k += 1) {
+    const w = 40 + rnd() * 90, h = 60 + rnd() * 200, x = rnd() * (W - w), y = rnd() * (H - h);
+    ctx.fillStyle = `rgba(20,22,24,${0.16 + rnd() * 0.16})`;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(10,10,12,0.35)'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+  // crack networks
+  ctx.strokeStyle = 'rgba(8,8,10,0.55)'; ctx.lineWidth = 1.2;
+  for (let k = 0; k < 26; k += 1) {
+    let x = rnd() * W, y = rnd() * H;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let j = 0; j < 12; j += 1) { x += (rnd() - 0.5) * 22; y += (rnd() - 0.4) * 22; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  // tar snake sealant along a couple of cracks (glossy dark)
+  ctx.strokeStyle = 'rgba(6,6,8,0.9)'; ctx.lineWidth = 3;
+  for (let k = 0; k < 4; k += 1) {
+    let x = rnd() * W, y = rnd() * H;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let j = 0; j < 8; j += 1) { x += (rnd() - 0.5) * 30; y += (rnd() - 0.2) * 40; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  return texture(c, { srgb: false });
+};
+
+/* Grass: 4 m tile of meadow turf with blade streaks, clover and bare soil. */
+EVO.tex.grass = function grass() {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S), d = img.data;
+  const height = new Float32Array(S * S);
+  for (let y = 0; y < S; y += 1) {
+    for (let x = 0; x < S; x += 1) {
+      const px = x / S * 32, py = y / S * 32;
+      const clump = EVO.fbm(px * 0.9, py * 0.9, 3);
+      const fine = EVO.noise2(px * 6, py * 6) * 0.5 + EVO.noise2(px * 14 + 5, py * 3 + 2) * 0.5;
+      const streak = EVO.noise2(px * 3.5, py * 28); // elongated blades
+      const soil = smoothstep(0.72, 0.9, EVO.fbm(px * 0.5 + 40, py * 0.5, 2)) * 0.7;
+      let r = 0.26 + clump * 0.20 + fine * 0.08;
+      let g = 0.34 + clump * 0.22 + fine * 0.10 + streak * 0.07;
+      let b = 0.12 + clump * 0.08 + fine * 0.04;
+      // dry straw tips
+      const straw = smoothstep(0.7, 0.95, streak) * 0.5;
+      r = lerp(r, 0.62, straw); g = lerp(g, 0.56, straw); b = lerp(b, 0.28, straw);
+      // bare soil
+      r = lerp(r, 0.36, soil); g = lerp(g, 0.28, soil); b = lerp(b, 0.18, soil);
+      const i = (y * S + x) * 4;
+      d[i] = r * 255; d[i + 1] = g * 255; d[i + 2] = b * 255; d[i + 3] = 255;
+      height[y * S + x] = fine * 0.6 + streak * 0.4;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { map: texture(c), normalMap: texture(normalFromHeight(height, S, S, 1.2), { srgb: false }) };
+};
+
+/* Foliage card for hedgerows: a cluster of hawthorn-style leaves on alpha. */
+EVO.tex.hedgeLeaf = function hedgeLeaf() {
+  const S = 256;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  const rnd = EVO.rng(9);
+  const leaf = (x, y, r, rot, shade) => {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    const g = ctx.createRadialGradient(-r * 0.2, -r * 0.3, r * 0.1, 0, 0, r);
+    g.addColorStop(0, `rgb(${80 + shade * 90},${125 + shade * 90},${34 + shade * 40})`);
+    g.addColorStop(1, `rgb(${42 + shade * 40},${84 + shade * 50},${22 + shade * 20})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.9, -r * 0.6, r * 0.9, r * 0.5, 0, r);
+    ctx.bezierCurveTo(-r * 0.9, r * 0.5, -r * 0.9, -r * 0.6, 0, -r);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(20,45,12,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -r * 0.9); ctx.lineTo(0, r * 0.85); ctx.stroke();
+    ctx.restore();
+  };
+  // dense in the middle, sparse at the rim (soft silhouette)
+  for (let k = 0; k < 520; k += 1) {
+    const a = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.55) * S * 0.47;
+    const x = S / 2 + Math.cos(a) * rad, y = S / 2 + Math.sin(a) * rad;
+    const r = 7 + rnd() * 9;
+    leaf(x, y, r, rnd() * Math.PI * 2, rnd() * (1 - rad / (S * 0.5)) * 0.8 + rnd() * 0.2);
+  }
+  // a few twigs
+  ctx.strokeStyle = 'rgba(45,32,18,0.85)'; ctx.lineWidth = 2;
+  for (let k = 0; k < 6; k += 1) {
+    ctx.beginPath(); ctx.moveTo(S / 2 + (rnd() - 0.5) * 30, S / 2 + (rnd() - 0.5) * 30);
+    ctx.lineTo(rnd() * S, rnd() * S); ctx.stroke();
+  }
+  return texture(c, { repeat: false });
+};
+
+/* Solid hedge body: dense leaf mass used on the extruded hedge volume. */
+EVO.tex.hedgeBody = function hedgeBody() {
+  const S = 512;
+  const c = canvas(S, S), ctx = c.getContext('2d');
+  ctx.fillStyle = '#24421a'; ctx.fillRect(0, 0, S, S);
+  const rnd = EVO.rng(21);
+  for (let k = 0; k < 6500; k += 1) {
+    const x = rnd() * S, y = rnd() * S, r = 3 + rnd() * 7, sh = rnd();
+    ctx.fillStyle = `rgba(${50 + sh * 95},${98 + sh * 105},${26 + sh * 40},0.85)`;
+    ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.55, rnd() * Math.PI, 0, Math.PI * 2); ctx.fill();
+  }
+  // wrap-safe: draw shifted copies for tiling continuity
+  const c2 = canvas(S, S), ctx2 = c2.getContext('2d');
+  ctx2.drawImage(c, 0, 0); ctx2.globalAlpha = 0.5;
+  ctx2.drawImage(c, S / 2, 0); ctx2.drawImage(c, -S / 2, 0); ctx2.drawImage(c, 0, S / 2); ctx2.drawImage(c, 0, -S / 2);
+  return texture(c2);
+};
+
+/* Dry-stone wall: 1.5 m x 1.2 m tile of random-coursed gritstone with
+ * through-stones, pinning chips and lichen. */
+EVO.tex.stone = function stone() {
+  const W = 512, H = 400;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  ctx.fillStyle = '#4a4640'; ctx.fillRect(0, 0, W, H);
+  const height = new Float32Array(W * H).fill(0.15);
+  const rnd = EVO.rng(33);
+  const stones = [];
+  let y = 0;
+  while (y < H) {
+    const rowH = 28 + rnd() * 26;
+    let x = -rnd() * 30;
+    while (x < W) {
+      const w = 26 + rnd() * 62;
+      const h = rowH * (0.8 + rnd() * 0.35);
+      stones.push({ x: x + 1.5, y: y + 1.5, w: w - 3, h: Math.min(h, H - y) - 3, shade: 0.35 + rnd() * 0.45, warm: rnd() });
+      x += w;
+    }
+    y += rowH;
+  }
+  stones.forEach((s) => {
+    if (s.w < 6 || s.h < 6) return;
+    const v = s.shade, warm = s.warm;
+    const g = ctx.createLinearGradient(s.x, s.y, s.x + s.w * 0.3, s.y + s.h);
+    g.addColorStop(0, `rgb(${118 * v + 52 + warm * 14},${108 * v + 48 + warm * 6},${94 * v + 42})`);
+    g.addColorStop(1, `rgb(${84 * v + 34 + warm * 10},${78 * v + 32 + warm * 4},${68 * v + 28})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    // irregular outline: jittered rounded rectangle
+    const j = () => (rnd() - 0.5) * 3;
+    ctx.moveTo(s.x + 3 + j(), s.y + j());
+    ctx.lineTo(s.x + s.w - 3 + j(), s.y + j());
+    ctx.quadraticCurveTo(s.x + s.w + j(), s.y + j(), s.x + s.w + j(), s.y + 3 + j());
+    ctx.lineTo(s.x + s.w + j(), s.y + s.h - 3 + j());
+    ctx.quadraticCurveTo(s.x + s.w + j(), s.y + s.h + j(), s.x + s.w - 3 + j(), s.y + s.h + j());
+    ctx.lineTo(s.x + 3 + j(), s.y + s.h + j());
+    ctx.quadraticCurveTo(s.x + j(), s.y + s.h + j(), s.x + j(), s.y + s.h - 3 + j());
+    ctx.lineTo(s.x + j(), s.y + 3 + j());
+    ctx.quadraticCurveTo(s.x + j(), s.y + j(), s.x + 3 + j(), s.y + j());
+    ctx.closePath(); ctx.fill();
+    // surface grain
+    for (let k = 0; k < 14; k += 1) {
+      ctx.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
+      ctx.beginPath(); ctx.ellipse(s.x + rnd() * s.w, s.y + rnd() * s.h, 2 + rnd() * 6, 1 + rnd() * 3, rnd() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    // lichen and moss
+    for (let k = 0; k < 3; k += 1) {
+      if (rnd() < 0.55) continue;
+      ctx.fillStyle = rnd() < 0.6 ? 'rgba(170,175,110,0.28)' : 'rgba(70,110,50,0.3)';
+      ctx.beginPath(); ctx.ellipse(s.x + rnd() * s.w, s.y + rnd() * s.h, 3 + rnd() * 9, 2 + rnd() * 6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let yy = Math.max(0, Math.floor(s.y)); yy < Math.min(H, s.y + s.h); yy += 1) {
+      for (let xx = Math.max(0, Math.floor(s.x)); xx < Math.min(W, s.x + s.w); xx += 1) {
+        const ex = Math.min(xx - s.x, s.x + s.w - xx), ey = Math.min(yy - s.y, s.y + s.h - yy);
+        const edge = smoothstep(0, 4, Math.min(ex, ey));
+        height[yy * W + xx] = 0.45 + 0.55 * edge * (0.75 + EVO.noise2(xx * 0.25, yy * 0.25) * 0.5);
+      }
+    }
+  });
+  // pinning chips in the joints
+  for (let k = 0; k < 90; k += 1) {
+    ctx.fillStyle = `rgba(${60 + rnd() * 50},${55 + rnd() * 45},${50 + rnd() * 40},0.9)`;
+    ctx.beginPath(); ctx.ellipse(rnd() * W, rnd() * H, 2 + rnd() * 4, 1.5 + rnd() * 2.5, rnd() * Math.PI, 0, Math.PI * 2); ctx.fill();
+  }
+  return { map: texture(c), normalMap: texture(normalFromHeight(height, W, H, 2.4), { srgb: false }) };
+};
+
+/* Tree billboard: broadleaf canopy with trunk, 1:1.4 aspect. */
+EVO.tex.tree = function tree(seed = 5) {
+  const W = 512, H = 720;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const rnd = EVO.rng(seed);
+  // trunk
+  ctx.strokeStyle = '#4a3b2a'; ctx.lineCap = 'round';
+  ctx.lineWidth = 34; ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(W / 2 + 10, H * 0.55); ctx.stroke();
+  ctx.lineWidth = 14;
+  for (let k = 0; k < 6; k += 1) {
+    ctx.beginPath(); ctx.moveTo(W / 2 + 6, H * (0.58 + rnd() * 0.1));
+    ctx.lineTo(W / 2 + (rnd() - 0.5) * W * 0.7, H * (0.2 + rnd() * 0.3)); ctx.stroke();
+  }
+  // canopy clusters
+  const clusters = 26;
+  for (let k = 0; k < clusters; k += 1) {
+    const cx = W / 2 + (rnd() - 0.5) * W * 0.78, cy = H * 0.36 + (rnd() - 0.5) * H * 0.5;
+    const r = 55 + rnd() * 70;
+    const lit = clamp(1 - (cy / H) * 1.2 + rnd() * 0.3, 0, 1);
+    for (let j = 0; j < 90; j += 1) {
+      const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * r;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * 0.85;
+      const s = 0.4 + lit * 0.6 * (1 - rr / r);
+      ctx.fillStyle = `rgba(${30 + s * 90},${60 + s * 110},${18 + s * 34},0.92)`;
+      ctx.beginPath(); ctx.ellipse(x, y, 6 + rnd() * 8, 4 + rnd() * 6, rnd() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  return texture(c, { repeat: false });
+};
+
+/* Single grass blade card for near-verge instancing. */
+EVO.tex.blade = function blade() {
+  const W = 64, H = 128;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const rnd = EVO.rng(3);
+  for (let k = 0; k < 5; k += 1) {
+    const x0 = 12 + rnd() * 40, w = 5 + rnd() * 6, lean = (rnd() - 0.5) * 30;
+    const g = ctx.createLinearGradient(0, H, 0, 0);
+    g.addColorStop(0, '#3f6a22'); g.addColorStop(0.65, '#7aa23a'); g.addColorStop(1, '#c2c96a');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(x0 - w, H); ctx.quadraticCurveTo(x0 + lean * 0.5, H * 0.5, x0 + lean, 6); ctx.quadraticCurveTo(x0 + lean * 0.5 + 2, H * 0.5, x0 + w, H); ctx.fill();
+  }
+  return texture(c, { repeat: false });
+};
+
+/* Traffic cone wrap: orange with a white reflective sleeve (UK 750 mm cone). */
+EVO.tex.cone = function cone() {
+  const c = canvas(64, 256), ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2621a'; ctx.fillRect(0, 0, 64, 256);
+  ctx.fillStyle = '#e9e9e4'; ctx.fillRect(0, 70, 64, 62);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0, 128, 64, 6);
+  const g = ctx.createLinearGradient(0, 0, 64, 0);
+  g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(0.35, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(0,0,0,0.3)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 256);
+  return texture(c);
+};
+
+/* ----------------------------------------------------------------- signs */
+function signCanvas(w, h) { const c = canvas(w, h); return [c, c.getContext('2d')]; }
+function triangleFace(ctx, S, draw) {
+  // warning triangle: red border, white face
+  const m = S * 0.04;
+  ctx.clearRect(0, 0, S, S);
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#d0021b'; ctx.beginPath();
+  ctx.moveTo(S / 2, m); ctx.lineTo(S - m, S - m); ctx.lineTo(m, S - m); ctx.closePath(); ctx.fill();
+  const b = S * 0.085;
+  ctx.fillStyle = '#f3f3ef'; ctx.beginPath();
+  ctx.moveTo(S / 2, m + b * 1.5); ctx.lineTo(S - m - b * 1.3, S - m - b * 0.75); ctx.lineTo(m + b * 1.3, S - m - b * 0.75); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.strokeStyle = '#111';
+  draw(ctx, S);
+}
+EVO.tex.signBend = function signBend(dir) { // dir +1 left, -1 right
+  const [c, ctx] = signCanvas(256, 256);
+  triangleFace(ctx, 256, (g, S) => {
+    g.save(); g.translate(S / 2, S * 0.62); g.scale(dir, 1);
+    g.lineWidth = 16; g.lineCap = 'butt';
+    g.beginPath(); g.moveTo(-6, 58); g.lineTo(-6, 10); g.quadraticCurveTo(-6, -22, -34, -22); g.stroke();
+    g.beginPath(); g.moveTo(-34, -40); g.lineTo(-60, -22); g.lineTo(-34, -4); g.closePath(); g.fill();
+    g.restore();
+  });
+  return texture(c, { repeat: false });
+};
+EVO.tex.signJunction = function signJunction(side) { // side +1 road joins from left, -1 from right
+  const [c, ctx] = signCanvas(256, 256);
+  triangleFace(ctx, 256, (g, S) => {
+    g.lineWidth = 15;
+    g.beginPath(); g.moveTo(S / 2, S * 0.85); g.lineTo(S / 2, S * 0.33); g.stroke();
+    g.lineWidth = 11;
+    g.beginPath(); g.moveTo(S / 2, S * 0.6); g.lineTo(S / 2 - side * 44, S * 0.6); g.stroke();
+  });
+  return texture(c, { repeat: false });
+};
+EVO.tex.signChevron = function signChevron(dir) {
+  const [c, ctx] = signCanvas(512, 256);
+  ctx.fillStyle = '#f3f3ef'; ctx.fillRect(0, 0, 512, 256);
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 506, 250);
+  ctx.fillStyle = '#111';
+  for (let k = 0; k < 3; k += 1) {
+    const x = 100 + k * 156;
+    ctx.save(); ctx.translate(x, 128); ctx.scale(dir, 1);
+    ctx.beginPath(); ctx.moveTo(38, -96); ctx.lineTo(-30, 0); ctx.lineTo(38, 96); ctx.lineTo(-2, 96); ctx.lineTo(-70, 0); ctx.lineTo(-2, -96); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  return texture(c, { repeat: false });
+};
+EVO.tex.signNSL = function signNSL() {
+  const [c, ctx] = signCanvas(256, 256);
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.fillStyle = '#f3f3ef'; ctx.beginPath(); ctx.arc(128, 128, 122, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(128, 128, 121, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 28; ctx.beginPath(); ctx.moveTo(210, 46); ctx.lineTo(46, 210); ctx.stroke();
+  return texture(c, { repeat: false });
+};
+EVO.tex.signGiveWay = function signGiveWay() {
+  const [c, ctx] = signCanvas(256, 256);
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#d0021b'; ctx.beginPath(); ctx.moveTo(8, 20); ctx.lineTo(248, 20); ctx.lineTo(128, 240); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f3f3ef'; ctx.beginPath(); ctx.moveTo(36, 36); ctx.lineTo(220, 36); ctx.lineTo(128, 200); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.font = 'bold 30px Arial, Helvetica, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('GIVE', 128, 78); ctx.fillText('WAY', 128, 112);
+  return texture(c, { repeat: false });
+};
+EVO.tex.signRoadClosed = function signRoadClosed() {
+  const [c, ctx] = signCanvas(512, 192);
+  ctx.fillStyle = '#d0021b'; ctx.fillRect(0, 0, 512, 192);
+  ctx.fillStyle = '#f3f3ef'; ctx.fillRect(14, 14, 484, 164);
+  ctx.fillStyle = '#111'; ctx.font = 'bold 96px Arial, Helvetica, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('ROAD CLOSED', 256, 100);
+  return texture(c, { repeat: false });
+};
+EVO.tex.signNamePlate = function signNamePlate(text) {
+  const [c, ctx] = signCanvas(512, 160);
+  ctx.fillStyle = '#f3f3ef'; ctx.fillRect(0, 0, 512, 160);
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 506, 154);
+  ctx.fillStyle = '#111'; ctx.font = 'bold 62px Arial, Helvetica, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 84);
+  return texture(c, { repeat: false });
+};
+EVO.tex.slowLegend = function slowLegend() {
+  const [c, ctx] = signCanvas(256, 512);
+  ctx.clearRect(0, 0, 256, 512);
+  ctx.fillStyle = '#ece9df'; ctx.font = 'bold 118px Arial, Helvetica, sans-serif'; ctx.textAlign = 'center';
+  ctx.save(); ctx.translate(128, 0); ctx.scale(1.0, 3.6);
+  ctx.fillText('SLOW', 0, 118);
+  ctx.restore();
+  return texture(c, { repeat: false });
+};
+EVO.tex.giveWayTriangle = function giveWayTriangle() {
+  const [c, ctx] = signCanvas(128, 256);
+  ctx.clearRect(0, 0, 128, 256);
+  ctx.fillStyle = '#ece9df'; ctx.beginPath(); ctx.moveTo(8, 8); ctx.lineTo(120, 8); ctx.lineTo(64, 250); ctx.closePath(); ctx.fill();
+  ctx.clearRect(0, 0, 0, 0);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath(); ctx.moveTo(36, 34); ctx.lineTo(92, 34); ctx.lineTo(64, 170); ctx.closePath(); ctx.fill();
+  return texture(c, { repeat: false });
+};

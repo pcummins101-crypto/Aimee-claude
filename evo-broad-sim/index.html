@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0a0d10" />
+  <title>Avenrà EVO · B-Road</title>
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap" />
+  <!-- EVO_STYLE --><link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="hud">
+    <div class="brand">AVENRÀ <span>EVO</span></div>
+    <button id="mute" type="button" aria-pressed="false" aria-label="Mute sound">♪</button>
+    <div id="stats" hidden></div>
+    <div class="zones" aria-hidden="true"><span class="zone brake">BRAKE</span><span class="zone throttle">THROTTLE</span></div>
+  </div>
+  <div id="start">
+    <div class="panel">
+      <p class="kicker">PHOTOREAL RIDE · YORKSHIRE DALES B-ROAD</p>
+      <h1>Avenrà <span>EVO</span></h1>
+      <p class="copy">A quiet two-way B road closed to traffic. Ride it as fast as the bends allow. Side turnings are coned off.</p>
+      <ul class="controls">
+        <li><b>Steer</b> drag the upper half of the screen, tilt the phone, or use ← → / A D</li>
+        <li><b>Throttle</b> hold the bottom-right of the screen, or ↑ / W</li>
+        <li><b>Brake</b> hold the bottom-left of the screen, or ↓ / S / Space</li>
+      </ul>
+      <div class="actions">
+        <button id="ride" type="button">RIDE</button>
+        <button id="tilt" type="button" class="ghost">ENABLE TILT STEERING</button>
+      </div>
+      <p class="safety">Virtual closed-road simulation. Never use while riding.</p>
+    </div>
+  </div>
+  <!-- EVO_SCRIPTS -->
+  <script type="module" src="./src/00-core.js"></script>
+  <script type="module" src="./src/10-route.js"></script>
+  <script type="module" src="./src/20-world.js"></script>
+  <script type="module" src="./src/30-bike.js"></script>
+  <script type="module" src="./src/40-overlay.js"></script>
+  <script type="module" src="./src/90-main.js"></script>
+  <!-- /EVO_SCRIPTS -->
+</body>
+</html>
