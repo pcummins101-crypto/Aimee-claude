@@ -11,6 +11,16 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js';
+const THREE_URL_FALLBACK = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
+// Loads the engine with a fallback CDN and reports failure on the start panel
+// instead of dying silently.
+const ENGINE_LOADER = `const __status = document.getElementById('status');
+let THREE;
+try { THREE = await import('${THREE_URL}'); }
+catch (e1) {
+  try { THREE = await import('${THREE_URL_FALLBACK}'); }
+  catch (e2) { if (__status) { __status.textContent = 'Could not load the 3D engine from the network: ' + (e2 && e2.message || e2); __status.classList.add('is-error'); } throw e2; }
+}`;
 
 const files = readdirSync(join(root, 'src')).filter((f) => f.endsWith('.js')).sort();
 let code = '';
@@ -24,7 +34,7 @@ let html = readFileSync(join(root, 'index.html'), 'utf8');
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, '');
 html = html.replace(/<!-- EVO_STYLE --><link[^>]*>/, `<style>\n${style}\n</style>`);
 html = html.replace(/<!-- EVO_SCRIPTS -->[\s\S]*?<!-- \/EVO_SCRIPTS -->/,
-  `<script>window.EVO_COCKPIT_URL = "data:image/png;base64,${png}";</script>\n<script type="module">\nimport * as THREE from '${THREE_URL}';\n${code}\n</script>`);
+  `<script>window.EVO_COCKPIT_URL = "data:image/png;base64,${png}";</script>\n<script type="module">\n${ENGINE_LOADER}\n${code}\n</script>`);
 mkdirSync(join(root, 'dist'), { recursive: true });
 writeFileSync(join(root, 'dist', 'index.html'), html);
 // Artifact flavour: the host wraps the file in its own document skeleton, so

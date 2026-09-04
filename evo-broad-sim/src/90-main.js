@@ -12,7 +12,59 @@ function detectQuality() {
     : { coarse, pixelRatio: Math.min(dpr, 2), shadow: 4096, blades: 44000 };
 }
 
+const statusEl = document.getElementById('status');
+function setStatus(text, error = false) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle('is-error', error);
+}
+window.addEventListener('error', (e) => setStatus(`Something went wrong: ${e.message || e.error || 'unknown error'}`, true));
+window.addEventListener('unhandledrejection', (e) => setStatus(`Something went wrong: ${e.reason?.message || e.reason || 'unknown error'}`, true));
+
 function boot() {
+  // The start panel must work before anything heavy runs, so bind it first
+  // and build the world on the next frame while the status line explains.
+  const start = document.getElementById('start');
+  const rideBtn = document.getElementById('ride');
+  const tiltBtn = document.getElementById('tilt');
+  let app = null, ridePending = false;
+  const beginRide = async () => {
+    if (!app) { ridePending = true; return; }
+    app.audio.start();
+    start.classList.add('is-hidden');
+    if (app.quality.coarse) {
+      try { await document.documentElement.requestFullscreen?.(); } catch (e) { /* not available in this host */ }
+      try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* not available in this host */ }
+    }
+  };
+  rideBtn.addEventListener('click', beginRide);
+  tiltBtn.addEventListener('click', async () => {
+    if (!app) return;
+    const ok = await app.controls.enableTilt();
+    tiltBtn.textContent = ok ? 'TILT STEERING ON' : 'TILT UNAVAILABLE';
+    tiltBtn.disabled = ok;
+  });
+  document.getElementById('mute').addEventListener('click', (e) => {
+    const on = e.currentTarget.getAttribute('aria-pressed') === 'true';
+    e.currentTarget.setAttribute('aria-pressed', on ? 'false' : 'true');
+    app?.audio.setMuted(!on);
+  });
+  setStatus('Building the road, hedgerows and sky…');
+  setTimeout(() => {
+    try {
+      app = buildApp();
+      rideBtn.disabled = false; rideBtn.textContent = 'RIDE';
+      setStatus('');
+      if (ridePending) beginRide();
+    } catch (e) {
+      setStatus(`Could not start the ride: ${e?.message || e}`, true);
+      rideBtn.textContent = 'UNAVAILABLE';
+      console.error(e);
+    }
+  }, 60);
+}
+
+function buildApp() {
   const canvas = document.getElementById('view');
   const quality = detectQuality();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', alpha: false });
@@ -50,29 +102,9 @@ function boot() {
   window.addEventListener('resize', resize);
   resize();
 
-  // start screen
-  const start = document.getElementById('start');
-  const tiltBtn = document.getElementById('tilt');
   const statsEl = document.getElementById('stats');
   const showStats = new URLSearchParams(location.search).has('stats');
   if (showStats) statsEl.hidden = false;
-  document.getElementById('ride').addEventListener('click', async () => {
-    audio.start();
-    start.classList.add('is-hidden');
-    if (quality.coarse) {
-      try { await document.documentElement.requestFullscreen?.(); await screen.orientation?.lock?.('landscape'); } catch (e) { /* not available */ }
-    }
-  });
-  tiltBtn.addEventListener('click', async () => {
-    const ok = await controls.enableTilt();
-    tiltBtn.textContent = ok ? 'TILT STEERING ON' : 'TILT UNAVAILABLE';
-    tiltBtn.disabled = ok;
-  });
-  document.getElementById('mute').addEventListener('click', (e) => {
-    const on = e.currentTarget.getAttribute('aria-pressed') === 'true';
-    e.currentTarget.setAttribute('aria-pressed', on ? 'false' : 'true');
-    audio.setMuted(!on);
-  });
 
   const STEP = 1 / 120;
   let last = performance.now(), acc = 0, frames = 0, fpsTime = 0;
@@ -103,6 +135,7 @@ function boot() {
   }
   requestAnimationFrame(loop);
   EVO.app = { renderer, world, camera, bike, controls, audio, quality, get cockpit() { return cockpit; } };
+  return EVO.app;
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
