@@ -48,7 +48,7 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
   group.add(cockpit);
 
   // rear-view render target shared by both mirrors
-  const rt = new THREE.WebGLRenderTarget(512, 224, { depthBuffer: true });
+  const rt = new THREE.WebGLRenderTarget(512, 224, { depthBuffer: true, type: THREE.HalfFloatType });
   const rearCam = new THREE.PerspectiveCamera(46, 512 / 224, 0.5, 900);
   const mirrorMat = (u0, u1) => {
     const m = new THREE.ShaderMaterial({
@@ -56,14 +56,16 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
       uniforms: { view: { value: rt.texture }, mask: { value: mirrorMask() }, u0: { value: u0 }, u1: { value: u1 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: `varying vec2 vUv; uniform sampler2D view; uniform sampler2D mask; uniform float u0; uniform float u1;
+        vec3 aces(vec3 x){ const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14; return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0); }
+        vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(1.0 / 2.4)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308))); }
         void main(){ float a = texture2D(mask, vUv).r; if (a < 0.5) discard;
           // horizontally flipped like a real mirror, with a slight convex squeeze
           float u = mix(u1, u0, vUv.x);
           vec3 c = texture2D(view, vec2(u, vUv.y * 0.92 + 0.04)).rgb;
-          c *= 0.82; c += vec3(0.02, 0.025, 0.03);
+          c = aces(c * 1.1); c = c * 0.86 + vec3(0.015, 0.02, 0.025);
           float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
           c *= 0.7 + 0.3 * edge;
-          gl_FragColor = vec4(c, 1.0); }`
+          gl_FragColor = vec4(toSRGB(c), 1.0); }`
     });
     m.toneMapped = false;
     return m;
@@ -80,9 +82,6 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
   dash.renderOrder = 3;
   group.add(dash);
 
-  const vig = new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ map: vignette(), transparent: true, depthTest: false, depthWrite: false }));
-  vig.renderOrder = 1;
-  scene.add(vig);
 
   let W = 1, H = 1, portrait = false;
   function layout(vw, vh) {
@@ -102,7 +101,6 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
       mesh.position.set((cx - 0.5) * W, bottom + H - cy * H, 0);
     };
     place(mirrorL, MIRROR_L); place(mirrorR, MIRROR_R); place(dash, DASH);
-    vig.scale.set(vw, vh, 1);
   }
 
   let frame = 0;

@@ -18,7 +18,7 @@ const SPECIES = {
 };
 
 class Sink {
-  constructor() { this.p = []; this.n = []; this.uv = []; this.idx = []; }
+  constructor() { this.p = []; this.n = []; this.uv = []; this.c = []; this.idx = []; }
   addGeometry(g, matrix) {
     const gg = g.clone(); if (matrix) gg.applyMatrix4(matrix);
     const pa = gg.getAttribute('position'), na = gg.getAttribute('normal'), ua = gg.getAttribute('uv');
@@ -26,9 +26,9 @@ class Sink {
     for (let i = 0; i < pa.count; i += 1) { this.p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); this.n.push(na.getX(i), na.getY(i), na.getZ(i)); this.uv.push(ua.getX(i), ua.getY(i)); }
     const ix = gg.getIndex(); for (let i = 0; i < ix.count; i += 1) this.idx.push(ix.getX(i) + base);
   }
-  quad(corners, normal) {
+  quad(corners, normal, shade = 1) {
     const base = this.p.length / 3;
-    for (let i = 0; i < 4; i += 1) { this.p.push(corners[i].x, corners[i].y, corners[i].z); this.n.push(normal.x, normal.y, normal.z); }
+    for (let i = 0; i < 4; i += 1) { this.p.push(corners[i].x, corners[i].y, corners[i].z); this.n.push(normal.x, normal.y, normal.z); this.c.push(shade, shade, shade); }
     this.uv.push(0, 0, 1, 0, 1, 1, 0, 1);
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
@@ -37,6 +37,7 @@ class Sink {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    if (this.c.length === this.p.length) g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
     g.setIndex(this.idx); g.computeBoundingSphere();
     return g;
   }
@@ -77,7 +78,8 @@ function buildTree(spec, seed) {
     corners[0].set(-hx, -hy, 0); corners[1].set(hx, -hy, 0); corners[2].set(hx, hy, 0); corners[3].set(-hx, hy, 0);
     for (const v of corners) v.applyMatrix4(m).add(c);
     nrm.copy(c).sub(centre); nrm.x /= spec.rx; nrm.y /= spec.ry; nrm.z /= spec.rx; nrm.y += 0.35; nrm.normalize();
-    leaves.quad(corners, nrm);
+    // inner clusters sit in the crown's own shade
+    leaves.quad(corners, nrm, 0.55 + 0.45 * u);
   }
   return { wood: wood.build(), leaves: leaves.build(), height: spec.canopy + spec.ry };
 }
@@ -105,8 +107,17 @@ EVO.vegetation = {
       leafTex[species] = leafTex[species] || EVO.tex.leafCluster(spec.leaf, spec.seed);
       const leafMat = new THREE.MeshStandardMaterial({
         map: leafTex[species].map, normalMap: leafTex[species].normalMap, normalScale: new THREE.Vector2(0.55, 0.55),
-        alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0, emissive: 0x16240a, emissiveIntensity: 0.35
+        alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0, emissive: 0x16240a, emissiveIntensity: 0.15, vertexColors: true
       });
+      // gentle canopy sway
+      leafMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = EVO.windUniform || { value: 0 };
+        shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * 0.18;');
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nuniform float uTime;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n{ float ph = instanceMatrix[3][0] * 0.13 + instanceMatrix[3][2] * 0.17; float sw = sin(uTime * 0.9 + ph + position.y * 0.35) * 0.5 + sin(uTime * 1.7 + ph * 1.3) * 0.25; float amt = smoothstep(1.5, 4.0, position.y) * 0.07; transformed.x += sw * amt; transformed.z += sw * amt * 0.6; }');
+      };
+      EVO.tagShader(leafMat, 'treesway');
       const wood = new THREE.InstancedMesh(geo.wood, barkMat, list.length);
       const leaves = new THREE.InstancedMesh(geo.leaves, leafMat, list.length);
       list.forEach((p, k) => {

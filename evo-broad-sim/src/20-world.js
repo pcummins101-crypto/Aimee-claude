@@ -66,9 +66,16 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   };
 
   /* ---------------------------------------------------------- materials */
+  // Materials whose shaders are patched must carry a distinct program cache
+  // key, otherwise three.js shares one compiled program between materials
+  // with identical parameters and the second patch is silently dropped.
+  EVO.tagShader = (mat, tag) => {
+    mat.userData.shaderTag = (mat.userData.shaderTag || '') + tag + ';';
+    mat.customProgramCacheKey = () => mat.userData.shaderTag;
+  };
   const roadMat = new THREE.MeshStandardMaterial({
     map: T.asphalt.map, normalMap: T.asphalt.normalMap, normalScale: new THREE.Vector2(0.75, 0.75),
-    roughnessMap: T.asphalt.roughnessMap, roughness: 1, metalness: 0.02, vertexColors: true
+    roughnessMap: T.asphalt.roughnessMap, roughness: 0.88, metalness: 0.02, vertexColors: true, envMapIntensity: 0.55
   });
   roadMat.onBeforeCompile = (shader) => {
     shader.uniforms.wearMap = { value: T.wear };
@@ -76,22 +83,37 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D wearMap;')
       .replace('#include <map_fragment>', '#include <map_fragment>\n{ vec4 wear = texture2D(wearMap, vec2(vMapUv.x, vMapUv.y * 0.155)); diffuseColor.rgb *= mix(vec3(1.0), wear.rgb, 0.85); }');
   };
+  EVO.tagShader(roadMat, 'roadwear');
   const grassMat = new THREE.MeshStandardMaterial({
     map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge.map, normalMap: T.hedge.normalMap, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 0.92, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.3 });
-  const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.35 });
+  const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge.map, normalMap: T.hedge.normalMap, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 0.92, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.15 });
+  // Foliage fill: leaves in shade still carry transmitted sky light, so add a
+  // map-coloured fill term rather than a flat emissive colour.
+  EVO.addFoliageFill = (mat, amount = 0.2) => {
+    const prev = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, r) => {
+      if (prev) prev(shader, r);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * ${amount.toFixed(3)};`);
+    };
+    EVO.tagShader(mat, 'fill' + amount.toFixed(3));
+  };
+  EVO.addFoliageFill(hedgeMat, 0.12);
+  const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.2 });
+  EVO.addFoliageFill(leafMat, 0.16);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
   const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, emissive: 0x2a3a10, emissiveIntensity: 0.5 });
   const windUniform = { value: 0 };
+  EVO.windUniform = windUniform;
   bladeMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = windUniform;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTime;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n{ float ph = instanceMatrix[3][0] * 0.37 + instanceMatrix[3][2] * 0.23; float sway = sin(uTime * 1.9 + ph) * 0.5 + sin(uTime * 3.1 + ph * 1.7) * 0.25; transformed.x += sway * 0.09 * uv.y; transformed.z += sway * 0.04 * uv.y; }');
   };
+  EVO.tagShader(bladeMat, 'bladewind');
   const coneMat = new THREE.MeshStandardMaterial({ map: T.cone, roughness: 0.6, metalness: 0 });
   const postMat = new THREE.MeshStandardMaterial({ color: 0x74787c, roughness: 0.55, metalness: 0.6 });
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x5f4f3d, roughness: 0.95 });
@@ -100,6 +122,25 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const studMat = new THREE.MeshStandardMaterial({ color: 0xd8dde0, roughness: 0.35, metalness: 0.1 });
   const barrierMat = new THREE.MeshStandardMaterial({ color: 0xe0dcd4, roughness: 0.6 });
   const barrierRedMat = new THREE.MeshStandardMaterial({ color: 0xc2201f, roughness: 0.6 });
+
+  /* ------------------------------------------------ cloud shadows */
+  // Slow cloud shadows drift over every ground surface. Non-instanced
+  // materials only (the world position is taken from modelMatrix).
+  const cloudUniform = { value: 0 };
+  function addCloudShadow(mat) {
+    const prev = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, r) => {
+      if (prev) prev(shader, r);
+      shader.uniforms.uCloudTime = cloudUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vCloudPos;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\n{ vec4 cwp = modelMatrix * vec4(transformed, 1.0); vCloudPos = cwp.xz; }');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vCloudPos; uniform float uCloudTime;\nfloat cloudHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat cloudNoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f); return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), u.x), mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), u.x), u.y); }')
+        .replace('#include <dithering_fragment>', '{ vec2 cp = vCloudPos * 0.0026 + vec2(uCloudTime * 0.011, uCloudTime * 0.0035); float cn = cloudNoise(cp) * 0.6 + cloudNoise(cp * 2.1 + 7.0) * 0.4; float csh = smoothstep(0.5, 0.74, cn); gl_FragColor.rgb *= 1.0 - csh * 0.3; }\n#include <dithering_fragment>');
+    };
+    EVO.tagShader(mat, 'cloud');
+  }
 
   /* ------------------------------------------------- verge height model */
   const PROFILE = [[3.1, -0.06], [3.5, -0.12], [4.2, -0.30], [5.0, -0.06], [6.0, 0.16], [7.5, 0.30], [9.5, 0.36]];
@@ -180,7 +221,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < RT.R.n; i += 1) { minX = Math.min(minX, RT.R.px[i]); maxX = Math.max(maxX, RT.R.px[i]); minZ = Math.min(minZ, RT.R.pz[i]); maxZ = Math.max(maxZ, RT.R.pz[i]); }
-    const pad = 520, cell = 9;
+    const pad = 720, cell = 9;
     const x0 = minX - pad, z0 = minZ - pad, nx = Math.ceil((maxX - minX + pad * 2) / cell), nz = Math.ceil((maxZ - minZ + pad * 2) / cell);
     const sink = new GeoSink();
     const ids = [];
@@ -203,6 +244,33 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const mesh = new THREE.Mesh(sink.build(), grassMat);
     mesh.receiveShadow = true;
     scene.add(mesh);
+
+    /* distant fells: a ring of big rolling hills beyond the pasture, read
+     * through the haze as the Dales skyline */
+    const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+    const ring = new GeoSink();
+    const R0 = 1120, R1 = 5600, NA = 140, NR = 12;
+    const rids = [];
+    for (let ir = 0; ir <= NR; ir += 1) {
+      const t = ir / NR, r = R0 * Math.pow(R1 / R0, t);
+      const row = [];
+      for (let ia = 0; ia <= NA; ia += 1) {
+        const a = ia / NA * Math.PI * 2;
+        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        const base = RT.terrainBase(x, z) * 0.85 + 0.6;
+        const hill = (EVO.fbm(x / 1700 + 9, z / 1700 - 4, 4) - 0.32) * 460 + (EVO.fbm(x / 540 + 2, z / 540 + 8, 3) - 0.5) * 140;
+        const w = smoothstep(R0, R0 * 2.1, r);
+        const y = lerp(base, Math.max(base - 10, hill), w);
+        const shade = 0.7 + EVO.fbm(x / 320, z / 320, 2) * 0.4;
+        row.push(ring.vertex(x, y, z, x / 4, z / 4, 0.84 * shade, 0.9 * shade, 0.68 * shade));
+      }
+      rids.push(row);
+    }
+    for (let ir = 0; ir < NR; ir += 1) for (let ia = 0; ia < NA; ia += 1) ring.quad(rids[ir][ia], rids[ir][ia + 1], rids[ir + 1][ia + 1], rids[ir + 1][ia]);
+    const fellsMat = new THREE.MeshStandardMaterial({ map: T.grass.map, roughness: 1, vertexColors: true, side: THREE.DoubleSide });
+    addCloudShadow(fellsMat);
+    const fells = new THREE.Mesh(ring.build(), fellsMat);
+    scene.add(fells);
   }
 
   /* ---------------------------------------------------------- side roads */
@@ -368,18 +436,20 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const hedgeHeight = (s, H) => H * (0.86 + EVO.noise2(s / 7.5, 0.5) * 0.3);
 
   function hedgeRun(samples, H) {
-    // samples: [{x,y,z,nx,nz,s}] along the run; nx,nz points AWAY from the road
-    const rows = [];
+    // samples: [{x,y,z,nx,nz,s}] along the run; nx,nz points AWAY from the road.
+    // Texture u is measured from the start of the run: large uv values break
+    // the derivative-based tangent frame the normal map relies on.
+    const rows = [], s0 = samples[0].s;
     for (const p of samples) {
       const h = hedgeHeight(p.s, H);
       const bulge = 0.5 + EVO.noise2(p.s / 3.1, 0.2) * 0.25;
       const tint = 0.85 + EVO.noise2(p.s / 11, 3.3) * 0.3;
       rows.push([
-        { x: p.x - p.nx * 0.75, y: p.y - 0.15, z: p.z - p.nz * 0.75, u: p.s / 2, v: 0, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 },
-        { x: p.x - p.nx * bulge, y: p.y + h * 0.55, z: p.z - p.nz * bulge, u: p.s / 2, v: h * 0.28, r: tint, g: tint, b: tint },
-        { x: p.x - p.nx * 0.28, y: p.y + h, z: p.z - p.nz * 0.28, u: p.s / 2, v: h * 0.5, r: tint * 1.08, g: tint * 1.1, b: tint },
-        { x: p.x + p.nx * 0.28, y: p.y + h, z: p.z + p.nz * 0.28, u: p.s / 2, v: h * 0.64, r: tint * 1.08, g: tint * 1.1, b: tint },
-        { x: p.x + p.nx * 0.75, y: p.y - 0.15, z: p.z + p.nz * 0.75, u: p.s / 2, v: h * 1.1, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 }
+        { x: p.x - p.nx * 0.75, y: p.y - 0.15, z: p.z - p.nz * 0.75, u: (p.s - s0) / 2, v: 0, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 },
+        { x: p.x - p.nx * bulge, y: p.y + h * 0.55, z: p.z - p.nz * bulge, u: (p.s - s0) / 2, v: h * 0.28, r: tint, g: tint, b: tint },
+        { x: p.x - p.nx * 0.28, y: p.y + h, z: p.z - p.nz * 0.28, u: (p.s - s0) / 2, v: h * 0.5, r: tint * 1.08, g: tint * 1.1, b: tint },
+        { x: p.x + p.nx * 0.28, y: p.y + h, z: p.z + p.nz * 0.28, u: (p.s - s0) / 2, v: h * 0.64, r: tint * 1.08, g: tint * 1.1, b: tint },
+        { x: p.x + p.nx * 0.75, y: p.y - 0.15, z: p.z + p.nz * 0.75, u: (p.s - s0) / 2, v: h * 1.1, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 }
       ]);
     }
     if (rows.length > 1) stripRows(hedgeSink, orientRows(rows, samples));
@@ -402,16 +472,16 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
   }
   function wallRun(samples, H) {
-    const rows = [];
+    const rows = [], s0 = samples[0].s;
     for (const p of samples) {
       const h = H * (0.94 + EVO.noise2(p.s / 5, 0.7) * 0.12);
       const tint = 0.88 + EVO.noise2(p.s / 6, 1.1) * 0.24;
       const w = 0.3;
       rows.push([
-        { x: p.x - p.nx * w, y: p.y - 0.2, z: p.z - p.nz * w, u: p.s / 1.2, v: 0, r: tint, g: tint, b: tint },
-        { x: p.x - p.nx * w, y: p.y + h, z: p.z - p.nz * w, u: p.s / 1.2, v: (h + 0.2) / 1.2, r: tint, g: tint, b: tint },
-        { x: p.x + p.nx * w, y: p.y + h, z: p.z + p.nz * w, u: p.s / 1.2, v: (h + 0.2) / 1.2 + 0.25, r: tint, g: tint, b: tint },
-        { x: p.x + p.nx * w, y: p.y - 0.2, z: p.z + p.nz * w, u: p.s / 1.2, v: (h + 0.2) / 1.2 * 2 + 0.25, r: tint, g: tint, b: tint }
+        { x: p.x - p.nx * w, y: p.y - 0.2, z: p.z - p.nz * w, u: (p.s - s0) / 1.2, v: 0, r: tint, g: tint, b: tint },
+        { x: p.x - p.nx * w, y: p.y + h, z: p.z - p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2, r: tint, g: tint, b: tint },
+        { x: p.x + p.nx * w, y: p.y + h, z: p.z + p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2 + 0.25, r: tint, g: tint, b: tint },
+        { x: p.x + p.nx * w, y: p.y - 0.2, z: p.z + p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2 * 2 + 0.25, r: tint, g: tint, b: tint }
       ]);
     }
     if (rows.length > 1) stripRows(wallSink, orientRows(rows, samples));
@@ -568,12 +638,67 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       }
     }
     const geo = new THREE.BoxGeometry(4.4, 1, 1.5); geo.translate(0, 0.5, 0);
-    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false;
+    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false; EVO.addFoliageFill(farHedgeMat, 0.12);
     const Y2 = new THREE.Vector3(0, 1, 0);
     const im = new THREE.InstancedMesh(geo, farHedgeMat, Math.max(1, segs.length));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
     segs.forEach((p, k) => { q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(1, p.h, 1); m.compose(pos, q, sc); im.setMatrixAt(k, m); });
     im.castShadow = true; scene.add(im);
+  }
+
+  /* ------------------------------------------------ sheep and far walls */
+  {
+    const body = new THREE.SphereGeometry(0.44, 10, 8); body.scale(1.05, 0.72, 0.64); body.translate(0, 0.66, 0);
+    const head = new THREE.SphereGeometry(0.15, 8, 6); head.scale(1.3, 0.9, 0.8); head.translate(0.5, 0.66, 0);
+    const legGeo = new THREE.CylinderGeometry(0.04, 0.035, 0.46, 6);
+    const legs = [[0.24, 0.17], [0.24, -0.17], [-0.24, 0.17], [-0.24, -0.17]].map(([x, z]) => { const g = legGeo.clone(); g.translate(x, 0.23, z); return g; });
+    const woolGeo = body, darkGeo = mergeGeometries([head, ...legs]);
+    const woolMat = new THREE.MeshStandardMaterial({ color: 0xe4dfd2, roughness: 1 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.95 });
+    const flock = [];
+    for (let gI = 0; gI < 34; gI += 1) {
+      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 13 + rnd() * 60;
+      const f = RT.frame(s);
+      const gx = f.x + f.nx * side * d, gz = f.z + f.nz * side * d;
+      const n = 3 + Math.floor(rnd() * 6);
+      for (let k = 0; k < n; k += 1) {
+        const x = gx + (rnd() - 0.5) * 14, z = gz + (rnd() - 0.5) * 14;
+        const near = RT.nearest(x, z);
+        if (near && near.dist < 9) continue;
+        const sInf = RT.sideInfluence(x, z);
+        if (sInf && sInf.dist < 7) continue;
+        flock.push({ x, y: RT.terrainHeight(x, z) - 0.02, z, yaw: rnd() * Math.PI * 2, sc: 0.82 + rnd() * 0.25, lying: rnd() < 0.2 });
+      }
+    }
+    const wool = new THREE.InstancedMesh(woolGeo, woolMat, Math.max(1, flock.length));
+    const dark = new THREE.InstancedMesh(darkGeo, darkMat, Math.max(1, flock.length));
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    flock.forEach((p, k) => {
+      q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y - (p.lying ? 0.2 : 0), p.z); sc.set(p.sc, p.sc * (p.lying ? 0.8 : 1), p.sc);
+      m.compose(pos, q, sc); wool.setMatrixAt(k, m); dark.setMatrixAt(k, m);
+    });
+    wool.castShadow = true; dark.castShadow = true; scene.add(wool, dark);
+
+    // dry-stone field walls across the pasture
+    const segs = [];
+    for (let k = 0; k < 24; k += 1) {
+      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d0 = 48 + rnd() * 140;
+      const f = RT.frame(s);
+      const x = f.x + f.nx * side * d0, z = f.z + f.nz * side * d0;
+      const ang = rnd() * Math.PI * 2, dx = Math.cos(ang), dz = Math.sin(ang);
+      const len = 60 + rnd() * 220;
+      for (let t = 0; t < len; t += 4.2) {
+        const px = x + dx * t, pz = z + dz * t;
+        const near = RT.nearest(px, pz);
+        if (near && near.dist < 46) break;
+        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang });
+      }
+    }
+    const wallGeo = new THREE.BoxGeometry(4.4, 1.1, 0.5); wallGeo.translate(0, 0.55, 0);
+    const farWallMat = stoneMat.clone(); farWallMat.vertexColors = false;
+    const walls = new THREE.InstancedMesh(wallGeo, farWallMat, Math.max(1, segs.length));
+    segs.forEach((p, k) => { q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(1, 1, 1); m.compose(pos, q, sc); walls.setMatrixAt(k, m); });
+    walls.castShadow = true; scene.add(walls);
   }
 
   /* ------------------------------------------------------- grass blades */
@@ -739,18 +864,18 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
         vec3 d = normalize(vDir);
         float h = max(d.y, 0.0);
         float mu = max(dot(d, sunDir), 0.0);
-        vec3 zenith = vec3(0.14, 0.32, 0.72);
-        vec3 horizon = vec3(0.70, 0.76, 0.86);
+        vec3 zenith = vec3(0.07, 0.20, 0.58);
+        vec3 horizon = vec3(0.50, 0.58, 0.72);
         vec3 sky = mix(horizon, zenith, pow(h, 0.6));
         sky += vec3(0.95, 0.62, 0.32) * pow(mu, 5.0) * (1.0 - h) * 0.45;
         sky += vec3(1.0, 0.94, 0.82) * pow(mu, 48.0) * 0.55;
-        sky += vec3(1.0, 0.96, 0.9) * smoothstep(0.99935, 0.99975, dot(d, sunDir)) * 8.0;
+        sky += vec3(1.0, 0.96, 0.9) * smoothstep(0.99935, 0.99975, dot(d, sunDir)) * 16.0;
         if (d.y > 0.015) {
           vec2 uv = d.xz / (d.y + 0.08) * 1.35 + vec2(uTime * 0.0035, uTime * 0.0012);
           float c = fbm(uv);
           float cov = smoothstep(0.50, 0.70, c);
           float shade = fbm(uv * 1.9 + 5.0);
-          vec3 cloud = mix(vec3(0.52, 0.55, 0.62), vec3(1.05, 1.02, 0.98), shade);
+          vec3 cloud = mix(vec3(0.38, 0.41, 0.48), vec3(0.92, 0.90, 0.87), shade);
           cloud += vec3(0.35, 0.22, 0.12) * pow(mu, 3.0) * 0.4;
           float fade = smoothstep(0.015, 0.16, d.y);
           sky = mix(sky, cloud, cov * fade * 0.92);
@@ -764,29 +889,33 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(2600, 40, 20), skyMat);
   sky.frustumCulled = false;
   scene.add(sky);
-  scene.fog = new THREE.FogExp2(0xb9c3cf, 0.00115);
+  scene.fog = new THREE.FogExp2(0xbcc7d3, 0.00082);
 
-  const sun = new THREE.DirectionalLight(0xfff0dc, 3.4);
+  const sun = new THREE.DirectionalLight(0xfff0dc, 2.7);
   sun.castShadow = true;
   sun.shadow.mapSize.set(quality.shadow, quality.shadow);
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 480;
-  const ext = 78;
+  const ext = 62;
   sun.shadow.camera.left = -ext; sun.shadow.camera.right = ext; sun.shadow.camera.top = ext; sun.shadow.camera.bottom = -ext;
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.35; sun.shadow.radius = 2;
   sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun); scene.add(sun.target);
-  const hemi = new THREE.HemisphereLight(0x9fc0ea, 0x59683c, 0.85);
+  const hemi = new THREE.HemisphereLight(0xb0c6e0, 0x5f6e42, 2.6);
   scene.add(hemi);
 
   const _bike = new THREE.Vector3();
-  function update(time, bikePos) {
+  function update(time, bikePos, forward) {
     windUniform.value = time;
+    cloudUniform.value = time;
     skyUniforms.uTime.value = time;
     sky.position.copy(bikePos);
+    // shadow map centred ahead of the rider, where the detail is looked at
     _bike.copy(bikePos);
+    if (forward) _bike.addScaledVector(forward, 30);
     sun.target.position.copy(_bike);
     sun.position.copy(_bike).addScaledVector(sunDir, 240);
   }
 
-  return { scene, sun, sunDir, sky, update, materials: { roadMat, grassMat } };
+  for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
+  return { scene, sun, sunDir, sky, update, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
 };

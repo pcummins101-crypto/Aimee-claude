@@ -10,7 +10,9 @@ A first-person WebGL simulation of riding an Avenrà EVO around a quiet, traffic
 - **Junctions** – each side road is flared at the mouth, marked, signed (junction warning triangles on the main road, Give Way facing the side road, a fingerpost name plate) and closed with seven cones and a Road Closed board on a barrier frame.
 - **Boundaries** – hedgerows (normal-mapped hawthorn body with three rows of leaf-cluster cards, brambles at the foot and cow parsley in the verge), random-coursed dry-stone walls with normal maps, and post-and-wire fences; bends carry warning triangles and chevron boards; a national speed limit sign opens the run; telegraph poles with sagging wires run along one side.
 - **Landscape** – grass verges with a ditch and bank, tens of thousands of wind-swayed grass blades, far pasture with hay meadows, and around 400 volumetric trees (oak, ash and hawthorn built from a trunk, branches and leaf-cluster cards with canopy-sphere normals) along the road, in the hedge lines, scattered through the fields and in copses, plus field-boundary hedgerow lines.
-- **Sky and light** – a custom sky shader (Rayleigh-style gradient, sun disc and glow, drifting fbm clouds), a warm low sun with a 4k/2k PCF shadow map that follows the rider, hemisphere ambient, ACES tone mapping and exponential fog.
+- **Landscape, continued** – a ring of distant fells beyond the pasture read through the haze, flocks of sheep in the fields, dry-stone field walls running across the hillsides, and slow cloud shadows drifting over every ground surface.
+- **Sky and light** – a custom sky shader (Rayleigh-style gradient, sun disc and glow, drifting fbm clouds), a warm low sun with a 4k/2k PCF shadow map focused ahead of the rider, a strong sky-light hemisphere so shaded walls and hedges read like a bright British day, transmitted-light fill on foliage, and exponential haze.
+- **Photographic pipeline** – the scene renders in linear HDR into a multisampled half-float target; a quarter-resolution bloom lifts the sun, sky and headlamps, then one composite pass applies speed-scaled edge blur, slight chromatic aberration, ACES tone mapping, a colour grade, vignette and film grain. The road carries a sky reflection from the same environment map the cars use, and tree canopies sway in the wind. If the device cannot render to float targets the frame is drawn directly with the renderer's own ACES curve (`?nopost=1` forces this).
 
 ## Riding
 
@@ -49,6 +51,7 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | `src/25-vegetation.js` | volumetric tree geometry (three species, two variants each) and instancing with per-tree tint |
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
+| `src/45-post.js` | HDR post-processing: bloom, speed blur, tone mapping, grade, vignette, grain |
 | `src/50-traffic.js` | oncoming cars: lofted bodies, PBR materials with sky reflections, bend-aware speed, spacing, pass-by and collision events |
 | `src/90-main.js` | renderer setup, quality detection, corner-bar HUD, frame loop |
 

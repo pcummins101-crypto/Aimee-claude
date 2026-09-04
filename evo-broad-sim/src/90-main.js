@@ -102,7 +102,10 @@ function buildApp() {
   const quality = detectQuality();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', alpha: false });
   renderer.setPixelRatio(quality.pixelRatio);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // Tone mapping happens in the post-process composite (linear HDR scene);
+  // fall back to the renderer's ACES if float targets are unavailable.
+  const post = /nopost=1/.test(location.search) ? null : EVO.createPost(renderer, quality);
+  renderer.toneMapping = post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.88;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -121,6 +124,7 @@ function buildApp() {
     EVO.envMap = pm.fromScene(skyScene, 0.04, 1, 4000).texture;
     pm.dispose();
   } catch (e) { EVO.envMap = null; console.warn('environment map unavailable', e); }
+  if (EVO.envMap) { world.materials.roadMat.envMap = EVO.envMap; world.materials.roadMat.needsUpdate = true; }
   lap('envmap');
   const camera = new THREE.PerspectiveCamera(60, 1, 0.25, 2800);
   const bike = EVO.createBike();
@@ -146,6 +150,7 @@ function buildApp() {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     cockpit?.layout(w, h);
+    post?.resize();
   }
   window.addEventListener('resize', resize);
   resize();
@@ -172,9 +177,10 @@ function buildApp() {
     const portrait = window.innerHeight > window.innerWidth;
     bike.applyCamera(camera, portrait);
     bikePos.copy(bike.pos);
-    world.update(now / 1000, bikePos);
+    world.update(now / 1000, bikePos, bike.forward);
     audio.update(bike);
-    renderer.render(world.scene, camera);
+    if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000); }
+    else renderer.render(world.scene, camera);
     if (cockpit) cockpit.render(camera, bike, now / 1000);
     if (showStats) {
       frames += 1; fpsTime += dt;
@@ -186,7 +192,7 @@ function buildApp() {
     }
   }
   requestAnimationFrame(loop);
-  EVO.app = { renderer, world, camera, bike, controls, audio, quality, traffic, get cockpit() { return cockpit; } };
+  EVO.app = { renderer, world, camera, bike, controls, audio, quality, traffic, post, get cockpit() { return cockpit; } };
   return EVO.app;
 }
 
