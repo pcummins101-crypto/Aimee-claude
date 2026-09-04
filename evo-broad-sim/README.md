@@ -35,7 +35,7 @@ python3 -m http.server 8080
 node build.mjs
 ```
 
-writes `dist/index.html` (Three.js from cdnjs, all modules inlined, cockpit photograph embedded) and `dist/artifact.html` (the same page without the document wrapper, for hosting as a claude.ai artifact).
+writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photograph embedded, works offline) and `dist/artifact.html` (the same page without the document wrapper, for hosting as a claude.ai artifact).
 
 ## Layout
 
