@@ -15,17 +15,23 @@
     <div class="brand">AVENRÀ <span>EVO</span></div>
     <button id="mute" type="button" aria-pressed="false" aria-label="Mute sound">♪</button>
     <div id="stats" hidden></div>
+    <div id="corner" class="corner" aria-live="off">
+      <div class="track"><i id="corner-safe" class="zone safe"></i><i id="corner-limit" class="zone limit"></i><i id="corner-fill" data-status="safe"></i><b id="corner-marker"></b></div>
+      <div class="label"><span id="corner-text">OPEN ROAD</span><span id="corner-limits">SAFE 109 · MAX 109 MPH</span></div>
+    </div>
+    <div id="notice" class="notice" hidden></div>
     <div class="zones" aria-hidden="true"><span class="zone brake">BRAKE</span><span class="zone throttle">THROTTLE</span></div>
   </div>
   <div id="start">
     <div class="panel">
       <p class="kicker">PHOTOREAL RIDE · YORKSHIRE DALES B-ROAD</p>
       <h1>Avenrà <span>EVO</span></h1>
-      <p class="copy">A quiet two-way B road closed to traffic. Ride it as fast as the bends allow. Side turnings are coned off.</p>
+      <p class="copy">A quiet two-way Dales B road with light oncoming traffic. 0–60 in 3.9 s, 109 mph flat out. Every bend has a safe speed and a limit: the bar goes green, amber, red. Keep left. Side turnings are coned off.</p>
       <ul class="controls">
         <li><b>Steer</b> drag the upper half of the screen, tilt the phone, or use ← → / A D</li>
         <li><b>Throttle</b> hold the bottom-right of the screen, or ↑ / W</li>
         <li><b>Brake</b> hold the bottom-left of the screen, or ↓ / S / Space</li>
+        <li><b>Bends</b> amber and the bike drifts wide, red and it runs off; brake before the bend, not in it</li>
       </ul>
       <div class="actions">
         <button id="ride" type="button" disabled>LOADING…</button>
@@ -41,6 +47,7 @@
   <script type="module" src="./src/20-world.js"></script>
   <script type="module" src="./src/30-bike.js"></script>
   <script type="module" src="./src/40-overlay.js"></script>
+  <script type="module" src="./src/50-traffic.js"></script>
   <script type="module" src="./src/90-main.js"></script>
   <!-- /EVO_SCRIPTS -->
 </body>

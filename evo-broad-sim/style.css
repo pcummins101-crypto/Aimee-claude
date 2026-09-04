@@ -6,11 +6,27 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
 #mute { pointer-events: auto; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,.28); background: rgba(6,10,14,.5); color: #e6eef2; font-size: 16px; cursor: pointer; }
 #mute[aria-pressed="true"] { color: #6a7d86; text-decoration: line-through; }
 #stats { position: absolute; top: max(36px, calc(env(safe-area-inset-top) + 26px)); left: max(14px, env(safe-area-inset-left)); font: 600 11px/1.3 ui-monospace, Menlo, monospace; color: #9fe1f2; text-shadow: 0 1px 4px #000; }
+#hud .corner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(54vw, 560px); pointer-events: none; }
+#hud .corner .track { position: relative; height: 9px; background: rgba(6,10,14,.62); border: 1px solid rgba(255,255,255,.18); overflow: hidden; }
+#hud .corner .zone { position: absolute; top: 0; bottom: 0; }
+#hud .corner .zone.safe { left: 0; background: rgba(61,220,132,.28); }
+#hud .corner .zone.limit { background: rgba(255,176,46,.32); }
+#hud .corner .track::after { content: ""; position: absolute; top: 0; bottom: 0; left: 80%; right: 0; background: rgba(255,59,74,.32); }
+#hud .corner #corner-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #3ddc84; transition: background-color .15s; z-index: 1; }
+#hud .corner #corner-fill[data-status="limit"] { background: #ffb02e; }
+#hud .corner #corner-fill[data-status="over"] { background: #ff3b4a; }
+#hud .corner #corner-marker { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #fff; z-index: 2; }
+#hud .corner .label { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif; font-weight: 700; font-size: 12px; letter-spacing: .08em; white-space: nowrap; color: rgba(236,244,247,.86); text-shadow: 0 1px 4px #000; font-variant-numeric: tabular-nums; }
+#hud .notice { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); padding: 10px 18px; font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif; font-weight: 800; font-size: clamp(18px, 3.4vw, 30px); letter-spacing: .16em; color: #fff; background: rgba(6,10,14,.55); border-left: 4px solid #ffb02e; text-shadow: 0 1px 6px #000; white-space: nowrap; }
+#hud .notice[data-tone="crash"] { border-left-color: #ff3b4a; background: rgba(60,8,14,.7); }
+#hud .notice[data-tone="over"] { border-left-color: #ff3b4a; }
+@media (max-width: 700px) { #hud .corner { width: 56vw; } #hud .corner .label { font-size: 10px; } }
 #hud .zones { position: absolute; left: 0; right: 0; bottom: max(10px, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; padding: 0 18px; }
 #hud .zone { font-size: 10px; letter-spacing: .3em; font-weight: 800; color: rgba(236,244,247,.42); text-shadow: 0 1px 4px #000; }
 @media (pointer: fine) { #hud .zones { display: none; } }
 #start { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 30%, rgba(12,22,30,.72), rgba(4,7,10,.94)); backdrop-filter: blur(6px); transition: opacity .5s; z-index: 5; }
 #start.is-hidden { opacity: 0; pointer-events: none; }
+#start[hidden] { display: none; }
 #start .panel { max-width: 560px; width: min(92vw, 560px); padding: 26px 28px; border: 1px solid rgba(190,220,230,.16); background: rgba(6,10,14,.72); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
 #start .kicker { margin: 0 0 6px; font-size: 10px; letter-spacing: .3em; font-weight: 800; color: #ef3a4c; }
 #start h1 { margin: 0 0 12px; font-family: "Barlow Condensed", "Arial Narrow", Arial, sans-serif; font-size: clamp(38px, 7vw, 58px); letter-spacing: .06em; font-weight: 800; text-transform: uppercase; line-height: .95; text-wrap: balance; }

@@ -21,6 +21,38 @@ function setStatus(text, error = false) {
 window.addEventListener('error', (e) => setStatus(`Something went wrong: ${e.message || e.error || 'unknown error'}`, true));
 window.addEventListener('unhandledrejection', (e) => setStatus(`Something went wrong: ${e.reason?.message || e.reason || 'unknown error'}`, true));
 
+/* Corner-speed bar and notices. Green: under the safe speed for the road
+ * ahead. Amber: between safe and the tyres' limit; the bike drifts wide and
+ * needs holding. Red: over the limit; it will run off. */
+EVO.createHud = function createHud(bike) {
+  const bar = document.getElementById('corner-fill'), marker = document.getElementById('corner-marker');
+  const safeZone = document.getElementById('corner-safe'), limitZone = document.getElementById('corner-limit');
+  const text = document.getElementById('corner-text'), limits = document.getElementById('corner-limits');
+  const notice = document.getElementById('notice');
+  const mph = (v) => Math.round(v * 2.23694);
+  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '';
+  return {
+    update() {
+      const c = bike.corner;
+      const scale = c.max * 1.25; // bar spans 0 .. 125 % of the maximum
+      const x = EVO.clamp(bike.v / scale, 0, 1);
+      bar.style.width = `${(x * 100).toFixed(1)}%`;
+      marker.style.left = `${(x * 100).toFixed(1)}%`;
+      safeZone.style.width = `${(c.safe / scale * 100).toFixed(1)}%`;
+      limitZone.style.left = `${(c.safe / scale * 100).toFixed(1)}%`;
+      limitZone.style.width = `${((c.max - c.safe) / scale * 100).toFixed(1)}%`;
+      if (c.status !== lastStatus) { bar.dataset.status = c.status; lastStatus = c.status; }
+      const where = c.bendDist < 8 ? 'IN BEND' : `BEND ${Math.round(c.bendDist)} M`;
+      const t = c.bendDist < 170 ? `${c.bendDir > 0 ? 'LEFT' : 'RIGHT'} ${where} · SAFE ${mph(c.bendSafe)} · MAX ${mph(c.bendMax)}` : 'OPEN ROAD';
+      if (t !== lastText) { text.textContent = t; lastText = t; }
+      const l = c.max >= EVO.V_MAX - 0.1 ? 'NO LIMIT AHEAD' : `BRAKE POINT ${mph(c.safe)}–${mph(c.max)}`;
+      if (l !== lastLimits) { limits.textContent = l; lastLimits = l; }
+      const n = bike.notice ? bike.notice.text : '';
+      if (n !== lastNotice) { notice.textContent = n; notice.hidden = !n; notice.dataset.tone = bike.notice?.tone || ''; lastNotice = n; }
+    }
+  };
+};
+
 function boot() {
   // The start panel must work before anything heavy runs, so bind it first
   // and build the world on the next frame while the status line explains.
@@ -32,6 +64,7 @@ function boot() {
     if (!app) { ridePending = true; return; }
     app.audio.start();
     start.classList.add('is-hidden');
+    setTimeout(() => { start.hidden = true; }, 600); // drop the blurred panel entirely once faded
     if (app.quality.coarse) {
       try { await document.documentElement.requestFullscreen?.(); } catch (e) { /* not available in this host */ }
       try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* not available in this host */ }
@@ -82,6 +115,8 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 4 : 5 });
+  const hud = EVO.createHud(bike);
 
   let cockpit = null;
   const cockpitUrl = window.EVO_COCKPIT_URL || './assets/cockpit.png';
@@ -117,6 +152,10 @@ function buildApp() {
     acc += dt;
     let steps = 0;
     while (acc >= STEP && steps < 8) { bike.step(STEP); acc -= STEP; steps += 1; }
+    const events = traffic.update(dt);
+    if (events.collision && bike.crashTimer <= 0) { bike.crash('COLLISION · ONCOMING CAR'); audio.thump(); }
+    if (events.passBy) audio.passBy(events.passBy.closing, events.passBy.gap);
+    hud.update();
     const portrait = window.innerHeight > window.innerWidth;
     bike.applyCamera(camera, portrait);
     bikePos.copy(bike.pos);
@@ -134,7 +173,7 @@ function buildApp() {
     }
   }
   requestAnimationFrame(loop);
-  EVO.app = { renderer, world, camera, bike, controls, audio, quality, get cockpit() { return cockpit; } };
+  EVO.app = { renderer, world, camera, bike, controls, audio, quality, traffic, get cockpit() { return cockpit; } };
   return EVO.app;
 }
 

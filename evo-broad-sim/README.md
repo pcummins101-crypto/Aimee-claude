@@ -14,6 +14,8 @@ A first-person WebGL simulation of riding an Avenrà EVO around a quiet, traffic
 
 ## Riding
 
+The powertrain is fitted to the EVO's figures: 0–60 mph in 3.9 s and a 109 mph terminal speed. Every metre of road carries a **safe** cornering speed (0.57 g) and a **maximum** (0.88 g) derived from its radius; the corner bar at the top of the screen plans ahead for braking and turns green, amber or red. Between safe and maximum the bike drifts towards the outside of the bend and needs holding; above the maximum it runs off into the verge and the hedge. Light oncoming traffic circulates the loop in the other lane, slowing for bends and junctions; cross the centre line into its path and you will collide.
+
 - **Steer**: drag the upper half of the screen, tilt the phone (Enable Tilt Steering on the start screen), or ← → / A D.
 - **Throttle**: hold the bottom-right of the screen, or ↑ / W.
 - **Brake**: hold the bottom-left of the screen, or ↓ / S / Space.
@@ -46,6 +48,7 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | `src/20-world.js` | mesh builders for road, verges, pasture, boundaries, junctions, markings, signs, sky, sun |
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
-| `src/90-main.js` | renderer setup, quality detection, frame loop |
+| `src/50-traffic.js` | oncoming cars: procedural model, bend-aware speed, pass-by and collision events |
+| `src/90-main.js` | renderer setup, quality detection, corner-bar HUD, frame loop |
 
 Everything except the cockpit photograph (`assets/cockpit.png`) is generated at runtime from a fixed seed, so the road is identical on every device.

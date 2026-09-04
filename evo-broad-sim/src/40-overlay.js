@@ -127,6 +127,12 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
     c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
     c.fillText('HYPERCORE', 330, 36);
     c.textAlign = 'right'; c.fillText('BAT 91%', 488, 36);
+    // corner-speed lamp: green safe, amber on the limit, red too fast
+    const st = bike.corner.status;
+    c.fillStyle = st === 'safe' ? '#3ddc84' : st === 'limit' ? '#ffb02e' : '#ff3b4a';
+    c.beginPath(); c.arc(330, 96, 9, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
+    c.fillText(`CORNER ${Math.round(bike.corner.max * 2.23694)}`, 348, 102);
     dashTex.needsUpdate = true;
   }
 
@@ -193,7 +199,7 @@ EVO.createAudio = function createAudio() {
     const ambGain = ctx.createGain(); ambGain.gain.value = 0.012;
     noise.connect(amb).connect(ambGain).connect(master);
     whine.start(); whine2.start(); noise.start();
-    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain };
+    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain, noiseBuffer: buf };
   }
   function update(bike) {
     if (!ctx || !nodes) return;
@@ -209,5 +215,26 @@ EVO.createAudio = function createAudio() {
     nodes.rumbleGain.gain.setTargetAtTime(bike.rumble * 0.9, t, 0.05);
   }
   function setMuted(m) { if (nodes) nodes.master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
-  return { start, update, setMuted };
+  // Oncoming car pass-by: a short noise swell with a falling Doppler sweep.
+  function passBy(closingSpeed = 30, gap = 2) {
+    if (!ctx || !nodes) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = nodes.noiseBuffer; src.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.1;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(bp).connect(g).connect(nodes.master);
+    const loud = clamp(0.35 + closingSpeed / 60, 0.3, 0.9) * clamp(1.6 - gap * 0.25, 0.4, 1);
+    bp.frequency.setValueAtTime(1500, t); bp.frequency.exponentialRampToValueAtTime(380, t + 0.75);
+    g.gain.linearRampToValueAtTime(loud, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    src.start(t); src.stop(t + 1);
+  }
+  function thump() {
+    if (!ctx || !nodes) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = nodes.noiseBuffer;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    const g = ctx.createGain(); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    src.connect(lp).connect(g).connect(nodes.master); src.start(t); src.stop(t + 0.7);
+  }
+  return { start, update, setMuted, passBy, thump };
 };
