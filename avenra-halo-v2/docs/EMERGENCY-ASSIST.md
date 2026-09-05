@@ -28,6 +28,21 @@ An unused arm expires after two hours. An active session ends when Ride mode end
 
 GPS locates the rider's phone. A linked customer motorcycle must not be presented as the physical demonstrator unless the operational handover process has independently verified that bike. Test rides are stored with a test ride mode so they do not affect the rider's persistent ride-risk indicator.
 
+## Impact detection
+
+Detection runs in the rider's browser from the phone's accelerometer. Every crash threshold is expressed as a **gravity-free** g value, so the raw `DeviceMotion` resultant is never compared with one directly: a handset that only exposes `accelerationIncludingGravity` reads about 1g at rest, and comparing that resultant with a threshold measures gravity and road vibration rather than impact energy. Halo tracks a slow low-pass estimate of the gravity vector and subtracts it before anything is tested.
+
+A sample only becomes a possible impact when all of the following hold:
+
+- Ride mode has been running for at least the settle window (10 seconds by default). Mounting the phone, stowing it and starting the bike all produce large spikes, and none of them may open an incident.
+- The gravity estimate has converged over at least 20 motion samples.
+- The calibrated GPS speed is at or above 15 mph **and** comes from a fix no more than 10 seconds old. A stale speed must never keep detection armed after the rider has stopped.
+- The impulse persists across a short window rather than appearing in one anomalous sample.
+
+A possible impact of 2.5g or more opens a candidate only once the ride's speed then collapses below 5 mph within five seconds. Halo dispatches on the accelerometer alone only above a separate, much higher immediate threshold (6g by default). Sustained vibration cannot push that confirmation window forward: an open possible impact keeps the moment it was first seen and only takes the higher peak.
+
+The responder's impact figure is the gravity-free peak. The raw resultant and the individual axes are still stored as evidence. Every threshold is an option on the ride engine, so an installation can tune them without changing the detection logic.
+
 ## Live sequence
 
 1. Ride mode detects a possible high-energy impact and opens a full-screen 20-second cancellation state.
@@ -52,6 +67,14 @@ define( 'AVENRA_FIRETEXT_API_KEY', 'replace-with-the-live-server-key' );
 ```
 
 The adapter submits to FireText's HTTPS `sendsms` endpoint and treats only status `0` as accepted. The default sender is `Avenra`. An installation can replace the adapter with the `avenra_halo_v2_emergency_sms_delivery` filter, but it must return success only after a provider has accepted the message.
+
+Every Halo SMS goes through that one adapter. The context array names which message is being sent through `role`, which is `primary`, `backup` or `next_of_kin`; a next-of-kin message also carries `kind` (`test` or `crash`) and `customer_id`. An adapter that only reads `destination` and `message` needs no change.
+
+### Next-of-kin transport
+
+The rider's own next-of-kin alert — the **Send test alert** button in Halo Safety, the direct crash alert and the responder's post-999 notification — prefers the Halo V1 `send_test_nok_alert` / `send_nok_crash_alert_v2` admin-ajax actions where they are installed. On a site running Halo V2 without them, Halo sends the message itself through the adapter above rather than reporting that the alert service is unavailable.
+
+Halo falls back **only** when nothing could have been dispatched by V1: no listener is registered, or the bridge refused the action before running it. A V1 callback that ran and then failed may already have submitted a message, so any other failure is reported as an outage instead of risking a second SMS. A test message is unmistakably labelled as a test and carries no location; only a real incident carries a map link. An unconfigured provider, an unusable saved number and an unconfirmed provider response are reported as three distinct outcomes, and an unconfirmed submission is never presented to the rider as sent.
 
 The packaged responder destinations are the requested primary ending **7559** and fallback ending **2606**. Keep both devices on a tested, documented 24/7 rota. The software cannot establish staffing coverage by itself.
 

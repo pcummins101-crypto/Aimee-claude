@@ -4,7 +4,7 @@ Tags: avenra, halo, motorcycle, pwa, customer-portal
 Requires at least: 6.3
 Tested up to: 6.8
 Requires PHP: 8.0
-Stable tag: 2.7.1
+Stable tag: 2.7.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,14 @@ Browser-private storage is origin/profile scoped, not application-encrypted stor
 Halo Community is disabled until a rider explicitly joins. Its public identity is limited to a rider-chosen username and optional bio; customer identity, motorcycles, rides, locations, Emergency Assist information and ride-risk indicators are not exposed through Community. Direct messages are stored by Halo and are not end-to-end encrypted. See `docs/COMMUNITY.md` before launch.
 
 == Changelog ==
+
+= 2.7.2 =
+* Fixed the false Emergency Assist activation reported shortly after a Halo ride starts. Crash detection compared the raw accelerometer resultant with its thresholds, so a handset that only exposes `accelerationIncludingGravity` measured gravity plus road vibration rather than impact energy. Gravity is now removed with a slow low-pass estimate before any sample reaches a threshold.
+* Required a possible impact to persist across a short impulse window instead of arming on one anomalous sample, and raised the bar for dispatching on the accelerometer alone. A moderate impact still waits for the corroborating collapse in speed.
+* Disarmed crash detection during the first seconds of Ride mode and whenever the GPS fix behind the speed gate is stale, so mounting or stowing the phone and a lost signal can no longer open an incident.
+* Recorded the gravity-free peak as the responder's impact figure while still keeping the raw resultant and axes as evidence.
+* Fixed **Send test alert** and the responder's next-of-kin notification reporting that the alert service was temporarily unavailable on a site without the Halo V1 compatibility action. Halo now sends the message through its own SMS provider when, and only when, nothing could have been dispatched by V1.
+* Reported an unconfigured provider, an invalid saved next-of-kin number and an unconfirmed provider response as distinct outcomes instead of one retryable outage.
 
 = 2.7.1 =
 * Added a polished `?install=1` website hand-off that opens Halo's own installer and keeps the browser installation prompt behind an explicit rider tap.

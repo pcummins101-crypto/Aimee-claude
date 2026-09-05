@@ -20,6 +20,23 @@ final class Avenra_Halo_V2_Legacy_Bridge {
 	}
 
 	/**
+	 * Whether anything is actually listening for a legacy action. A caller that
+	 * has its own fallback needs to know this before dispatching, because a
+	 * callback that ran and then failed may already have had a side effect.
+	 */
+	public function has_handler( string $action ): bool {
+		$action = sanitize_key( $action );
+		if ( '' === $action ) {
+			return false;
+		}
+		if ( has_filter( 'avenra_halo_v2_legacy_bridge_result' ) ) {
+			return true;
+		}
+
+		return has_action( 'wp_ajax_' . $action ) || has_action( 'wp_ajax_nopriv_' . $action );
+	}
+
+	/**
 	 * @param array<string,mixed> $payload
 	 * @return array<string,mixed>|WP_Error
 	 */

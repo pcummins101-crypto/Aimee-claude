@@ -1150,8 +1150,11 @@ final class Avenra_Halo_V2_REST {
 			'send_test_nok_alert'
 		);
 		if ( is_wp_error( $result ) ) {
-			$status = 'nok_alert_not_enabled' === $result->get_error_code() ? 409 : 503;
-			return Avenra_Halo_V2_Response::error( $result->get_error_code(), $result->get_error_message(), $status, array( 'retryable' => 503 === $status ) );
+			$code      = $result->get_error_code();
+			$data      = $result->get_error_data();
+			$status    = in_array( $code, array( 'nok_alert_not_enabled', 'nok_mobile_invalid' ), true ) ? 409 : 503;
+			$retryable = is_array( $data ) && array_key_exists( 'retryable', $data ) ? (bool) $data['retryable'] : 503 === $status;
+			return Avenra_Halo_V2_Response::error( $code, $result->get_error_message(), $status, array( 'retryable' => $retryable ) );
 		}
 		return Avenra_Halo_V2_Response::success( array( 'sent' => true, 'message' => __( 'The test alert was sent to your saved next of kin.', 'avenra-halo-v2' ), 'provider' => $result ) );
 	}
@@ -1398,8 +1401,11 @@ final class Avenra_Halo_V2_REST {
 		$result = $this->perform_nok_safety_alert( 'crash', $payload, $customer, 'send_nok_crash_alert_v2' );
 		if ( is_wp_error( $result ) ) {
 			$this->db->clear_rate_limit( 'crash-event', $event_bucket );
-			$status = 'nok_alert_not_enabled' === $result->get_error_code() ? 409 : 503;
-			return Avenra_Halo_V2_Response::error( $result->get_error_code(), $result->get_error_message(), $status, array( 'retryable' => 503 === $status ) );
+			$code      = $result->get_error_code();
+			$data      = $result->get_error_data();
+			$status    = in_array( $code, array( 'nok_alert_not_enabled', 'nok_mobile_invalid' ), true ) ? 409 : 503;
+			$retryable = is_array( $data ) && array_key_exists( 'retryable', $data ) ? (bool) $data['retryable'] : 503 === $status;
+			return Avenra_Halo_V2_Response::error( $code, $result->get_error_message(), $status, array( 'retryable' => $retryable ) );
 		}
 
 		$response = array( 'sent' => true, 'event_id' => $event_id, 'provider' => $result );
@@ -4665,15 +4671,28 @@ final class Avenra_Halo_V2_REST {
 			return $result;
 		}
 
-		$legacy = Avenra_Halo_V2_Legacy_Bridge::instance()->dispatch( $legacy_action, $payload, (int) $customer->id );
-		if ( is_wp_error( $legacy ) ) {
-			return new WP_Error( 'alert_provider_unavailable', __( 'The next-of-kin alert service is temporarily unavailable.', 'avenra-halo-v2' ) );
+		$bridge = Avenra_Halo_V2_Legacy_Bridge::instance();
+		if ( $bridge->has_handler( $legacy_action ) ) {
+			$legacy = $bridge->dispatch( $legacy_action, $payload, (int) $customer->id );
+			if ( ! is_wp_error( $legacy ) ) {
+				$success = ! empty( $legacy['success'] ) || 'ok' === ( $legacy['status'] ?? '' ) || ! empty( $legacy['data']['sent'] );
+				if ( ! $success ) {
+					return new WP_Error( 'alert_provider_failed', sanitize_text_field( (string) ( $legacy['message'] ?? $legacy['data']['message'] ?? __( 'The alert provider did not accept the message.', 'avenra-halo-v2' ) ) ) );
+				}
+				return $legacy;
+			}
+			// A V1 callback that ran may already have submitted the message, so only
+			// an error proving nothing was dispatched may fall through to Halo's own
+			// SMS transport. Anything else must not risk sending a second alert.
+			if ( ! in_array( $legacy->get_error_code(), array( 'legacy_action_missing', 'legacy_action_disabled', 'legacy_action_not_allowed' ), true ) ) {
+				return new WP_Error( 'alert_provider_unavailable', __( 'The next-of-kin alert service is temporarily unavailable.', 'avenra-halo-v2' ) );
+			}
 		}
-		$success = ! empty( $legacy['success'] ) || 'ok' === ( $legacy['status'] ?? '' ) || ! empty( $legacy['data']['sent'] );
-		if ( ! $success ) {
-			return new WP_Error( 'alert_provider_failed', sanitize_text_field( (string) ( $legacy['message'] ?? $legacy['data']['message'] ?? __( 'The alert provider did not accept the message.', 'avenra-halo-v2' ) ) ) );
-		}
-		return $legacy;
+
+		// Halo V2 sends the alert itself when the V1 compatibility action is not
+		// installed. Without this a V2-only site has no next-of-kin transport and
+		// every test and crash alert reports the service as unavailable.
+		return Avenra_Halo_V2_Emergency::instance()->send_next_of_kin_sms( $customer, $kind, $payload );
 	}
 
 	/** @return array<string,mixed> */

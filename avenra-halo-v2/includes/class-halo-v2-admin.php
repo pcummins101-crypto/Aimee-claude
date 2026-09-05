@@ -72,6 +72,9 @@ final class Avenra_Halo_V2_Admin {
 						)
 					);
 				?></p>
+				<p><?php echo ! empty( $emergency['nok_direct_sms'] )
+					? esc_html__( 'Next-of-kin alerts can be sent by Halo itself when the Halo V1 compatibility action is not installed.', 'avenra-halo-v2' )
+					: esc_html__( 'Next-of-kin alerts depend entirely on the Halo V1 compatibility action: Halo has no SMS transport of its own configured.', 'avenra-halo-v2' ); ?></p>
 				<?php if ( empty( $emergency['ready'] ) ) : ?><p><?php esc_html_e( 'Configure the server-only FireText key (or the Emergency Assist SMS delivery filter) and verify encryption support before enabling riders.', 'avenra-halo-v2' ); ?></p><?php endif; ?>
 				<p><?php esc_html_e( 'The 15-second backup is best effort unless the site runs a continuously executing external queue worker.', 'avenra-halo-v2' ); ?></p>
 			</div>

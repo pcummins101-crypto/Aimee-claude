@@ -177,7 +177,19 @@
                 gpsTimeout: 15000,
                 maximumAge: 1000,
                 maxAccuracyMetres: 100,
+                /* Every crash threshold below is a gravity-free (dynamic) g value.
+                 * A handset that only exposes accelerationIncludingGravity reads
+                 * about 1g at rest, so the raw resultant must never be compared
+                 * with these numbers. See handleMotion(). */
                 crashGThreshold: 2.5,
+                crashImmediateGThreshold: 6,
+                crashMinSpeedMph: 15,
+                crashArmDelayMs: 10000,
+                crashMinMotionSamples: 20,
+                crashImpulseWindowMs: 250,
+                crashImpulseSamples: 2,
+                crashSpeedFreshnessMs: 10000,
+                gravityFilterSeconds: 1,
                 crashCountdownSeconds: 20,
                 maxTrackPoints: 12000,
                 persistEveryPoints: 8,
@@ -216,6 +228,9 @@
             this.orientationSnapshot = null;
             this.lastOrientationAt = 0;
             this.lastAcceleration = null;
+            this.gravityVector = null;
+            this.impulseSamples = [];
+            this.ridingSince = 0;
             this.peakDynamicG = 0;
             this.harshEventCount = 0;
             this.lastHarshEventAt = 0;
@@ -311,6 +326,7 @@
 				assertIdentity();
                 this.startGps();
                 this.telemetryTimer = window.setInterval(() => this.publishTelemetry(), this.options.telemetryIntervalMs);
+                this.ridingSince = Date.now();
                 this.transition('riding', { rideId: this.session.id });
                 return this.session.id;
             } catch (error) {
@@ -372,9 +388,12 @@
             if (!values) return;
             const gForce = Math.sqrt(values[0] ** 2 + values[1] ** 2 + values[2] ** 2) / 9.80665;
             // DeviceMotion may expose either linear acceleration or a vector
-            // containing gravity. Store a comparable dynamic value for the ride
-            // summary while preserving the raw resultant used by crash detection.
-			const dynamicG = usingLinear ? gForce : Math.abs(gForce - 1);
+            // containing gravity. A gravity-inclusive sample reads about 1g at
+            // rest, so gravity is removed with a slow low-pass estimate before
+            // anything compares the sample with a crash threshold. The raw
+            // resultant is still kept as responder evidence.
+            const dynamicAxes = usingLinear ? values : this.withoutGravity(values, event.interval);
+            const dynamicG = Math.sqrt(dynamicAxes[0] ** 2 + dynamicAxes[1] ** 2 + dynamicAxes[2] ** 2) / 9.80665;
 			const sampledAt = Date.now();
 			this.motionSamples += 1;
 			if (this.currentSpeed >= 3) this.peakDynamicG = Math.max(this.peakDynamicG, dynamicG);
@@ -392,11 +411,27 @@
                 intervalMs: rounded(event.interval, 1),
                 at: sampledAt,
             };
-            if (gForce < this.options.crashGThreshold || this.currentSpeed < 15) return;
+            // A single anomalous sample is a sensor spike, not a collision. Keep a
+            // short window of shoulder-level samples so an impact has to persist
+            // across the window before it can become a candidate.
+            const impulse = this.recordImpulse(dynamicG, sampledAt);
+            if (dynamicG < this.options.crashGThreshold) return;
+            if (impulse.length < this.options.crashImpulseSamples) return;
+            if (!this.crashDetectionArmed(sampledAt)) return;
+            const peakG = impulse.reduce((peak, sample) => Math.max(peak, sample.g), 0);
+            // Sustained vibration must not keep pushing the confirmation window
+            // forward: an open pending impact keeps its original moment and only
+            // takes the higher peak.
+            const openImpact = this.pendingImpact && sampledAt - this.pendingImpact.at < 5000 ? this.pendingImpact : null;
+            if (openImpact) {
+                openImpact.gForce = Math.max(Number(openImpact.gForce) || 0, peakG);
+                if (openImpact.gForce >= this.options.crashImmediateGThreshold) this.raiseCrashCandidate(openImpact);
+                return;
+            }
             const recentTelemetry = this.compactTrace(this.session?.points || [], 18);
             const impactAt = Date.now();
             this.pendingImpact = {
-                gForce,
+                gForce: peakG,
                 speedMph: this.currentSpeed,
                 previousSpeedMph: this.previousSpeed,
                 moving: this.currentSpeed >= 3,
@@ -412,8 +447,54 @@
                 occurred_at: new Date(impactAt).toISOString(),
                 at: impactAt,
             };
-            if (gForce >= this.options.crashGThreshold * 1.8) this.raiseCrashCandidate(this.pendingImpact);
+            // Below the immediate threshold Halo waits for the corroborating
+            // speed collapse in acceptPosition() rather than dispatching on the
+            // accelerometer alone.
+            if (peakG >= this.options.crashImmediateGThreshold) this.raiseCrashCandidate(this.pendingImpact);
         };
+
+        /**
+         * Low-pass the gravity vector and return the high-passed sample. The
+         * filter is time-constant based so it behaves the same at 16Hz and
+         * 60Hz: gravity tracks slowly enough that an impact passes through.
+         */
+        withoutGravity(values, intervalMs) {
+            const seconds = clamp((Number(intervalMs) || 50) / 1000, 0.005, 0.2);
+            const alpha = Math.exp(-seconds / Math.max(0.05, this.options.gravityFilterSeconds));
+            if (!Array.isArray(this.gravityVector)) {
+                this.gravityVector = [values[0], values[1], values[2]];
+                return [0, 0, 0];
+            }
+            const gravity = this.gravityVector;
+            for (let axis = 0; axis < 3; axis += 1) {
+                gravity[axis] = (alpha * gravity[axis]) + ((1 - alpha) * values[axis]);
+            }
+            return [values[0] - gravity[0], values[1] - gravity[1], values[2] - gravity[2]];
+        }
+
+        /** Keep the shoulder-level samples seen inside the impulse window. */
+        recordImpulse(dynamicG, sampledAt) {
+            const shoulder = this.options.crashGThreshold * 0.6;
+            if (dynamicG >= shoulder) this.impulseSamples.push({ at: sampledAt, g: dynamicG });
+            while (this.impulseSamples.length && sampledAt - this.impulseSamples[0].at > this.options.crashImpulseWindowMs) {
+                this.impulseSamples.shift();
+            }
+            return this.impulseSamples;
+        }
+
+        /**
+         * Crash detection stays disarmed until the ride is genuinely under way.
+         * Mounting the phone, stowing it or starting the bike all produce large
+         * accelerometer spikes in the first seconds of Ride mode, and a stale
+         * GPS speed must never keep the detector armed after the rider stops.
+         */
+        crashDetectionArmed(sampledAt) {
+            if (this.state !== 'riding' || !this.ridingSince) return false;
+            if (sampledAt - this.ridingSince < this.options.crashArmDelayMs) return false;
+            if (this.motionSamples < this.options.crashMinMotionSamples) return false;
+            if (!this.lastAcceptedAt || sampledAt - this.lastAcceptedAt > this.options.crashSpeedFreshnessMs) return false;
+            return this.currentSpeed >= this.options.crashMinSpeedMph;
+        }
 
         handleOrientation = event => {
             if (this.state !== 'riding') return;
