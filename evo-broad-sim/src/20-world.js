@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — world builder.
  *
@@ -61,7 +62,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const L = RT.length;
   const T = {
     asphalt: EVO.tex.asphalt(), wear: EVO.tex.roadWear(), grass: EVO.tex.grass(), leaf: EVO.tex.hedgeLeaf(),
-    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), haw: EVO.tex.leafCluster('hawthorn', 37), umbel: EVO.tex.umbel(),
+    hedge: EVO.tex.hedgeBody(), stone: EVO.tex.stone(), haw: EVO.tex.leafCluster('hawthorn', 37), umbel: EVO.tex.umbel(), foxglove: EVO.tex.foxglove(),
     blade: EVO.tex.blade(), cone: EVO.tex.cone()
   };
 
@@ -74,18 +75,18 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     mat.customProgramCacheKey = () => mat.userData.shaderTag;
   };
   const roadMat = new THREE.MeshStandardMaterial({
-    map: T.asphalt.map, normalMap: T.asphalt.normalMap, normalScale: new THREE.Vector2(0.75, 0.75),
-    roughnessMap: T.asphalt.roughnessMap, roughness: 0.88, metalness: 0.02, vertexColors: true, envMapIntensity: 0.55
+    map: T.asphalt.map, normalMap: T.asphalt.normalMap, normalScale: new THREE.Vector2(0.3, 0.3),
+    roughnessMap: T.asphalt.roughnessMap, roughness: 0.95, metalness: 0.01, vertexColors: true, envMapIntensity: 0.16, color:0xc6c0b5
   });
   roadMat.onBeforeCompile = (shader) => {
     shader.uniforms.wearMap = { value: T.wear };
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D wearMap;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n{ vec4 wear = texture2D(wearMap, vec2(vMapUv.x, vMapUv.y * 0.155)); diffuseColor.rgb *= mix(vec3(1.0), wear.rgb, 0.85); }');
+      .replace('#include <map_fragment>', '#include <map_fragment>\n{ vec4 wear = texture2D(wearMap, vec2(vMapUv.x, vMapUv.y * 0.155)); diffuseColor.rgb *= mix(vec3(1.0), wear.rgb, 0.56); }');
   };
   EVO.tagShader(roadMat, 'roadwear');
   const grassMat = new THREE.MeshStandardMaterial({
-    map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 0, vertexColors: true
+    map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.24, 0.24), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const hedgeMat = new THREE.MeshStandardMaterial({ map: T.hedge.map, normalMap: T.hedge.normalMap, normalScale: new THREE.Vector2(0.85, 0.85), roughness: 0.92, metalness: 0, vertexColors: true, emissive: 0x1c2c0c, emissiveIntensity: 0.15 });
@@ -104,7 +105,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   EVO.addFoliageFill(leafMat, 0.16);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
-  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, emissive: 0x2a3a10, emissiveIntensity: 0.5 });
+  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color:0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
   const windUniform = { value: 0 };
   EVO.windUniform = windUniform;
   bladeMat.onBeforeCompile = (shader) => {
@@ -152,6 +153,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     return PROFILE[PROFILE.length - 1][1];
   }
   const _v = new THREE.Vector3();
+  const groundMeshes = [];
   // Ground height at (s, signed d). Flattens across junction mouths and under side roads.
   function groundAt(s, d) {
     const f = RT.frame(s);
@@ -171,25 +173,30 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const w = smoothstep(sideInf.j.halfWidth + 0.8, sideInf.j.halfWidth + 5.5, sideInf.dist);
       h = Math.min(h, lerp(sideInf.y - 0.12, h, w));
     }
+    h = RT.villageGround(s, d, h, f);
     return { x, y: h, z, f };
   }
 
   /* -------------------------------------------------------------- road */
   {
     const sink = new GeoSink();
-    const D = [-3.1, -2.4, -1.4, -0.5, 0.5, 1.4, 2.4, 3.1];
+    const D = [-3.1,-2.95,-2.72,-2.57,-2.42,-2.27,-2.12,-1.97,-1.8,-1.63,-1.4,-.5,.5,1.4,1.63,1.8,1.97,2.12,2.27,2.42,2.57,2.72,2.95,3.1];
     const rows = [];
-    for (let i = 0; i < RT.R.n; i += 1) {
-      const s = i * RT.SAMPLE;
+    const roadSamples = new Set();
+    for (let i=0;i<RT.R.n;i++) roadSamples.add(Number((i*RT.SAMPLE).toFixed(5)));
+    for (const h of [...RT.detailPlan.humps,...RT.detailPlan.strips,...RT.detailPlan.potholes,...RT.detailPlan.covers.map(c=>({...c,length:.8}))]) {
+      for(let s=h.s-h.length/2-.5;s<=h.s+h.length/2+.5;s+=.1)roadSamples.add(Number(s.toFixed(5)));
+    }
+    for (const s of [...roadSamples].sort((a,b)=>a-b)) {
       const f = RT.frame(s);
       const tint = 0.9 + (EVO.fbm(s / 41, 0.3, 2) - 0.5) * 0.28;
       rows.push(D.map((d) => ({
-        x: f.x + f.nx * d, y: f.y + RT.crown(d), z: f.z + f.nz * d,
+        x: f.x + f.nx * d, y: f.y + RT.crown(d) + RT.surfaceAt(s,d), z: f.z + f.nz * d,
         u: (d + 3.1) / 6.2, v: s / 6.2, r: tint, g: tint, b: tint * 1.01
       })));
     }
     stripRows(sink, rows, true);
-    const mesh = new THREE.Mesh(sink.build(), roadMat);
+    const mesh = new THREE.Mesh(sink.build(), roadMat);mesh.name='crowned carriageway';
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
@@ -205,14 +212,22 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const rows = [];
     for (let i = 0; i < RT.R.n; i += 2) {
       const s = i * RT.SAMPLE;
+      // Grass darkens where it meets a hedge or wall: the cheap stand-in for
+      // ambient occlusion that sells the join between ground and boundary.
+      const b = RT.boundaryAt(s, side);
+      const solid = (b.type === 'hedge' || b.type === 'wall') && !RT.clearance(s, side) && !RT.inJunctionMouth(s, side, 8);
       rows.push(D.map((dd) => {
         const g = groundAt(s, dd * side);
         const t = grassTint(g.x, g.z);
+        if (solid) {
+          const ao = 1 - 0.38 * (1 - smoothstep(0, 1.25, Math.abs(dd - RT.HEDGE_OFFSET)));
+          t.r *= ao; t.g *= ao; t.b *= ao;
+        }
         return { x: g.x, y: g.y, z: g.z, u: g.x / 4, v: g.z / 4, ...t };
       }));
     }
     stripRows(sink, side === 1 ? rows : rows.map((r) => r.slice().reverse()), true);
-    const mesh = new THREE.Mesh(sink.build(), grassMat);
+    const mesh = new THREE.Mesh(sink.build(), grassMat);mesh.name='ground';groundMeshes.push(mesh);
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
@@ -240,8 +255,12 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       }
       ids.push(row);
     }
-    for (let iz = 0; iz < nz; iz += 1) for (let ix = 0; ix < nx; ix += 1) sink.quad(ids[iz][ix], ids[iz + 1][ix], ids[iz + 1][ix + 1], ids[iz][ix + 1]);
-    const mesh = new THREE.Mesh(sink.build(), grassMat);
+    for (let iz = 0; iz < nz; iz += 1) for (let ix = 0; ix < nx; ix += 1) {
+      const near=RT.nearest(x0+(ix+.5)*cell,z0+(iz+.5)*cell);
+      if(near&&near.dist<22)continue;
+      sink.quad(ids[iz][ix], ids[iz + 1][ix], ids[iz + 1][ix + 1], ids[iz][ix + 1]);
+    }
+    const mesh = new THREE.Mesh(sink.build(), grassMat);mesh.name='ground';groundMeshes.push(mesh);
     mesh.receiveShadow = true;
     scene.add(mesh);
 
@@ -301,10 +320,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const marks = new GeoSink();
   const UP = 0.012;
   function ribbon(sA, sB, dC, width, step = 1) {
+    if(RT.inVillage((sA+sB)/2,40))step=Math.min(step,.2);
     const rows = [];
     for (let s = sA; s <= sB + 1e-6; s += step) {
       const f = RT.frame(Math.min(s, sB));
-      const y0 = f.y + RT.crown(dC) + UP;
+      const y0 = f.y + RT.crown(dC) + RT.surfaceAt(Math.min(s,sB),dC) + UP;
       rows.push([
         { x: f.x + f.nx * (dC - width / 2), y: y0, z: f.z + f.nz * (dC - width / 2), u: 0, v: 0 },
         { x: f.x + f.nx * (dC + width / 2), y: y0, z: f.z + f.nz * (dC + width / 2), u: 1, v: 0 }
@@ -376,7 +396,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
         const f = RT.frame(sPos);
         const g = new THREE.PlaneGeometry(1.7, 5.2);
         const m = new THREE.Mesh(g, slowMat);
-        m.position.set(f.x + f.nx * lane, f.y + RT.crown(lane) + UP, f.z + f.nz * lane);
+        m.position.set(f.x + f.nx * lane, f.y + RT.crown(lane) + RT.surfaceAt(sPos,lane) + UP, f.z + f.nz * lane);
         m.rotation.set(-Math.PI / 2, 0, 0);
         m.rotateZ(-f.heading + (flip ? Math.PI : 0));
         m.receiveShadow = true;
@@ -422,7 +442,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1);
     studs.forEach((s, k) => {
       const f = RT.frame(s);
-      pos.set(f.x, f.y + 0.011, f.z);
+      pos.set(f.x, f.y + RT.surfaceAt(s,0) + 0.011, f.z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), f.heading);
       m.compose(pos, q, sc); im.setMatrixAt(k, m);
     });
@@ -431,9 +451,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ---------------------------------------------- boundaries and fences */
   const hedgeSink = new GeoSink(), wallSink = new GeoSink();
-  const cardInstances = [], underInstances = [], flowerInstances = [], postInstances = [], treePlacements = [];
+  const cardInstances = [], underInstances = [], flowerInstances = [], foxgloveInstances = [], postInstances = [], treePlacements = [];
   const wireSegments = [];
-  const hedgeHeight = (s, H) => H * (0.86 + EVO.noise2(s / 7.5, 0.5) * 0.3);
+  const hedgeHeight = (s, H) => H * (0.81 + EVO.noise2(s / 7.5, 0.5) * 0.32 + EVO.noise2(s/1.7,4.1)*.12);
 
   function hedgeRun(samples, H) {
     // samples: [{x,y,z,nx,nz,s}] along the run; nx,nz points AWAY from the road.
@@ -445,11 +465,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const bulge = 0.5 + EVO.noise2(p.s / 3.1, 0.2) * 0.25;
       const tint = 0.85 + EVO.noise2(p.s / 11, 3.3) * 0.3;
       rows.push([
-        { x: p.x - p.nx * 0.75, y: p.y - 0.15, z: p.z - p.nz * 0.75, u: (p.s - s0) / 2, v: 0, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 },
+        { x: p.x - p.nx * 0.75, y: p.y - 0.15, z: p.z - p.nz * 0.75, u: (p.s - s0) / 2, v: 0, r: tint * 0.6, g: tint * 0.65, b: tint * 0.56 },
         { x: p.x - p.nx * bulge, y: p.y + h * 0.55, z: p.z - p.nz * bulge, u: (p.s - s0) / 2, v: h * 0.28, r: tint, g: tint, b: tint },
         { x: p.x - p.nx * 0.28, y: p.y + h, z: p.z - p.nz * 0.28, u: (p.s - s0) / 2, v: h * 0.5, r: tint * 1.08, g: tint * 1.1, b: tint },
         { x: p.x + p.nx * 0.28, y: p.y + h, z: p.z + p.nz * 0.28, u: (p.s - s0) / 2, v: h * 0.64, r: tint * 1.08, g: tint * 1.1, b: tint },
-        { x: p.x + p.nx * 0.75, y: p.y - 0.15, z: p.z + p.nz * 0.75, u: (p.s - s0) / 2, v: h * 1.1, r: tint * 0.9, g: tint * 0.9, b: tint * 0.9 }
+        { x: p.x + p.nx * 0.75, y: p.y - 0.15, z: p.z + p.nz * 0.75, u: (p.s - s0) / 2, v: h * 1.1, r: tint * 0.6, g: tint * 0.65, b: tint * 0.56 }
       ]);
     }
     if (rows.length > 1) stripRows(hedgeSink, orientRows(rows, samples));
@@ -477,11 +497,18 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const h = H * (0.94 + EVO.noise2(p.s / 5, 0.7) * 0.12);
       const tint = 0.88 + EVO.noise2(p.s / 6, 1.1) * 0.24;
       const w = 0.3;
+      // the lowest courses stay damp and mossy; the coping catches the light
+      const mossy = 0.55 + EVO.noise2(p.s / 9, 2.2) * 0.35;
+      const base = { r: tint * (1 - 0.34 * mossy), g: tint * (1 - 0.2 * mossy), b: tint * (1 - 0.46 * mossy) };
+      const knee = { r: tint * 0.94, g: tint * 0.97, b: tint * 0.9 };
+      const u = (p.s - s0) / 1.2, vTop = (h + 0.2) / 1.2;
       rows.push([
-        { x: p.x - p.nx * w, y: p.y - 0.2, z: p.z - p.nz * w, u: (p.s - s0) / 1.2, v: 0, r: tint, g: tint, b: tint },
-        { x: p.x - p.nx * w, y: p.y + h, z: p.z - p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2, r: tint, g: tint, b: tint },
-        { x: p.x + p.nx * w, y: p.y + h, z: p.z + p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2 + 0.25, r: tint, g: tint, b: tint },
-        { x: p.x + p.nx * w, y: p.y - 0.2, z: p.z + p.nz * w, u: (p.s - s0) / 1.2, v: (h + 0.2) / 1.2 * 2 + 0.25, r: tint, g: tint, b: tint }
+        { x: p.x - p.nx * w, y: p.y - 0.2, z: p.z - p.nz * w, u, v: 0, ...base },
+        { x: p.x - p.nx * w, y: p.y + 0.3, z: p.z - p.nz * w, u, v: 0.5 / 1.2, ...knee },
+        { x: p.x - p.nx * w, y: p.y + h, z: p.z - p.nz * w, u, v: vTop, r: tint * 1.04, g: tint * 1.04, b: tint * 1.02 },
+        { x: p.x + p.nx * w, y: p.y + h, z: p.z + p.nz * w, u, v: vTop + 0.25, r: tint * 1.04, g: tint * 1.04, b: tint * 1.02 },
+        { x: p.x + p.nx * w, y: p.y + 0.3, z: p.z + p.nz * w, u, v: vTop * 2 + 0.25 - 0.5 / 1.2, ...knee },
+        { x: p.x + p.nx * w, y: p.y - 0.2, z: p.z + p.nz * w, u, v: vTop * 2 + 0.25, ...base }
       ]);
     }
     if (rows.length > 1) stripRows(wallSink, orientRows(rows, samples));
@@ -507,7 +534,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     };
     for (let s = 0; s <= L; s += 1) {
       const b = RT.boundaryAt(s, side);
-      const gap = RT.inJunctionMouth(s, side, b.type === 'hedge' ? 8 : 6.5) || s >= L;
+      const gap = RT.clearance(s,side) || RT.inJunctionMouth(s, side, b.type === 'hedge' ? 8 : 6.5) || s >= L;
       if (gap || (run && run.boundary !== b)) {
         flush();
         if (gap) continue;
@@ -533,18 +560,30 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       hedgeRun(run, 1.7);
     }
   }
+  // foxgloves and campion where the road runs through the woods
+  for (let s = 3; s < L; s += 2.2 + rnd() * 3.5) {
+    if (!RT.woodland(s)) continue;
+    const side = rnd() < 0.5 ? 1 : -1;
+    if (RT.clearance(s, side) || RT.inJunctionMouth(s, side, 12)) continue;
+    const g = groundAt(s, side * (3.7 + rnd() * 1.4));
+    foxgloveInstances.push({ x: g.x, y: g.y - 0.04, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.9 + rnd() * 0.6, tint: 0.85 + rnd() * 0.3 });
+  }
   // cow parsley and hogweed along the verges
   for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
     const side = rnd() < 0.5 ? 1 : -1;
-    if (RT.inJunctionMouth(s, side, 12)) continue;
+    if (RT.inVillage(s,10) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 12)) continue;
     const g = groundAt(s, side * (3.5 + rnd() * 1.1));
     flowerInstances.push({ x: g.x, y: g.y - 0.05, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.7 + rnd() * 0.6 });
   }
   // trees: roadside and hedgerow (dense), scattered field trees and copses
-  const placeTree = (x, y, z, species, scale) => treePlacements.push({ x, y, z, species, scale, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
-  for (let s = 8; s < L; s += 9 + rnd() * 20) {
+  const placeTree = (x, y, z, species, scale) => {
+    const near=RT.nearest(x,z);
+    if(near&&RT.inVillage(near.s,30)&&near.dist<19)return;
+    treePlacements.push({x,y,z,species,scale,yaw:rnd()*Math.PI*2,tint:0.85+rnd()*.3});
+  };
+  for (let s = 8; s < L; s += 8 + rnd() * 13) {
     const side = rnd() < 0.5 ? 1 : -1;
-    if (RT.inJunctionMouth(s, side, 36)) continue;
+    if (RT.inVillage(s,20) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 36)) continue;
     const b = RT.boundaryAt(s, side);
     const inLine = b.type !== 'fence' && rnd() < 0.45;
     const d = inLine ? RT.HEDGE_OFFSET + 0.3 : RT.HEDGE_OFFSET + 1.8 + rnd() * 10;
@@ -553,13 +592,33 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const species = inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
     placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.8 + rnd() * 0.6 : 0.8 + rnd() * 0.5);
   }
-  for (let k = 0; k < 220; k += 1) {
+  // Coherent woodland belts: layered near trees and understorey, with open pasture
+  // between them. Extra density is authored by place, not uniform random clutter.
+  for(let s=12;s<L;s+=quality.coarse?6.5:5.0) {
+    if(!RT.woodland(s))continue;
+    for(const side of [1,-1]) {
+      if(RT.inJunctionMouth(s,side,28)||RT.clearance(s,side))continue;
+      for(const layer of [0,1]) {
+        const g=groundAt(s+(rnd()-.5)*4,side*(7.2+layer*7+rnd()*5));
+        const r=rnd(), species=r<.38?'oak':r<.6?'ash':r<.8?'beech':'birch';
+        placeTree(g.x,g.y-.15,g.z,species,species==='birch'?.75+rnd()*.35:.83+rnd()*.43);
+      }
+      const g=groundAt(s,side*(5.6+rnd()*2));
+      if(rnd()<.52)placeTree(g.x,g.y-.18,g.z,'hawthorn',.42+rnd()*.33);
+    }
+  }
+  // Garden trees and an irregular shelter belt behind the houses, not inside them.
+  for(let s=335;s<596;s+=9.5)for(const side of [1,-1]){
+    const g=groundAt(s+(rnd()-.5)*3,side*(21+rnd()*12));
+    placeTree(g.x,g.y-.10,g.z,rnd()<.6?'ash':'oak',.58+rnd()*.40);
+  }
+  for (let k = 0; k < 265; k += 1) {
     const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
     const near = RT.nearest(x, z);
     if (near && near.dist < 24) continue;
-    placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.55 ? 'oak' : 'ash', 0.9 + rnd() * 0.6);
+    placeTree(x, RT.terrainHeight(x, z) - 0.2, z, rnd() < 0.45 ? 'oak' : rnd() < 0.6 ? 'beech' : 'ash', 0.9 + rnd() * 0.6);
   }
   for (let c = 0; c < 12; c += 1) {
     const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 45 + rnd() * 160;
@@ -594,6 +653,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     instanceCards(cardInstances, leafMat, T.haw.map, false);
     instanceCards(underInstances, leafMat, T.haw.map, false);
     const flowers = instanceCards(flowerInstances.map((f) => ({ ...f, tint: 1 })), umbelMat, T.umbel, true);
+    const foxMat = new THREE.MeshStandardMaterial({ map: T.foxglove, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x2a1424, emissiveIntensity: 0.25 });
+    const foxgloves = instanceCards(foxgloveInstances, foxMat, T.foxglove, true);
+    foxgloves.castShadow = false; foxgloves.name = 'foxgloves';
     flowers.castShadow = false;
     // fence posts and wire
     const postGeo = new THREE.BoxGeometry(0.09, 1.15, 0.09); postGeo.translate(0, 0.575, 0);
@@ -606,7 +668,19 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
     EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
   }
-  const mergeGeometries = EVO.mergeGeometries;
+  function mergeGeometries(list) {
+    const p = [], n = [], uv = [], idx = [];
+    let base = 0;
+    for (const g of list) {
+      const pa = g.getAttribute('position'), na = g.getAttribute('normal'), ua = g.getAttribute('uv');
+      for (let i = 0; i < pa.count; i += 1) { p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); n.push(na.getX(i), na.getY(i), na.getZ(i)); uv.push(ua.getX(i), ua.getY(i)); }
+      const ix = g.getIndex(); for (let i = 0; i < ix.count; i += 1) idx.push(ix.getX(i) + base);
+      base += pa.count;
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); out.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3)); out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); out.setIndex(idx);
+    return out;
+  }
 
   /* ------------------------------------------- field boundary hedgerows */
   {
@@ -652,7 +726,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       for (let k = 0; k < n; k += 1) {
         const x = gx + (rnd() - 0.5) * 14, z = gz + (rnd() - 0.5) * 14;
         const near = RT.nearest(x, z);
-        if (near && near.dist < 9) continue;
+        if (near && (near.dist < 9 || (RT.inVillage(near.s,32) && near.dist<20))) continue;
         const sInf = RT.sideInfluence(x, z);
         if (sInf && sInf.dist < 7) continue;
         flock.push({ x, y: RT.terrainHeight(x, z) - 0.02, z, yaw: rnd() * Math.PI * 2, sc: 0.82 + rnd() * 0.25, lying: rnd() < 0.2 });
@@ -700,11 +774,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const s = brnd() * L, side = brnd() < 0.5 ? 1 : -1;
       const d = 3.15 + Math.pow(brnd(), 1.4) * 2.4;
       const g = groundAt(s, side * d);
-      const size = 0.7 + brnd() * 0.8;
+      const size = (RT.clearance(s,side)||RT.inJunctionMouth(s,side,10))?0:0.7 + brnd() * 0.8;
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), brnd() * Math.PI); pos.set(g.x, g.y - 0.04, g.z); sc.set(size, size, size);
       m.compose(pos, q, sc); im.setMatrixAt(k, m);
     }
-    im.frustumCulled = false; im.receiveShadow = true;
+    im.name='verge grass'; im.frustumCulled = false; im.receiveShadow = true;
     scene.add(im);
   }
 
@@ -837,13 +911,19 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ------------------------------------------------------- sky and sun */
   const sunDir = new THREE.Vector3(-0.62, 0.50, 0.60).normalize();
-  const skyUniforms = { sunDir: { value: sunDir }, uTime: { value: 0 } };
+  const skyUniforms = {
+    sunDir: { value: sunDir }, uTime: { value: 0 },
+    uZenith: { value: new THREE.Color(0.07, 0.20, 0.58) }, uHorizon: { value: new THREE.Color(0.50, 0.58, 0.72) },
+    uGlow: { value: 0.45 }, uDisc: { value: 16 }, uCover: { value: 0 },
+    uCloudDark: { value: new THREE.Color(0.38, 0.41, 0.48) }, uCloudLight: { value: new THREE.Color(0.92, 0.90, 0.87) }
+  };
   const skyMat = new THREE.ShaderMaterial({
     uniforms: skyUniforms, side: THREE.BackSide, depthWrite: false, fog: false,
     vertexShader: `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position.z = gl_Position.w; }`,
     fragmentShader: `
       precision highp float;
       varying vec3 vDir; uniform vec3 sunDir; uniform float uTime;
+      uniform vec3 uZenith, uHorizon, uCloudDark, uCloudLight; uniform float uGlow, uDisc, uCover;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
         return mix(mix(hash(i), hash(i+vec2(1.0,0.0)), u.x), mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), u.x), u.y); }
@@ -852,19 +932,24 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
         vec3 d = normalize(vDir);
         float h = max(d.y, 0.0);
         float mu = max(dot(d, sunDir), 0.0);
-        vec3 zenith = vec3(0.07, 0.20, 0.58);
-        vec3 horizon = vec3(0.50, 0.58, 0.72);
+        vec3 zenith = uZenith, horizon = uHorizon;
         vec3 sky = mix(horizon, zenith, pow(h, 0.6));
-        sky += vec3(0.95, 0.62, 0.32) * pow(mu, 5.0) * (1.0 - h) * 0.45;
-        sky += vec3(1.0, 0.94, 0.82) * pow(mu, 48.0) * 0.55;
-        sky += vec3(1.0, 0.96, 0.9) * smoothstep(0.99935, 0.99975, dot(d, sunDir)) * 16.0;
+        // warm forward scatter around the sun, strongest low in the sky
+        sky += vec3(0.95, 0.62, 0.32) * pow(mu, 5.0) * (1.0 - h) * uGlow;
+        sky += vec3(1.0, 0.94, 0.82) * pow(mu, 48.0) * (0.35 + uGlow * 0.45);
+        sky += vec3(1.0, 0.96, 0.9) * smoothstep(0.99935, 0.99975, dot(d, sunDir)) * uDisc;
         if (d.y > 0.015) {
           vec2 uv = d.xz / (d.y + 0.08) * 1.35 + vec2(uTime * 0.0035, uTime * 0.0012);
           float c = fbm(uv);
-          float cov = smoothstep(0.50, 0.70, c);
+          float cov = smoothstep(0.50 - uCover, 0.70 - uCover * 0.7, c);
           float shade = fbm(uv * 1.9 + 5.0);
-          vec3 cloud = mix(vec3(0.38, 0.41, 0.48), vec3(0.92, 0.90, 0.87), shade);
-          cloud += vec3(0.35, 0.22, 0.12) * pow(mu, 3.0) * 0.4;
+          // lit tops face the sun, bases sit in their own shadow
+          float lit = smoothstep(0.2, 0.9, shade) * (0.55 + 0.45 * mu);
+          vec3 cloud = mix(uCloudDark, uCloudLight, lit);
+          cloud += vec3(0.35, 0.22, 0.12) * pow(mu, 3.0) * uGlow * 0.9;
+          // thin cirrus veil above the cumulus
+          float cirrus = smoothstep(0.55, 0.8, fbm(uv * 0.45 + vec2(31.0, 7.0) + uTime * 0.0006)) * smoothstep(0.1, 0.5, d.y);
+          sky = mix(sky, mix(sky, uCloudLight, 0.35), cirrus * 0.5);
           float fade = smoothstep(0.015, 0.16, d.y);
           sky = mix(sky, cloud, cov * fade * 0.92);
         }
@@ -877,9 +962,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(2600, 40, 20), skyMat);
   sky.frustumCulled = false;
   scene.add(sky);
-  scene.fog = new THREE.FogExp2(0xbcc7d3, 0.00082);
+  scene.fog = new THREE.FogExp2(0xb9c4cf, 0.0009);
 
-  const sun = new THREE.DirectionalLight(0xfff0dc, 2.7);
+  const sun = new THREE.DirectionalLight(0xfff4e5, 2.45);
   sun.castShadow = true;
   sun.shadow.mapSize.set(quality.shadow, quality.shadow);
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 480;
@@ -888,8 +973,42 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.35; sun.shadow.radius = 2;
   sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun); scene.add(sun.target);
-  const hemi = new THREE.HemisphereLight(0xb0c6e0, 0x5f6e42, 2.6);
+  const hemi = new THREE.HemisphereLight(0xc7d0d4, 0x646754, 1.95);
   scene.add(hemi);
+  const ambient = new THREE.AmbientLight(0xc9d2d0, 0.18);
+  scene.add(ambient);
+
+  /* Lighting presets. Sun direction drives the shadows and the sky's forward
+   * scatter; the rest is the balance of direct, sky and fog light, and how wet
+   * the tarmac reads. Everything here is a live uniform or light property, so a
+   * preset can change between rides without rebuilding the world. */
+  const PRESETS = {
+    noon: { sun: [-0.62, 0.50, 0.60], sunColor: 0xfff4e5, sunI: 2.9, hemi: [0xbfcbd8, 0x5f6a4c, 1.95], ambient: 0.05, fog: [0xb9c4cf, 0.0009],
+      zenith: [0.07, 0.20, 0.58], horizon: [0.50, 0.58, 0.72], glow: 0.45, disc: 16, cover: 0, cloud: [[0.38, 0.41, 0.48], [0.92, 0.90, 0.87]], wet: 0, radius: 2, exposure: 1.42 },
+    morning: { sun: [0.58, 0.33, 0.74], sunColor: 0xffe6c4, sunI: 2.5, hemi: [0xc9d3dc, 0x66705a, 1.8], ambient: 0.06, fog: [0xc9d0d6, 0.00095],
+      zenith: [0.16, 0.28, 0.54], horizon: [0.62, 0.66, 0.71], glow: 0.6, disc: 12, cover: -0.12, cloud: [[0.48, 0.50, 0.56], [0.96, 0.95, 0.92]], wet: 0.4, radius: 2.5, exposure: 1.38 },
+    evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.9, hemi: [0xb3a6be, 0x6a5641, 2.2], ambient: 0.18, fog: [0xd2b89c, 0.00075],
+      zenith: [0.10, 0.16, 0.42], horizon: [0.66, 0.44, 0.28], glow: 1.0, disc: 20, cover: 0.04, cloud: [[0.44, 0.32, 0.37], [1.0, 0.80, 0.60]], wet: 0.15, radius: 2, exposure: 1.5 },
+    overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.75, hemi: [0xc3cad2, 0x6b7064, 2.4], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
+      zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 }
+  };
+  let lightingName = 'noon';
+  function setLighting(name) {
+    const P = PRESETS[name] || PRESETS.noon;
+    lightingName = PRESETS[name] ? name : 'noon';
+    sunDir.set(P.sun[0], P.sun[1], P.sun[2]).normalize();
+    sun.color.set(P.sunColor); sun.intensity = P.sunI; sun.shadow.radius = P.radius;
+    hemi.color.set(P.hemi[0]); hemi.groundColor.set(P.hemi[1]); hemi.intensity = P.hemi[2];
+    ambient.intensity = P.ambient;
+    scene.fog.color.set(P.fog[0]); scene.fog.density = P.fog[1];
+    skyUniforms.uZenith.value.setRGB(...P.zenith); skyUniforms.uHorizon.value.setRGB(...P.horizon);
+    skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
+    skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
+    // wet tarmac: smoother, and it mirrors the sky
+    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 1.2;
+    for (const m of [grassMat, hedgeMat]) m.color.setScalar(1 - P.wet * 0.12);
+    return P;
+  }
 
   const _bike = new THREE.Vector3();
   function update(time, bikePos, forward) {
@@ -905,5 +1024,5 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
-  return { scene, sun, sunDir, sky, update, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
+  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
 };

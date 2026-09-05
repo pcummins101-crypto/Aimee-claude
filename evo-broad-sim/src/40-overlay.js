@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — cockpit overlay, live mirrors, dash and audio.
  *
@@ -34,51 +35,6 @@ function vignette() {
   ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
   const t = new THREE.CanvasTexture(c); return t;
 }
-
-/* The TFT dash, drawn to a canvas. Shared by the flat cockpit overlay and the
- * 3D cockpit used in VR, so both read identically. */
-EVO.createDash = function createDash() {
-  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 208;
-  const ctx = canvas.getContext('2d');
-  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
-  function draw(bike, odometerMi, showNotice = false) {
-    const c = ctx, w = canvas.width, h = canvas.height;
-    c.clearRect(0, 0, w, h);
-    c.fillStyle = 'rgba(4,8,12,0.55)'; c.fillRect(0, 0, w, h);
-    c.textBaseline = 'alphabetic';
-    c.fillStyle = '#e9f3f7'; c.font = '700 118px "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'right';
-    c.fillText(String(bike.mph()), 300, 126);
-    c.fillStyle = '#8fc4d2'; c.font = '700 30px Arial, sans-serif'; c.textAlign = 'left';
-    c.fillText('MPH', 314, 124);
-    c.fillStyle = '#6a8b95'; c.font = '700 22px Arial, sans-serif';
-    c.fillText('EVO', 24, 42); c.fillText('B6270', 24, 176);
-    c.textAlign = 'right';
-    c.fillText(`${odometerMi.toFixed(1)} MI`, 488, 176);
-    // power bar: throttle in cyan, regen/brake in amber
-    const p = bike.input.throttle, b = bike.input.brake;
-    c.fillStyle = '#12303a'; c.fillRect(330, 44, 158, 10);
-    c.fillStyle = '#4fd3ec'; c.fillRect(330, 44, 158 * p, 10);
-    c.fillStyle = '#f2a33a'; c.fillRect(330 + 158 * (1 - b), 44, 158 * b, 10);
-    c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
-    c.fillText('HYPERCORE', 330, 36);
-    c.textAlign = 'right'; c.fillText('BAT 91%', 488, 36);
-    // corner-speed lamp: green safe, amber on the limit, red too fast
-    const st = bike.corner.status;
-    c.fillStyle = st === 'safe' ? '#3ddc84' : st === 'limit' ? '#ffb02e' : '#ff3b4a';
-    c.beginPath(); c.arc(330, 96, 9, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
-    c.fillText(`CORNER ${Math.round(bike.corner.max * 2.23694)}`, 348, 102);
-    if (showNotice && bike.notice) {
-      // In VR the dash is the only place a message can be read, so the crash
-      // and run-off notices land here instead of the DOM overlay.
-      c.textAlign = 'center'; c.font = '700 24px Arial, sans-serif';
-      c.fillStyle = bike.notice.tone === 'bad' ? '#ff6b76' : '#ffd27a';
-      c.fillText(bike.notice.text.slice(0, 34), w / 2, 200);
-    }
-    tex.needsUpdate = true;
-  }
-  return { texture: tex, draw };
-};
 
 EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
   const scene = new THREE.Scene();
@@ -120,8 +76,10 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
   group.add(mirrorL, mirrorR);
 
   // dash
-  const dashPanel = EVO.createDash();
-  const dash = new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ map: dashPanel.texture, transparent: true, depthTest: false, depthWrite: false }));
+  const dashCanvas = document.createElement('canvas'); dashCanvas.width = 512; dashCanvas.height = 208;
+  const dctx = dashCanvas.getContext('2d');
+  const dashTex = new THREE.CanvasTexture(dashCanvas); dashTex.colorSpace = THREE.SRGBColorSpace;
+  const dash = new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ map: dashTex, transparent: true, depthTest: false, depthWrite: false }));
   dash.renderOrder = 3;
   group.add(dash);
 
@@ -147,6 +105,35 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
   }
 
   let frame = 0;
+  function drawDash(bike, odometerMi) {
+    const c = dctx, w = dashCanvas.width, h = dashCanvas.height;
+    c.clearRect(0, 0, w, h);
+    c.fillStyle = 'rgba(4,8,12,0.55)'; c.fillRect(0, 0, w, h);
+    c.textBaseline = 'alphabetic';
+    c.fillStyle = '#e9f3f7'; c.font = '700 118px "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'right';
+    c.fillText(String(bike.mph()), 300, 126);
+    c.fillStyle = '#8fc4d2'; c.font = '700 30px Arial, sans-serif'; c.textAlign = 'left';
+    c.fillText('MPH', 314, 124);
+    c.fillStyle = '#6a8b95'; c.font = '700 22px Arial, sans-serif';
+    c.fillText('EVO', 24, 42); c.fillText('B-ROAD', 24, 176);
+    c.textAlign = 'right';
+    c.fillText(`${odometerMi.toFixed(1)} MI`, 488, 176);
+    // power bar: throttle in cyan, regen/brake in amber
+    const p = bike.input.throttle, b = bike.input.brake;
+    c.fillStyle = '#12303a'; c.fillRect(330, 44, 158, 10);
+    c.fillStyle = '#4fd3ec'; c.fillRect(330, 44, 158 * p, 10);
+    c.fillStyle = '#f2a33a'; c.fillRect(330 + 158 * (1 - b), 44, 158 * b, 10);
+    c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
+    c.fillText('HYPERCORE', 330, 36);
+    c.textAlign = 'right'; c.fillText('BAT 91%', 488, 36);
+    // corner-speed lamp: green safe, amber on the limit, red too fast
+    const st = bike.corner.status;
+    c.fillStyle = st === 'safe' ? '#3ddc84' : st === 'limit' ? '#ffb02e' : '#ff3b4a';
+    c.beginPath(); c.arc(330, 96, 9, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#6a8b95'; c.font = '700 16px Arial, sans-serif'; c.textAlign = 'left';
+    c.fillText(`CORNER ${Math.round(bike.corner.max * 2.23694)}`, 348, 102);
+    dashTex.needsUpdate = true;
+  }
 
   const _fwd = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _target = new THREE.Vector3();
   function render(camera, bike, time) {
@@ -163,10 +150,10 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
       renderer.render(world.scene, rearCam);
       renderer.setRenderTarget(null);
     }
-    if (frame % 3 === 0) dashPanel.draw(bike, bike.odometer / 1609.344);
+    if (frame % 3 === 0) drawDash(bike, bike.odometer / 1609.344);
     // bike rolls a little more than the rider's head; nudge with suspension
-    group.rotation.z = bike.lean * 0.3;
-    group.position.set(bike.lean * 22 + bike.steerSmoothed * 4, -bike.pitch * 260 + bike.heave * 380, 0);
+    group.rotation.z = bike.lean * 0.3*bike.motionScale;
+    group.position.set((bike.lean * 22 + bike.steerSmoothed * 4)*bike.motionScale,(-bike.pitch * 180 + bike.heave * 190)*bike.motionScale,0);
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(scene, cam);
@@ -178,13 +165,13 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
 
 /* ---------------------------------------------------------------- audio */
 EVO.createAudio = function createAudio() {
-  let ctx = null, nodes = null;
+  let ctx = null, nodes = null, muted=false;
   function start() {
     if (ctx) { ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
-    const master = ctx.createGain(); master.gain.value = 0.7; master.connect(ctx.destination);
+    const master = ctx.createGain(); master.gain.value = muted ? 0 : 0.7; master.connect(ctx.destination);
     // motor whine: two tones with a soft lowpass
     const whine = ctx.createOscillator(); whine.type = 'sawtooth'; whine.frequency.value = 80;
     const whine2 = ctx.createOscillator(); whine2.type = 'sine'; whine2.frequency.value = 160;
@@ -223,10 +210,11 @@ EVO.createAudio = function createAudio() {
     nodes.whineGain.gain.setTargetAtTime(0.01 + n * 0.05 + bike.input.throttle * 0.04 * Math.min(1, v / 4 + 0.2), t, 0.06);
     nodes.wind.frequency.setTargetAtTime(380 + n * n * 1400, t, 0.1);
     nodes.windGain.gain.setTargetAtTime(n * n * 0.85, t, 0.1);
-    nodes.tyreGain.gain.setTargetAtTime(n * 0.35, t, 0.1);
+    nodes.tyreGain.gain.setTargetAtTime(n * (0.26+bike.surfaceRoughness*.23), t, 0.08);
+    nodes.tyre.frequency.setTargetAtTime(260+bike.surfaceRoughness*410+n*160,t,.08);
     nodes.rumbleGain.gain.setTargetAtTime(bike.rumble * 0.9, t, 0.05);
   }
-  function setMuted(m) { if (nodes) nodes.master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
+  function setMuted(m) { muted=m; if (nodes) nodes.master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
   // Oncoming car pass-by: a short noise swell with a falling Doppler sweep.
   function passBy(closingSpeed = 30, gap = 2) {
     if (!ctx || !nodes) return;

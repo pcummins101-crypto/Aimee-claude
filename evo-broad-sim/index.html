@@ -4,9 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="theme-color" content="#0a0d10" />
-  <title>Avenrà EVO · B-Road</title>
+  <title>Avenrà EVO · Detailed Scenery Edition 0.3</title>
   <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap" />
   <!-- EVO_STYLE --><link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -15,6 +14,9 @@
     <div class="brand">AVENRÀ <span>EVO</span></div>
     <button id="mute" type="button" aria-pressed="false" aria-label="Mute sound">♪</button>
     <div id="stats" hidden></div>
+    <div id="road-info"><span id="limit-sign">60</span><div><strong id="place-name">WOODLAND APPROACH</strong><span id="surface-info">Two-way road · keep left</span></div></div>
+    <button id="pause" type="button" aria-label="Pause ride">Ⅱ</button>
+    <div id="paused" hidden>PAUSED <small>Tap Ⅱ or press P to continue</small></div>
     <div id="corner" class="corner" aria-live="off">
       <div class="track"><i id="corner-safe" class="zone safe"></i><i id="corner-limit" class="zone limit"></i><i id="corner-fill" data-status="safe"></i><b id="corner-marker"></b></div>
       <div class="label"><span id="corner-text">OPEN ROAD</span><span id="corner-limits">SAFE 109 · MAX 109 MPH</span></div>
@@ -24,41 +26,41 @@
   </div>
   <div id="start">
     <div class="panel">
-      <p class="kicker">PHOTOREAL RIDE · YORKSHIRE DALES B-ROAD</p>
+      <p class="kicker">REALISM EDITION 0.2 · DALES-INSPIRED B-ROAD</p>
       <h1>Avenrà <span>EVO</span></h1>
-      <p class="copy">A quiet two-way Dales B road with light oncoming traffic. 0–60 in 3.9 s, 109 mph flat out. Every bend has a safe speed and a limit: the bar goes green, amber, red. Keep left. Side turnings are coned off.</p>
+      <p class="copy">Explore wooded lanes, patterned fields and the more detailed stone-built village of Dalebeck. Feel the road humps, rumble strips and changing surface beneath the tyres. Keep left; side turnings remain coned off.</p>
       <ul class="controls">
         <li><b>Steer</b> drag the upper half of the screen, tilt the phone, or use ← → / A D</li>
         <li><b>Throttle</b> hold the bottom-right of the screen, or ↑ / W</li>
         <li><b>Brake</b> hold the bottom-left of the screen, or ↓ / S / Space</li>
-        <li><b>Bends</b> amber and the bike drifts wide, red and it runs off; brake before the bend, not in it</li>
+        <li><b>Road</b> slow for bends and village humps; R resets you in your lane, P pauses the ride</li>
       </ul>
+      <div class="ride-options">
+        <label>START LOCATION<select id="spawn"><option value="180">Woodland approach</option><option value="339">Village &amp; humps</option><option value="800">Open pasture</option><option value="1030">Wooded bends</option></select></label>
+        <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option></select></label>
+        <label>DETAIL<select id="quality"><option value="auto">Auto</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
+        <label class="check"><input id="traffic-toggle" type="checkbox" checked> Light oncoming traffic</label>
+        <label class="check"><input id="comfort" type="checkbox"> Reduced camera movement</label>
+      </div>
       <div class="actions">
         <button id="ride" type="button" disabled>LOADING…</button>
         <button id="tilt" type="button" class="ghost">ENABLE TILT STEERING</button>
-        <button id="vr" type="button" class="ghost">VR MODE</button>
       </div>
-      <details id="vr-setup" class="vrsetup">
-        <summary>VR setup · phone in a headset</summary>
-        <p class="hint">Steer by leaning your head into the bend; a Bluetooth gamepad gives you the triggers for throttle and brake (A recentres your view, Start exits). Every headset's lenses differ, so ride a straight and adjust until the two images fuse and the edges look straight.</p>
-        <div id="vr-fields" class="vrgrid"></div>
-        <div class="vrtest"><button id="vr-test" type="button" class="ghost small">TEST HEAD TRACKING</button><span id="vr-read">lean the phone left and right and check the direction reads correctly</span></div>
-        <p class="hint">Settings are remembered on this device.</p>
-      </details>
       <p id="status" class="status" aria-live="polite">Loading the 3D engine…</p>
-      <p class="safety">Virtual closed-road simulation. Never use while riding.</p>
+      <p class="safety">Fictional closed-road experience, not a surveyed route or calibrated riding trainer. Never use while riding.</p>
     </div>
   </div>
   <!-- EVO_SCRIPTS -->
   <script type="module" src="./src/00-core.js"></script>
   <script type="module" src="./src/10-route.js"></script>
+  <script type="module" src="./src/15-road-detail.js"></script>
   <script type="module" src="./src/20-world.js"></script>
   <script type="module" src="./src/25-vegetation.js"></script>
+  <script type="module" src="./src/27-realism-world.js"></script>
   <script type="module" src="./src/30-bike.js"></script>
   <script type="module" src="./src/40-overlay.js"></script>
   <script type="module" src="./src/45-post.js"></script>
   <script type="module" src="./src/50-traffic.js"></script>
-  <script type="module" src="./src/60-vr.js"></script>
   <script type="module" src="./src/90-main.js"></script>
   <!-- /EVO_SCRIPTS -->
 </body>

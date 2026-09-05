@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — oncoming traffic.
  *
@@ -37,16 +38,16 @@ function profileHeight(v, z) {
 }
 
 /* Lofted body: returns { paint, glass } geometries sharing vertex arrays. */
-function loftBody(v) {
+function loftBody(v, parked=false) {
   const SECT = 40, J = 17;
   const zs = [];
   for (let i = 0; i <= SECT; i += 1) zs.push(-1 + 2 * i / SECT);
-  zs.unshift(-1.03); zs.push(1.03); // end caps
+  if(!parked){zs.unshift(-1.03); zs.push(1.03);} // moving traffic retains its original mesh
   const positions = [], uvs = [];
   const halfL = v.L / 2;
   const sectionPoints = (z) => {
     const cap = Math.abs(z) > 1;
-    const taper = 1 - 0.3 * Math.pow(smoothstep(0.7, 1.0, Math.abs(z)), 1.6);
+    const taper = 1 - (parked?.065:.3) * Math.pow(smoothstep(0.7,1.0,Math.abs(z)),1.6);
     const w = cap ? v.W * 0.06 : v.W / 2 * taper;
     const top = cap ? (v.floor + profileHeight(v, Math.sign(z))) / 2 : profileHeight(v, z);
     // sills rise over the wheels to read as arches
@@ -90,6 +91,14 @@ function loftBody(v) {
       (glass ? glassIdx : paintIdx).push(...tri); allIdx.push(...tri);
     }
   }
+  if(parked){
+    for(const row of [0,rows-1]){
+      const capBase=positions.length/3,dir=row===0?-1:1,zz=zs[row]*halfL;
+      positions.push(0,(v.floor+profileHeight(v,zs[row]))*.5,zz);uvs.push(.5,.5);
+      for(let j=0;j<J;j++){const off=(row*J+j)*3;positions.push(positions[off],positions[off+1],positions[off+2]);uvs.push(j/(J-1),.5);}
+      for(let j=0;j<J;j++){const a=capBase+1+j,b=capBase+1+(j+1)%J,tri=dir>0?[capBase,a,b]:[capBase,b,a];paintIdx.push(...tri);allIdx.push(...tri);}
+    }
+  }
   const full = new THREE.BufferGeometry();
   const posAttr = new THREE.Float32BufferAttribute(positions, 3), uvAttr = new THREE.Float32BufferAttribute(uvs, 2);
   full.setAttribute('position', posAttr); full.setAttribute('uv', uvAttr); full.setIndex(allIdx);
@@ -109,22 +118,23 @@ function contactShadowTexture() {
 
 const CACHE = { bodies: {}, decals: {}, alloy: null, shadow: null };
 
-function makeCar(kind, paint, envMap) {
+function makeCar(kind, paint, envMap, parked=false) {
   const v = VARIANTS[kind];
-  CACHE.bodies[kind] = CACHE.bodies[kind] || loftBody(v);
+  const bodyKey=parked?'parked:'+kind:kind;
+  CACHE.bodies[bodyKey]=CACHE.bodies[bodyKey]||loftBody(v,parked);
   CACHE.decals[kind] = CACHE.decals[kind] || EVO.tex.carDecal(kind);
   CACHE.alloy = CACHE.alloy || EVO.tex.alloy();
   CACHE.shadow = CACHE.shadow || contactShadowTexture();
-  const body = CACHE.bodies[kind];
+  const body = CACHE.bodies[bodyKey];
   const g = new THREE.Group();
-  const paintMat = new THREE.MeshPhysicalMaterial({ color: paint, map: CACHE.decals[kind], metalness: 0.35, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.06, envMap, envMapIntensity: 1.1 });
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0b1014, metalness: 0.1, roughness: 0.04, envMap, envMapIntensity: 1.4 });
+  const paintMat = new THREE.MeshPhysicalMaterial({ color:paint,map:parked?null:CACHE.decals[kind],metalness:parked?.08:.35,roughness:parked?.5:.32,clearcoat:parked?.18:1,clearcoatRoughness:parked?.28:.06,envMap,envMapIntensity:parked?.34:1.1 });
+  const glassMat = new THREE.MeshPhysicalMaterial({ color:parked?0x222c2c:0x0b1014,metalness:.1,roughness:parked?.19:.04,envMap,envMapIntensity:parked?.52:1.4 });
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.82 });
   const wellMat = new THREE.MeshStandardMaterial({ color: 0x08090a, roughness: 1 });
   const tyreMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.92 });
   const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.3, envMap, envMapIntensity: 0.8 });
-  const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: 1.3, roughness: 0.08, metalness: 0.2, envMap, envMapIntensity: 1 });
-  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x9c1520, emissive: 0x7a0a14, emissiveIntensity: 0.7, roughness: 0.12, envMap });
+  const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: parked?0:1.3, roughness: 0.08, metalness: 0.2, envMap, envMapIntensity: 1 });
+  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x9c1520, emissive: 0x7a0a14, emissiveIntensity: parked?0:.7, roughness: 0.12, envMap });
   const plateFront = new THREE.MeshStandardMaterial({ color: 0xf4f2e6, roughness: 0.5 });
   const plateRear = new THREE.MeshStandardMaterial({ color: 0xf2d24a, roughness: 0.5 });
   const interiorMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.95 });
@@ -151,7 +161,7 @@ function makeCar(kind, paint, envMap) {
   // lights, grille, plates
   const noseY = lerp(v.floor, profileHeight(v, 0.97), 0.62);
   for (const sx of [1, -1]) {
-    add(new THREE.BoxGeometry(0.46, 0.15, 0.12), lampMat, sx * (halfW * 0.62), noseY, halfL - 0.02, 0.35, sx * 0.25, 0, false);
+    add(new THREE.BoxGeometry(parked?.38:.46,parked?.12:.15,parked?.045:.12),lampMat,sx*(halfW*.62),noseY,halfL+(parked?.014:-.02),parked?0:.35,sx*(parked?.03:.25), 0, false);
     add(new THREE.BoxGeometry(0.3, 0.13, 0.08), tailMat, sx * (halfW * 0.7), lerp(v.floor, profileHeight(v, -0.97), 0.62), -halfL + 0.01, 0, 0, 0, false);
     add(new THREE.BoxGeometry(0.12, 0.09, 0.2), trimMat, sx * (halfW + 0.12), v.waist + 0.16, v.screen[0] * halfL - 0.1, 0, 0, 0, false); // mirrors
   }
@@ -165,14 +175,47 @@ function makeCar(kind, paint, envMap) {
   const cabH = (Math.min(profileHeight(v, cabZ0 / halfL), profileHeight(v, cabZ1 / halfL)) - v.waist) * 0.8;
   add(new THREE.BoxGeometry(v.W * 0.78, cabH, cabZ1 - cabZ0), interiorMat, 0, v.waist + cabH * 0.5, (cabZ0 + cabZ1) / 2, 0, 0, 0, false);
   const seatZ = v.screen[0] * halfL - 0.55;
-  add(new THREE.SphereGeometry(0.11, 10, 8), skinMat, -0.37, v.waist + 0.42, seatZ, 0, 0, 0, false);
-  add(new THREE.BoxGeometry(0.42, 0.34, 0.24), new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.9 }), -0.37, v.waist + 0.14, seatZ, 0, 0, 0, false);
+  if(!parked)add(new THREE.SphereGeometry(0.11, 10, 8), skinMat, -0.37, v.waist + 0.42, seatZ, 0, 0, 0, false);
+  if(!parked)add(new THREE.BoxGeometry(0.42, 0.34, 0.24), new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.9 }), -0.37, v.waist + 0.14, seatZ, 0, 0, 0, false);
   // contact shadow
-  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(v.L * 1.06, v.W * 1.35), new THREE.MeshBasicMaterial({ map: CACHE.shadow, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(v.W * 1.25, v.L * 1.08), new THREE.MeshBasicMaterial({ map: CACHE.shadow, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; shadow.renderOrder = 1;
   g.add(shadow);
   return g;
 }
+
+EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality={}) {
+  const parked=[],UP=new THREE.Vector3(0,1,0);
+  // Merge the static parts of each car by material. This avoids dozens of draw calls per parked vehicle.
+  function mergeGroup(group){
+    group.updateMatrixWorld(true);const bins=new Map(),remove=[];
+    group.traverse(o=>{if(!o.isMesh||o.material.transparent)return;const key=o.material.uuid;
+      if(!bins.has(key))bins.set(key,{mat:o.material,parts:[],shadow:false});const b=bins.get(key);const g=o.geometry.clone().applyMatrix4(o.matrixWorld);b.parts.push(g);b.shadow=b.shadow||o.castShadow;remove.push(o);
+    });
+    remove.forEach(o=>o.removeFromParent());
+    for(const b of bins.values()){
+      const p=[],n=[],uv=[],ix=[];let offset=0;
+      for(const g of b.parts){const pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;
+        for(let i=0;i<pa.count;i++){p.push(pa.getX(i),pa.getY(i),pa.getZ(i));n.push(na.getX(i),na.getY(i),na.getZ(i));uv.push(ua?ua.getX(i):0,ua?ua.getY(i):0);}
+        const ind=g.index;if(ind)for(let i=0;i<ind.count;i++)ix.push(ind.getX(i)+offset);else for(let i=0;i<pa.count;i++)ix.push(i+offset);offset+=pa.count;g.dispose();
+      }
+      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(ix);geo.computeBoundingSphere();
+      const m=new THREE.Mesh(geo,b.mat);m.castShadow=b.shadow;m.receiveShadow=true;group.add(m);
+    }
+  }
+  RT.detailPlan.lots.forEach((pc,i)=>{
+    const mesh=makeCar(pc.kind,pc.paint,envMap,true);mergeGroup(mesh);
+    const f={...RT.frame(pc.s)},p=world.groundAt(pc.s,pc.side*pc.d);
+    mesh.name='parked vehicle '+(i+1);mesh.position.set(p.x,p.y+.075,p.z);mesh.rotation.set(-Math.atan(f.ty),f.heading+(pc.dir<0?Math.PI:0),0,'YXZ');
+    if(pc.dir<0)mesh.rotation.x*=-1;
+    world.scene.add(mesh);parked.push(mesh);
+  });
+  const previous=world.update;let last=-1;
+  world.update=function(t,pos,forward){previous(t,pos,forward);if(t-last>.22){
+    for(const car of parked){const d=Math.hypot(car.position.x-pos.x,car.position.z-pos.z);car.visible=d<(quality.coarse?145:210);if(car.visible)car.traverse(m=>{if(m.isMesh&&!m.material.transparent)m.castShadow=d<75;});}last=t;
+  }};
+  world.parkedCars=parked;
+};
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const count = opts.count ?? 5;
@@ -196,7 +239,8 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
     const f = RT.frame(car.s);
     RT.point(car.s, ONCOMING_D, 0, _p);
     car.mesh.position.copy(_p);
-    car.mesh.rotation.set(Math.atan2(f.ty, 1), Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    const sp=Math.atan2(RT.surfaceAt(car.s-1.3,ONCOMING_D)-RT.surfaceAt(car.s+1.3,ONCOMING_D),2.6);
+    car.mesh.rotation.set(Math.atan2(f.ty, 1)-sp, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
   }
   cars.forEach(place);
 
@@ -208,9 +252,11 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       for (let dist = 0; dist <= 90; dist += 6) {
         const f = RT.frame(car.s - dist);
         const radius = 1 / Math.max(Math.abs(f.kappa), 1e-4);
-        const vBend = 0.82 * EVO.cornerSpeeds(radius).safe;
+        const vBend = Math.min(0.82 * EVO.cornerSpeeds(radius).safe, RT.speedLimitAt(car.s-dist)/2.23694);
         limit = Math.min(limit, Math.sqrt(vBend * vBend + 2 * 3.5 * dist));
       }
+      const hump=RT.nextHump(car.s,-1);
+      if(hump&&hump.dist<100)limit=Math.min(limit,Math.sqrt(5.3*5.3+2*2.7*Math.max(0,hump.dist-5)));
       // ease off approaching the junction mouths
       for (const j of RT.JUNCTIONS) { const dj = Math.abs(mod(car.s - j.s + L / 2, L) - L / 2); if (dj < 30) limit = Math.min(limit, 11); }
       // keep a gap to the car ahead in their direction

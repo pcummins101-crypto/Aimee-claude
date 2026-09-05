@@ -1,6 +1,8 @@
 # Avenrà EVO · B-Road
 
-A first-person WebGL simulation of riding an Avenrà EVO around a quiet, traffic-free two-way British B road in the Yorkshire Dales. Realism is the priority: real lighting and cast shadows, physically-based road and verge materials, UK road language, hedgerows, dry-stone walls, post-and-wire fences, coned-off side turnings and live rear-view mirrors behind the EVO rider cockpit photograph.
+A first-person WebGL simulation of riding an Avenrà EVO around a quiet two-way British B road in the Yorkshire Dales, with light oncoming traffic. Realism is the priority: real lighting and cast shadows, physically-based road and verge materials, UK road language, hedgerows, dry-stone walls, a stone-built village with traffic calming, coned-off side turnings and live rear-view mirrors behind the EVO rider cockpit photograph.
+
+This version builds on the "Detailed Scenery Edition" fork of the simulator (the village of Dalebeck, road humps and rumble strips, potholes and repairs, farm gates, hay barns, parked cars, spatial culling) and adds a lighting system and a further scenery pass on top of it.
 
 ## What is in the world
 
@@ -14,6 +16,21 @@ A first-person WebGL simulation of riding an Avenrà EVO around a quiet, traffic
 - **Sky and light** – a custom sky shader (Rayleigh-style gradient, sun disc and glow, drifting fbm clouds), a warm low sun with a 4k/2k PCF shadow map focused ahead of the rider, a strong sky-light hemisphere so shaded walls and hedges read like a bright British day, transmitted-light fill on foliage, and exponential haze.
 - **Photographic pipeline** – the scene renders in linear HDR into a multisampled half-float target; a quarter-resolution bloom lifts the sun, sky and headlamps, then one composite pass applies speed-scaled edge blur, slight chromatic aberration, ACES tone mapping, a colour grade, vignette and film grain. The road carries a sky reflection from the same environment map the cars use, and tree canopies sway in the wind. If the device cannot render to float targets the frame is drawn directly with the renderer's own ACES curve (`?nopost=1` forces this).
 
+## Light
+
+**LIGHT** on the start screen picks the day. Every value is a live light property, sky uniform or material setting, so the look changes between rides without rebuilding the world; the environment map that the cars, windows, puddles and tarmac reflect is regenerated from the new sky.
+
+- **Bright afternoon** – high sun, blue sky with shaded cumulus and a cirrus veil, crisp shadows.
+- **Misty morning** – low sun ahead, thin haze, a wet sheen on the road, beams down the lane.
+- **Golden evening** – long warm shadows from a low sun behind you, orange horizon, mauve sky.
+- **Overcast, wet road** – soft light from a grey sky, very soft shadows, the tarmac mirroring the sky.
+
+Effects that ride on top of the scene, all in the single post-process pass: HDR bloom (thresholded so only the sun, its glow and headlamps bloom), **sun shafts** that break around the foliage between you and the sun, a restrained **lens flare** gated by whether the sun disc is actually visible, drifting cloud shadows, a gentle film-style grade (contrast, saturation, warm highlights, cool lifted shadows), vignette and grain. Shaded surfaces are handled in the geometry rather than the shader: the verge darkens where it meets a hedge or wall, hedges sit on a dark foot, and the lowest courses of every wall stay damp and mossy while the coping catches the light.
+
+## Scenery
+
+On top of the Detailed Scenery Edition's village and road detail: **beech and silver birch** join the oak, ash and hawthorn (birch with papery white bark, dark lenticels and branch scars), **foxgloves** stand along the verges through the woods, the deeper potholes hold **standing water** that mirrors the sky, a red **K6 telephone box** stands by the bus shelter, and three **farmsteads** with barns and yard walls sit out in the fields the way the Dales are actually dotted with them.
+
 ## Riding
 
 The powertrain is fitted to the EVO's figures: 0–60 mph in 3.9 s and a 109 mph terminal speed. Every metre of road carries a **safe** cornering speed (0.57 g) and a **maximum** (0.88 g) derived from its radius; the corner bar at the top of the screen plans ahead for braking and turns green, amber or red. Between safe and maximum the bike drifts towards the outside of the bend and needs holding; above the maximum it runs off into the verge and the hedge. Oncoming traffic (six cars on a phone, seven on desktop: hatchbacks, SUVs and vans lofted from smooth cross-sections, with clearcoat paint and glass that reflect an environment map generated from the sky) circulates the loop in the other lane, keeping its distance, slowing for bends and junctions; cross the centre line into its path and you will collide.
@@ -23,22 +40,6 @@ The powertrain is fitted to the EVO's figures: 0–60 mph in 3.9 s and a 109 mph
 - **Brake**: hold the bottom-left of the screen, or ↓ / S / Space.
 
 Lean follows the corner physics (`atan(v²κ/g)`) plus a steering lean; the eye point sits 1.28 m up, moves to the inside of the corner and dips under braking. Leaving the carriageway rumbles and scrubs speed. The dash is live, and both mirrors show a real rear render.
-
-## VR (optional)
-
-The ordinary touch and desktop ride is unchanged and remains the default. **VR MODE** on the start screen adds a second way to ride it, aimed at a phone in a headset — the intended rig is a Galaxy Fold in a holder mounted in the visor aperture of a crash helmet.
-
-Chrome on Android no longer offers a WebXR `immersive-vr` session for a plain phone in a holder (Daydream is gone and WebVR was removed), so the stereo rig is built here rather than handed to the browser: two sub-cameras of a `THREE.ArrayCamera` draw side by side into the existing HDR target in one traversal with one shadow pass, and the post composite pre-warps each half with a barrel distortion that cancels the lens's pincushion, correcting the colour fringing at the same time. Head orientation is 3DoF, from `deviceorientation`.
-
-- **Steer** by leaning your head into the bend, as you would lean a bike; a gamepad's left stick overrides it.
-- **Throttle and brake** on a Bluetooth gamepad's triggers or bumpers. **A** recentres your view, **Start** exits; Escape and R do the same from a keyboard.
-- **The cockpit is real geometry** in VR — bars, levers, mirrors, fly screen, tank and the same live TFT dash — because a flat photograph has no parallax and reads as a sticker on the eyes in stereo. A stable near reference is also the single biggest comfort win available.
-
-Comfort governs the rest. The bike leans fully while the view stays nearly level (25 % by default, adjustable): rolling the horizon with the lean is the fastest way to make a headset rider ill. The radial speed blur is off, and a vignette tightens with speed and cornering load. Notices that would appear in the HUD are drawn on the dash instead.
-
-Lens geometry differs between holders, so **VR setup** on the start screen exposes eye separation, field of view, lens warp and centre, colour-fringe correction, how much the view leans, head-lean sensitivity and deadzone, and render scale; values are remembered per device. **Test head tracking** shows a live read of head lean and the steering it produces, so the direction can be checked with the phone in your hands before it goes into a helmet — and reversed with one slider if it reads backwards.
-
-VR needs WebGL2 with float render targets (the button reports it if unavailable). Serve over HTTPS: motion sensors are refused otherwise. Stereo roughly doubles the draw calls, so start at a lower render scale if frames drop — a dropped frame in a headset is felt, not just seen.
 
 ## Running
 
@@ -63,13 +64,14 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | --- | --- |
 | `src/00-core.js` | maths, deterministic RNG, noise, every procedural texture and sign face |
 | `src/10-route.js` | loop geometry, elevation, terrain, junction plan, boundary plan, bend detection |
-| `src/20-world.js` | mesh builders for road, verges, pasture, boundaries, junctions, markings, signs, sky, sun |
-| `src/25-vegetation.js` | volumetric tree geometry (three species, two variants each) and instancing with per-tree tint |
+| `src/15-road-detail.js` | authored places: village, gates, humps, rumble strips, potholes, repairs, surface height and roughness |
+| `src/20-world.js` | mesh builders for road, verges, pasture, boundaries, junctions, markings, signs, sky, sun; lighting presets |
+| `src/25-vegetation.js` | volumetric tree geometry (five species, two variants each) and instancing with per-tree tint |
+| `src/27-realism-world.js` | cottages, village furniture, farm gates, barns, parked cars, puddles, phone box, farmsteads, batching and distance culling |
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
-| `src/45-post.js` | HDR post-processing: bloom, speed blur, tone mapping, grade, vignette, grain |
+| `src/45-post.js` | HDR post-processing: bloom, sun shafts, lens flare, tone mapping, grade, vignette, grain |
 | `src/50-traffic.js` | oncoming cars: lofted bodies, PBR materials with sky reflections, bend-aware speed, spacing, pass-by and collision events |
-| `src/60-vr.js` | optional stereo VR: head tracking, gamepad, lens correction, 3D cockpit |
-| `src/90-main.js` | renderer setup, quality detection, corner-bar HUD, frame loop |
+| `src/90-main.js` | renderer setup, ride options, quality detection, corner-bar HUD, road info, pause, frame loop |
 
 Everything except the cockpit photograph (`assets/cockpit.png`) is generated at runtime from a fixed seed, so the road is identical on every device.

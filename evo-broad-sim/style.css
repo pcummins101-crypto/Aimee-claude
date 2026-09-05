@@ -45,17 +45,20 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
 @media (max-height: 460px) { #start .panel { padding: 14px 18px; } #start .copy { display: none; } #start .controls { gap: 3px; margin-bottom: 10px; } #start h1 { margin-bottom: 6px; } }
 @media (prefers-reduced-motion: reduce) { #start { transition: none; } }
 
-
-/* ------------------------------------------------- VR setup on the start panel */
-.vrsetup { margin: 14px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 10px; }
-.vrsetup summary { cursor: pointer; font: 600 12px/1.4 'Barlow Condensed', 'Barlow', system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8fa6b4; }
-.vrsetup summary:hover { color: #d8e6ee; }
-.vrsetup .hint { margin: 8px 0; font-size: 12px; line-height: 1.5; color: #8195a2; }
-.vrgrid { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0; }
-.vrgrid label { display: grid; grid-template-columns: 1fr 104px 44px; align-items: center; gap: 8px; font-size: 12px; color: #a9bcc7; }
-.vrgrid input[type="range"] { width: 100%; accent-color: #4fd3ec; }
-.vrgrid output { font-variant-numeric: tabular-nums; text-align: right; color: #d8e6ee; }
-@media (max-width: 560px) { .vrgrid label { grid-template-columns: 1fr 78px 40px; font-size: 11px; } }
-.vrtest { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 2px; }
-.vrtest #vr-read { font-size: 12px; color: #8fc4d2; font-variant-numeric: tabular-nums; }
-button.ghost.small { padding: 6px 10px; font-size: 11px; }
+#start .panel { max-height: calc(100dvh - 48px); overflow-y:auto; box-sizing:border-box; }
+.ride-options { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; margin:0 0 18px; }
+.ride-options label { font-size:10px; color:#aebfc4; letter-spacing:.12em; font-weight:600; }
+.ride-options select { display:block; width:100%; margin-top:6px; padding:9px 10px; color:#e7edf0; border:1px solid #465258; border-radius:3px; background:#152025; font:13px Arial,sans-serif; }
+.ride-options .check { display:flex; align-items:center; gap:6px; font-size:11px; letter-spacing:0; }
+.ride-options input { accent-color:#ef3a4c; }
+#road-info { position:absolute; left:max(14px,env(safe-area-inset-left)); top:max(52px,calc(env(safe-area-inset-top) + 45px)); display:flex; align-items:center; gap:9px; padding:7px 10px 7px 7px; border:1px solid rgba(255,255,255,.12); background:rgba(8,15,18,.66); border-radius:7px; max-width:220px; }
+#limit-sign { display:grid;place-items:center;box-sizing:border-box;min-width:35px;width:35px;height:35px;border:4px solid #ba3539;border-radius:50%;background:#f0eee4;color:#191b1a;font:bold 19px Arial; }
+#road-info strong { display:block;font-size:10px;letter-spacing:.10em;color:#e8e6de; }
+#surface-info { display:block;margin-top:4px;font-size:10px;color:#b9c6c8; }
+#surface-info.warn { color:#f0c479; }
+#pause { position:absolute;pointer-events:auto;top:max(8px,env(safe-area-inset-top));right:max(57px,calc(env(safe-area-inset-right) + 57px));width:36px;height:36px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(6,10,14,.5);color:#e6eef2;cursor:pointer;font-size:16px; }
+#paused { position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:rgba(5,10,13,.54);font:700 36px Arial;letter-spacing:.18em;z-index:3; }
+#paused[hidden] { display:none; } #paused small { margin-top:14px;font:12px Arial;letter-spacing:.03em; }
+#pause { z-index:4; } #hud .notice { max-width:85vw;white-space:normal;text-align:center; }
+@media(max-width:600px){#road-info{top:70px;max-width:178px;}#road-info strong{font-size:9px;}#hud .corner{left:14px;top:34px;transform:none;width:calc(100vw - 28px);}#start .panel{padding:20px;}#start .controls{font-size:11px;}}
+@media(max-height:480px){#start .panel{max-height:calc(100dvh - 18px);}.ride-options{gap:6px;margin-bottom:10px;}.ride-options select{padding:5px;}#start .safety{margin-top:9px;}#road-info{top:48px;}}

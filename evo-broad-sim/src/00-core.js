@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — core utilities and procedural textures.
  *
@@ -19,25 +20,6 @@ const mod = (a, n) => ((a % n) + n) % n;
 EVO.clamp = clamp; EVO.lerp = lerp; EVO.smoothstep = smoothstep; EVO.mod = mod;
 
 // Deterministic PRNG (mulberry32) so the road is identical on every device.
-/* Merge indexed position/normal/uv geometries into one buffer. Used wherever a
- * pile of small primitives should cost a single draw call. */
-EVO.mergeGeometries = function mergeGeometries(list) {
-  const p = [], n = [], uv = [], idx = [];
-  let base = 0;
-  for (const g of list) {
-    const pa = g.getAttribute('position'), na = g.getAttribute('normal'), ua = g.getAttribute('uv');
-    for (let i = 0; i < pa.count; i += 1) { p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); n.push(na.getX(i), na.getY(i), na.getZ(i)); uv.push(ua.getX(i), ua.getY(i)); }
-    const ix = g.getIndex(); for (let i = 0; i < ix.count; i += 1) idx.push(ix.getX(i) + base);
-    base += pa.count;
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
-  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  out.setIndex(idx); out.computeBoundingSphere();
-  return out;
-};
-
 EVO.rng = (seed) => {
   let s = (seed >>> 0) || 1;
   return () => {
@@ -133,15 +115,15 @@ EVO.tex.asphalt = function asphalt() {
       const track = Math.max(
         Math.exp(-Math.pow((across - 0.34) / 0.09, 2)),
         Math.exp(-Math.pow((across - 0.79) / 0.08, 2)));
-      let base = 0.30 + grain * 0.22 + (mottle - 0.5) * 0.12;
-      base -= track * 0.07; // polished tracks are darker and smoother
+      let base = 0.27 + grain * 0.13 + (mottle - 0.5) * 0.048;
+      base -= track * 0.024; // polished tracks are darker and smoother
       base += smoothstep(0.86, 1.0, across) * (EVO.noise2(px * 3, py * 3) - 0.3) * 0.25; // loose broken edge
       // occasional chipping highlights
-      const chip = rnd() < 0.012 ? 0.25 * rnd() : 0;
+      const chip = rnd() < 0.032 ? 0.13 * rnd() : 0;
       const v = clamp(base + chip, 0, 1);
       const tint = (mottle - 0.5) * 0.06;
       const i = (y * S + x) * 4;
-      d[i] = (v + tint * 0.4) * 255; d[i + 1] = (v + tint * 0.2) * 255; d[i + 2] = (v - tint * 0.3 + 0.01) * 255; d[i + 3] = 255;
+      d[i] = (v + tint * 0.4) * 255; d[i + 1] = (v + tint * 0.2) * 255; d[i + 2] = (v - tint * 0.3 - 0.009) * 255; d[i + 3] = 255;
       height[y * S + x] = grain * (1 - track * 0.55) + chip * 2;
       rough[y * S + x] = clamp(0.86 - track * 0.22 + (grain - 0.5) * 0.12, 0, 1) * 255;
     }
@@ -215,9 +197,9 @@ EVO.tex.grass = function grass() {
       const fine = EVO.noise2(px * 6, py * 6) * 0.5 + EVO.noise2(px * 14 + 5, py * 3 + 2) * 0.5;
       const streak = EVO.noise2(px * 3.5, py * 28); // elongated blades
       const soil = smoothstep(0.72, 0.9, EVO.fbm(px * 0.5 + 40, py * 0.5, 2)) * 0.7;
-      let r = 0.26 + clump * 0.20 + fine * 0.08;
-      let g = 0.34 + clump * 0.22 + fine * 0.10 + streak * 0.07;
-      let b = 0.12 + clump * 0.08 + fine * 0.04;
+      let r = 0.21 + clump * 0.15 + fine * 0.045;
+      let g = 0.265 + clump * 0.17 + fine * 0.065 + streak * 0.026;
+      let b = 0.145 + clump * 0.10 + fine * 0.040;
       // dry straw tips
       const straw = smoothstep(0.7, 0.95, streak) * 0.5;
       r = lerp(r, 0.62, straw); g = lerp(g, 0.56, straw); b = lerp(b, 0.28, straw);
@@ -387,18 +369,17 @@ EVO.tex.tree = function tree(seed = 5) {
 
 /* Single grass blade card for near-verge instancing. */
 EVO.tex.blade = function blade() {
-  const W = 64, H = 128;
-  const c = canvas(W, H), ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-  const rnd = EVO.rng(3);
-  for (let k = 0; k < 5; k += 1) {
-    const x0 = 12 + rnd() * 40, w = 5 + rnd() * 6, lean = (rnd() - 0.5) * 30;
-    const g = ctx.createLinearGradient(0, H, 0, 0);
-    g.addColorStop(0, '#3f6a22'); g.addColorStop(0.65, '#7aa23a'); g.addColorStop(1, '#c2c96a');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(x0 - w, H); ctx.quadraticCurveTo(x0 + lean * 0.5, H * 0.5, x0 + lean, 6); ctx.quadraticCurveTo(x0 + lean * 0.5 + 2, H * 0.5, x0 + w, H); ctx.fill();
+  const W=128,H=128,c=canvas(W,H),ctx=c.getContext('2d'),rnd=EVO.rng(303);
+  ctx.clearRect(0,0,W,H);
+  for(let k=0;k<12;k++){
+    const x0=40+rnd()*48,w=1+rnd()*2.0,lean=(rnd()-.5)*68,tip=7+rnd()*82;
+    const g=ctx.createLinearGradient(0,H,0,tip);g.addColorStop(0,'#465635');g.addColorStop(.7,'#77864d');g.addColorStop(1,'#a6a876');
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x0-w,H);ctx.quadraticCurveTo(x0+lean*.18,(H+tip)*.5,x0+lean,tip);ctx.quadraticCurveTo(x0+lean*.24+1,(H+tip)*.5,x0+w,H);ctx.fill();
   }
-  return texture(c, { repeat: false });
+  for(let k=0;k<5;k++){
+    const x=30+rnd()*65,y=100+rnd()*21;ctx.fillStyle='#6d7948';ctx.beginPath();ctx.ellipse(x,y,3+rnd()*4,2+rnd()*3,rnd()*3,0,7);ctx.fill();
+  }
+  return texture(c,{repeat:false});
 };
 
 /* Traffic cone wrap: orange with a white reflective sleeve (UK 750 mm cone). */
@@ -561,9 +542,9 @@ EVO.tex.leafCluster = function leafCluster(species = 'oak', seed = 11) {
   const nc = canvas(S, S), nctx = nc.getContext('2d');
   ctx.clearRect(0, 0, S, S); nctx.clearRect(0, 0, S, S);
   const rnd = EVO.rng(seed);
-  const base = { oak: [62, 96, 34], hawthorn: [58, 100, 38], ash: [78, 116, 46], beech: [70, 118, 40] }[species] || [64, 100, 36];
-  const size = { oak: 22, hawthorn: 11, ash: 17, beech: 20 }[species] || 18;
-  const count = { oak: 240, hawthorn: 620, ash: 380, beech: 260 }[species] || 260;
+  const base = { oak: [73, 99, 49], hawthorn: [69, 99, 47], ash: [82, 111, 58], beech: [76, 110, 51], birch: [92, 124, 56] }[species] || [64, 100, 36];
+  const size = { oak: 16, hawthorn: 10, ash: 13, beech: 16, birch: 9 }[species] || 18;
+  const count = { oak: 395, hawthorn: 660, ash: 490, beech: 410, birch: 720 }[species] || 260;
   // twigs first (behind the leaves)
   nctx.fillStyle = 'rgb(128,128,255)';
   ctx.strokeStyle = 'rgba(58,44,30,0.9)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
@@ -577,7 +558,7 @@ EVO.tex.leafCluster = function leafCluster(species = 'oak', seed = 11) {
   // leaves sorted back to front so the front ones are brightest
   const leaves = [];
   for (let k = 0; k < count; k += 1) {
-    const a = rnd() * Math.PI * 2, rad = Math.pow(rnd(), 0.6) * S * 0.46;
+    const a = rnd() * Math.PI * 2, outline=.37+.065*Math.sin(a*3+seed)+.035*Math.cos(a*5), rad = Math.pow(rnd(), 0.58) * S * outline;
     leaves.push({ x: S / 2 + Math.cos(a) * rad, y: S / 2 + Math.sin(a) * rad * 0.94, depth: rnd(), rot: rnd() * Math.PI * 2, r: size * (0.7 + rnd() * 0.6), edge: rad / (S * 0.46) });
   }
   leaves.sort((p, q) => p.depth - q.depth);
@@ -608,6 +589,60 @@ EVO.tex.leafCluster = function leafCluster(species = 'oak', seed = 11) {
 };
 
 /* Bark: vertical fissured trunk texture, 1 m x 2 m tile. */
+/* Silver birch: papery white bark with dark horizontal lenticels and the
+ * black diamond scars where old branches were shed. */
+EVO.tex.birchBark = function birchBark() {
+  const W = 256, H = 512;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H), d = img.data;
+  const height = new Float32Array(W * H);
+  const rnd = EVO.rng(77);
+  const scars = [];
+  for (let k = 0; k < 9; k += 1) scars.push({ x: rnd() * W, y: rnd() * H, w: 14 + rnd() * 22, h: 30 + rnd() * 60 });
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const px = x / W * 16, py = y / H * 32;
+      const paper = 0.82 + EVO.noise2(px * 2.2, py * 0.7) * 0.14 - EVO.noise2(px * 9, py * 9) * 0.06;
+      const band = smoothstep(0.62, 0.8, EVO.noise2(px * 0.3 + 5, py * 6.5)) * 0.55;
+      let v = paper - band;
+      let scar = 0;
+      for (const sc of scars) { const dx = Math.abs(x - sc.x) / sc.w, dy = Math.abs(y - sc.y) / sc.h; if (dx + dy < 1) scar = Math.max(scar, 1 - (dx + dy)); }
+      v = v * (1 - scar * 0.85);
+      const i = (y * W + x) * 4;
+      d[i] = v * 255; d[i + 1] = v * 250; d[i + 2] = v * 236; d[i + 3] = 255;
+      height[y * W + x] = paper * 0.5 - band * 0.3 - scar * 0.4;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { map: texture(c), normalMap: texture(normalFromHeight(height, W, H, 2), { srgb: false }) };
+};
+
+/* Foxglove: a tall spike of purple-pink bells on a leafy stem, drawn as an
+ * upright card. */
+EVO.tex.foxglove = function foxglove() {
+  const W = 128, H = 256;
+  const c = canvas(W, H), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const rnd = EVO.rng(83);
+  for (let k = 0; k < 3; k += 1) {
+    const x0 = 34 + k * 30 + (rnd() - 0.5) * 10, top = 12 + rnd() * 30, lean = (rnd() - 0.5) * 18;
+    ctx.strokeStyle = 'rgba(96,128,60,0.95)'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(x0, H); ctx.quadraticCurveTo(x0 + lean * 0.4, H * 0.55, x0 + lean, top); ctx.stroke();
+    for (let l = 0; l < 4; l += 1) {
+      const y = H * 0.7 + l * 14; ctx.fillStyle = 'rgba(84,124,52,0.92)';
+      ctx.beginPath(); ctx.ellipse(x0 + (l % 2 ? 14 : -14), y, 16, 6, l % 2 ? 0.4 : -0.4, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let b = 0; b < 14; b += 1) {
+      const t = b / 14, y = top + 12 + t * (H * 0.55), xx = x0 + lean * (1 - t) + (b % 2 ? 7 : -7) * (0.6 + t * 0.5);
+      const size = 3 + t * 5.5;
+      ctx.fillStyle = rnd() < 0.85 ? 'rgba(196,84,158,0.96)' : 'rgba(224,150,200,0.96)';
+      ctx.beginPath(); ctx.ellipse(xx, y, size * 0.7, size, (b % 2 ? -0.5 : 0.5), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(120,36,92,0.8)'; ctx.beginPath(); ctx.arc(xx + (b % 2 ? 2 : -2), y + size * 0.4, size * 0.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  return texture(c, { repeat: false });
+};
+
 EVO.tex.bark = function bark() {
   const W = 256, H = 512;
   const c = canvas(W, H), ctx = c.getContext('2d');

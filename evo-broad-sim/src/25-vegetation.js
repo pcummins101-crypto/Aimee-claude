@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — volumetric trees.
  *
@@ -14,7 +15,9 @@ const { lerp } = EVO;
 const SPECIES = {
   oak: { trunkH: 3.0, trunkR: 0.28, canopy: 5.7, rx: 3.7, ry: 3.0, clusters: 34, card: [2.0, 2.9], branches: 5, leaf: 'oak', seed: 11, tint: [0.92, 1.05, 0.9] },
   ash: { trunkH: 4.3, trunkR: 0.21, canopy: 7.6, rx: 2.8, ry: 3.8, clusters: 30, card: [1.7, 2.5], branches: 4, leaf: 'ash', seed: 23, tint: [1.0, 1.05, 0.92] },
-  hawthorn: { trunkH: 1.3, trunkR: 0.13, canopy: 3.0, rx: 2.3, ry: 1.9, clusters: 24, card: [1.2, 1.8], branches: 4, leaf: 'hawthorn', seed: 37, tint: [0.95, 1.0, 0.95] }
+  hawthorn: { trunkH: 1.3, trunkR: 0.13, canopy: 3.0, rx: 2.3, ry: 1.9, clusters: 24, card: [1.2, 1.8], branches: 4, leaf: 'hawthorn', seed: 37, tint: [0.95, 1.0, 0.95] },
+  beech: { trunkH: 3.6, trunkR: 0.31, canopy: 6.6, rx: 4.1, ry: 3.4, clusters: 38, card: [2.0, 3.0], branches: 6, leaf: 'beech', seed: 53, tint: [1.0, 1.02, 0.86] },
+  birch: { trunkH: 4.8, trunkR: 0.12, canopy: 7.0, rx: 1.9, ry: 2.7, clusters: 22, card: [1.3, 1.9], branches: 4, leaf: 'birch', seed: 71, tint: [1.02, 1.06, 0.9], bark: 'birch' }
 };
 
 class Sink {
@@ -69,7 +72,7 @@ function buildTree(spec, seed) {
   const corners = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   for (let k = 0; k < spec.clusters; k += 1) {
     const th = rnd() * Math.PI * 2, ph = Math.acos(1 - 2 * rnd()) * 0.92; // slight bias upward
-    const u = 0.35 + 0.65 * Math.sqrt(rnd());
+    const u = (0.38 + 0.62 * Math.sqrt(rnd())) * (0.92+.13*Math.sin(th*3+seed));
     c.set(Math.cos(th) * Math.sin(ph) * spec.rx * u, Math.cos(ph) * spec.ry * u, Math.sin(th) * Math.sin(ph) * spec.rx * u).add(centre);
     const size = lerp(spec.card[0], spec.card[1], rnd());
     e.set((rnd() - 0.5) * 1.2, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.8, 'YXZ');
@@ -77,7 +80,7 @@ function buildTree(spec, seed) {
     const hx = size / 2, hy = size * 0.42;
     corners[0].set(-hx, -hy, 0); corners[1].set(hx, -hy, 0); corners[2].set(hx, hy, 0); corners[3].set(-hx, hy, 0);
     for (const v of corners) v.applyMatrix4(m).add(c);
-    nrm.copy(c).sub(centre); nrm.x /= spec.rx; nrm.y /= spec.ry; nrm.z /= spec.rx; nrm.y += 0.35; nrm.normalize();
+    nrm.copy(c).sub(centre); nrm.x /= spec.rx; nrm.y /= spec.ry; nrm.z /= spec.rx; nrm.y += 0.22; nrm.normalize();
     // inner clusters sit in the crown's own shade
     leaves.quad(corners, nrm, 0.55 + 0.45 * u);
   }
@@ -88,8 +91,11 @@ EVO.vegetation = {
   SPECIES,
   /* placements: [{x, y, z, species, scale, yaw, tint?}] */
   createTreeMeshes(scene, placements, opts = {}) {
-    const bark = EVO.tex.bark();
-    const barkMat = new THREE.MeshStandardMaterial({ map: bark.map, normalMap: bark.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95 });
+    const bark = EVO.tex.bark(), birch = EVO.tex.birchBark();
+    const barkMats = {
+      oak: new THREE.MeshStandardMaterial({ map: bark.map, normalMap: bark.normalMap, normalScale: new THREE.Vector2(0.40, 0.40), color:0xaaa395, roughness: 0.98 }),
+      birch: new THREE.MeshStandardMaterial({ map: birch.map, normalMap: birch.normalMap, normalScale: new THREE.Vector2(0.35, 0.35), color: 0xe8e4dc, roughness: 0.9 })
+    };
     const groups = new Map();
     for (const p of placements) {
       const variant = (Math.abs(Math.round(p.x * 7 + p.z * 13)) % 2);
@@ -118,7 +124,7 @@ EVO.vegetation = {
           .replace('#include <begin_vertex>', '#include <begin_vertex>\n{ float ph = instanceMatrix[3][0] * 0.13 + instanceMatrix[3][2] * 0.17; float sw = sin(uTime * 0.9 + ph + position.y * 0.35) * 0.5 + sin(uTime * 1.7 + ph * 1.3) * 0.25; float amt = smoothstep(1.5, 4.0, position.y) * 0.07; transformed.x += sw * amt; transformed.z += sw * amt * 0.6; }');
       };
       EVO.tagShader(leafMat, 'treesway');
-      const wood = new THREE.InstancedMesh(geo.wood, barkMat, list.length);
+      const wood = new THREE.InstancedMesh(geo.wood, barkMats[spec.bark || 'oak'], list.length);
       const leaves = new THREE.InstancedMesh(geo.leaves, leafMat, list.length);
       list.forEach((p, k) => {
         q.setFromAxisAngle(Y, p.yaw); pos.set(p.x, p.y, p.z); sc.set(p.scale, p.scale, p.scale);
@@ -127,6 +133,7 @@ EVO.vegetation = {
         col.setRGB(spec.tint[0] * t, spec.tint[1] * (0.9 + (t - 1) * 0.5 + 0.1), spec.tint[2] * (2 - t) * 0.5 + 0.5);
         leaves.setColorAt(k, col);
       });
+      wood.name='tree trunks';leaves.name='tree canopy';
       wood.castShadow = true; wood.receiveShadow = true;
       leaves.castShadow = true; leaves.receiveShadow = false;
       leaves.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafTex[species].map, alphaTest: 0.5 });

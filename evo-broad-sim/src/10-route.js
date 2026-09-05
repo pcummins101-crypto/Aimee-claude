@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — route, terrain and road plan.
  *
@@ -13,7 +14,7 @@ const { clamp, lerp, smoothstep, mod } = EVO;
 const LANE_HALF = 3.0;         // carriageway half width (6.0 m B road)
 const ROAD_HALF = 3.1;         // asphalt mesh half width incl. broken edge
 const HEDGE_OFFSET = 5.2;      // boundary line from centre
-const SAMPLE = 1.0;            // metres between samples
+let SAMPLE = 1.0;            // metres between samples
 
 // Loop control points (metres). Roughly 2.4 km with a mix of fast sweepers,
 // a tight double bend and two blind crests.
@@ -89,6 +90,7 @@ function buildRoute() {
 }
 
 const R = buildRoute();
+SAMPLE = R.length / R.n;
 
 /* Frame at arbitrary distance s (metres, wraps). */
 const _frame = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, nx: 0, nz: 0, kappa: 0, heading: 0, s: 0, i: 0 };

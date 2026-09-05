@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+
 /*
  * AVENRÀ EVO · B-ROAD — rider dynamics, corner limits, camera rig and input.
  *
@@ -34,7 +35,7 @@ EVO.createBike = function createBike() {
     s: RT.length * 0.075, d: 1.5, v: 0, a: 0,
     lean: 0, leanTarget: 0, steer: 0, steerSmoothed: 0,
     pitch: 0, pitchVel: 0, heave: 0, heaveVel: 0,
-    offRoad: 0, rumble: 0, odometer: 0, drift: 0,
+    offRoad: 0, rumble: 0, odometer: 0, drift: 0, surfaceRoughness:0.2, surfaceImpact:0, motionScale:1,
     crashTimer: 0, crashes: 0, notice: null,
     corner: { safe: V_MAX, max: V_MAX, ratio: 0, status: 'safe', bendDist: Infinity, bendDir: 0, bendRadius: Infinity, bendSafe: V_MAX, bendMax: V_MAX, latAcc: 0 },
     input: { throttle: 0, brake: 0, steer: 0 },
@@ -99,7 +100,8 @@ EVO.createBike = function createBike() {
     const drive = throttle * POWER_A0 * (1 - POWER_K * Math.pow(bike.v / V_MAX, POWER_P));
     const braking = brake * 9.2;
     const drag = DRAG_C2 * bike.v * bike.v + DRAG_C0 + bike.offRoad * 3.2;
-    let a = drive - braking - drag;
+    const gradient=RT.frame(bike.s,scratch).ty;
+    let a = drive - braking - drag - G * gradient;
     if (bike.v <= 0.01 && a < 0) a = 0;
     bike.a = a;
     bike.v = clamp(bike.v + a * dt, 0, V_MAX);
@@ -111,7 +113,7 @@ EVO.createBike = function createBike() {
     // Steering moves the bike across the carriageway; the rate scales with
     // speed so a lane change takes a believable second or two.
     bike.steerSmoothed = lerp(bike.steerSmoothed, crashed ? 0 : inp.steer, 1 - Math.exp(-dt * 9));
-    const lateralRate = Math.min(3.2, 0.9 + bike.v * 0.09);
+    const lateralRate = Math.min(3.2, 0.9 + bike.v * 0.09) * Math.min(1,bike.v/1.5);
     bike.d += bike.steerSmoothed * lateralRate * dt;
 
     // Cornering physics: above the safe lateral acceleration the bike wants to
@@ -144,13 +146,20 @@ EVO.createBike = function createBike() {
     bike.leanTarget = clamp(cornerLean + steerLean, -0.9, 0.9);
     bike.lean = lerp(bike.lean, bike.leanTarget, 1 - Math.exp(-dt * 5.5));
 
-    // Suspension: fork dive under braking, squat on the throttle, road buzz.
-    const pitchTarget = -a * 0.0075;
+    // Wheelbase-separated road inputs: both wheels follow the same geometry.
+    // A damped visual chassis response, not a validated motorcycle dynamics model.
+    const frontSurface=RT.surfaceAt(bike.s+.74,bike.d), rearSurface=RT.surfaceAt(bike.s-.74,bike.d);
+    const roadHeave=(frontSurface+rearSurface)*.5;
+    const roadPitch=Math.atan2(frontSurface-rearSurface,1.48);
+    bike.surfaceRoughness=RT.roughnessAt(bike.s,bike.d);
+    bike.surfaceImpact=lerp(bike.surfaceImpact,Math.abs(frontSurface-rearSurface)*10*Math.min(1,bike.v/7),1-Math.exp(-dt*18));
+    bike.rumble=clamp(Math.max(bike.rumble,(bike.surfaceRoughness-.45)*Math.min(1,bike.v/8),bike.surfaceImpact*.35),0,1);
+    const pitchTarget = a * 0.0048 + roadPitch * .65;
     bike.pitchVel += ((pitchTarget - bike.pitch) * 60 - bike.pitchVel * 9) * dt;
     bike.pitch += bike.pitchVel * dt;
     const crashShake = crashed ? (EVO.noise2(bike.elapsed * 40, 1) - 0.5) * 0.12 * Math.min(1, bike.crashTimer) : 0;
-    const buzz = (EVO.noise2(bike.s * 0.7, 0.3) - 0.5) * 0.02 * Math.min(1, bike.v / 12) + bike.rumble * (EVO.noise2(bike.s * 4, 7) - 0.5) * 0.09 + crashShake;
-    bike.heaveVel += ((buzz - bike.heave) * 140 - bike.heaveVel * 14) * dt;
+    const buzz = ((EVO.noise2(bike.s * 0.7, 0.3) - 0.5) * (0.007+bike.surfaceRoughness*.024) * Math.min(1, bike.v / 12) + bike.rumble * (EVO.noise2(bike.s * 4, 7) - 0.5) * 0.035 + crashShake)*bike.motionScale;
+    bike.heaveVel += ((roadHeave + buzz - bike.heave) * 180 - bike.heaveVel * 19) * dt;
     bike.heave += bike.heaveVel * dt;
 
     bike.s = mod(bike.s + bike.v * dt, RT.length);
@@ -159,7 +168,7 @@ EVO.createBike = function createBike() {
   };
 
   bike.applyCamera = function applyCamera(camera, portrait) {
-    const f = bike.frame || RT.frame(bike.s, bike.frameObj);
+    const f = RT.frame(bike.s, bike.frameObj); bike.frame=f;
     // Eye moves to the inside of the corner as the rider leans.
     const eyeD = bike.d + Math.sin(bike.lean) * 0.42;
     const eyeH = EYE_HEIGHT * Math.cos(bike.lean * 0.9) + bike.heave - Math.max(0, -bike.pitch) * 0.8;
@@ -169,7 +178,7 @@ EVO.createBike = function createBike() {
     camera.position.copy(bike.pos);
     const yaw = Math.atan2(-f.tx, -f.tz) + bike.steerSmoothed * 0.05 + bike.lean * 0.04;
     const slope = Math.atan2(f.ty, 1);
-    camera.rotation.set(slope * 0.9 + bike.pitch - 0.065, yaw, bike.lean * 0.72, 'YXZ');
+    camera.rotation.set(slope * 0.9 + bike.pitch*bike.motionScale - 0.050, yaw, bike.lean * 0.66*bike.motionScale, 'YXZ');
     const speedFov = Math.min(1, bike.v / V_MAX);
     camera.fov = (portrait ? 74 : 60) + speedFov * 6;
     camera.updateProjectionMatrix();
