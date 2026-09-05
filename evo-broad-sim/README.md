@@ -1,12 +1,26 @@
 # Avenrà EVO · B-Road
 
-A first-person WebGL simulation of riding an Avenrà EVO around a quiet two-way British B road in the Yorkshire Dales, with light traffic in both directions and a score to beat. Realism is the priority: real lighting and cast shadows, physically-based road and verge materials, UK road language, hedgerows, dry-stone walls, a stone-built village with traffic calming, coned-off side turnings and live rear-view mirrors behind the EVO rider cockpit photograph.
+A first-person WebGL simulation of riding an Avenrà EVO around quiet British roads, with light traffic in both directions and a score to beat. Realism is the priority: real lighting and cast shadows, physically-based road and verge materials, UK road language, and live rear-view mirrors behind the EVO rider cockpit photograph.
 
-This version builds on the "Detailed Scenery Edition" fork of the simulator (the village of Dalebeck, road humps and rumble strips, potholes and repairs, farm gates, hay barns, parked cars, spatial culling) and adds a lighting system and a further scenery pass on top of it.
+## Routes
+
+**ROUTE** on the start screen picks the road. Everything that makes one road different from another — geometry, carriageway width, elevation character, terrain, boundary mix, junctions, authored places, traffic mix and scenery rules — is a record in `src/05-routes.js`, so adding a road means adding a record rather than editing builders. The world is built once, so changing route reloads the page; the choice and the best lap are remembered per road.
+
+| | Dales B-road | Moorland A-road |
+| --- | --- | --- |
+| Length | 2.4 km | 5.4 km |
+| Carriageway | 6.0 m | 7.3 m |
+| Bends | 10, tightest 54 m | 10, tightest 70 m |
+| Longest straight | 35 m | 932 m |
+| Climb | 11 m | 70 m, to a 486 ft summit |
+| Character | hedgerows, walls, woods, the village of Dalebeck with humps and a 20 limit | open moor, dry-stone walls, long unfenced runs, cattle grids, laybys, a snow gate |
+| Traffic | cars and vans | cars, vans and 16 m articulated lorries at 50 mph |
+
+The **moorland A-road** is the fast one. Two long straights let the EVO reach its 109 mph terminal speed, and the tightest bend is a 44 mph corner at the end of the longest of them, so it needs 137 m of braking from flat out. The corner planner's horizon is not fixed: it looks as far ahead as the bike could need to brake from its current speed plus about three seconds of reaction, because a horizon that suits a B road is far too short on a road where you cover it in under a second. Long unfenced stretches mean sheep graze up to the verge and a crosswind pushes the bike across its lane on the exposed tops. Overtaking is the main event: a lorry takes real commitment to pass, and the sightlines are long enough that the decision is about closing speed rather than blind faith.
 
 ## What is in the world
 
-- **Route** – a 2.4 km closed loop sampled every metre into a Frenet frame, with rolling elevation (max 7 % gradient), ten bends between 54 m and 116 m radius, and three T-junctions.
+- **Route** – a closed loop sampled every metre into a Frenet frame, with rolling elevation (max 7 % gradient), ten bends between 54 m and 116 m radius, and three T-junctions.
 - **Road** – 6 m carriageway with a 2.5 % crown, procedural asphalt (albedo, normal and roughness maps) with polished wheel tracks and a separate 40 m wear map of patches, cracks and tar snakes so the surface never visibly repeats.
 - **Markings** – 4 m / 8 m centre line, 6 m / 3 m hazard warning lines into bends and junctions, double white lines through the blind bends, edge lines on hazard stretches broken across junction mouths, white cat's eyes, SLOW legends before tighter bends, and give-way lines and triangles on every side road.
 - **Junctions** – each side road is flared at the mouth, marked, signed (junction warning triangles on the main road, Give Way facing the side road, a fingerpost name plate) and closed with seven cones and a Road Closed board on a barrier frame.
@@ -77,18 +91,19 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 
 | File | Role |
 | --- | --- |
+| `src/05-routes.js` | the route registry: geometry, widths, terrain, boundaries, places, traffic and scenery per road |
 | `src/00-core.js` | maths, deterministic RNG, noise, every procedural texture and sign face |
 | `src/10-route.js` | loop geometry, elevation, terrain, junction plan, boundary plan, bend detection |
-| `src/15-road-detail.js` | authored places: village, gates, humps, rumble strips, potholes, repairs, surface height and roughness |
+| `src/15-road-detail.js` | the selected route's places: village, gates, humps, cattle grids, laybys, potholes, repairs, surface height and roughness |
 | `src/20-world.js` | mesh builders for road, verges, pasture, boundaries, junctions, markings, signs, sky, sun; lighting presets |
 | `src/25-vegetation.js` | volumetric tree geometry (five species, two variants each) and instancing with per-tree tint |
-| `src/27-realism-world.js` | cottages, village furniture, farm gates, barns, parked cars, puddles, phone box, farmsteads, batching and distance culling |
+| `src/27-realism-world.js` | cottages, village furniture, farm gates, barns, parked cars, puddles, phone box, farmsteads, cattle grids, laybys, summit board and snow gate, batching and distance culling |
 | `src/28-rain.js` | rain streaks, computed entirely in the vertex shader around the rider |
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |
 | `src/35-score.js` | scoring: pace, bends and the chain multiplier, overtake judgement, village rules, laps and the saved best |
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
 | `src/45-post.js` | HDR post-processing: bloom, visor droplets, tone mapping, grade, vignette, grain |
-| `src/50-traffic.js` | traffic in both directions: lofted bodies, PBR materials with sky reflections, bend-aware speed, following and brake lights, pass-by, overtake and collision events |
+| `src/50-traffic.js` | traffic in both directions: lofted car bodies and panelled artics, PBR materials with sky reflections, bend-aware speed, following and brake lights, pass-by, overtake and collision events |
 | `src/90-main.js` | renderer setup, ride options, quality detection, corner-bar HUD, road info, pause, frame loop |
 
 Everything except the cockpit photograph (`assets/cockpit.png`) is generated at runtime from a fixed seed, so the road is identical on every device.

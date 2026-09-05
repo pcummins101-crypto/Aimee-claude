@@ -31,17 +31,15 @@ EVO.createHud = function createHud(bike, score) {
   const text = document.getElementById('corner-text'), limits = document.getElementById('corner-limits');
   const notice = document.getElementById('notice');
   const mph = (v) => Math.round(v * 2.23694);
-  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '';
+  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '', lastRegion = '', lastNote = '';
   const scoreEl = document.getElementById('score-value'), scoreMeta = document.getElementById('score-meta'), popEl = document.getElementById('score-pop');
   return {
     update() {
       const region=document.getElementById('place-name'),surface=document.getElementById('surface-info'),limit=document.getElementById('limit-sign');
-      const v=EVO.route.inVillage(bike.s),hump=EVO.route.nextHump(bike.s),wood=EVO.route.woodland(bike.s);
-      region.textContent=v?'DALEBECK VILLAGE':wood?'WOODED B-ROAD':'OPEN PASTURE';
+      const r=EVO.ROUTE.readout(EVO.route,bike.s);
+      if(r.name!==lastRegion){region.textContent=r.name;lastRegion=r.name;}
       limit.textContent=String(EVO.route.speedLimitAt(bike.s));
-      const approaching=hump&&hump.dist<125;
-      surface.textContent=approaching?`${hump.type==='table'?'RAISED TABLE':'ROAD HUMP'} · ${Math.round(hump.dist)} m`:v?'20 mph · traffic-calmed village':wood?'Coarse surface · shaded bends':'Two-way road · keep left';
-      surface.classList.toggle('warn',approaching);
+      if(r.note!==lastNote){surface.textContent=r.note;surface.classList.toggle('warn',!!r.warn);lastNote=r.note;}
       const c = bike.corner;
       const scale = c.max * 1.25; // bar spans 0 .. 125 % of the maximum
       const x = EVO.clamp(bike.v / scale, 0, 1);
@@ -86,6 +84,29 @@ function boot() {
   const start = document.getElementById('start');
   const rideBtn = document.getElementById('ride');
   const tiltBtn = document.getElementById('tilt');
+  // Route picker. The world is built once, so switching roads reloads the page
+  // with the choice in the query string; the choice is remembered per device.
+  const routeSel = document.getElementById('route'), spawnSel = document.getElementById('spawn');
+  if (routeSel) {
+    routeSel.value = EVO.activeRoute;
+    const L = EVO.route.length;
+    spawnSel.innerHTML = '';
+    for (const [at, label] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
+      const o = document.createElement('option');
+      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label;
+      spawnSel.appendChild(o);
+    }
+    document.querySelector('#start .kicker').textContent = EVO.ROUTE.kicker;
+    document.querySelector('#start .copy').textContent = EVO.ROUTE.blurb;
+    const hint = document.querySelector('#start .controls li:nth-child(4)');
+    if (hint && EVO.ROUTE.roadHint) hint.innerHTML = `<b>Road</b> ${EVO.ROUTE.roadHint}`;
+    routeSel.addEventListener('change', () => {
+      try { localStorage.setItem('evo.route', routeSel.value); } catch (e) { /* private mode */ }
+      const q = new URLSearchParams(location.search);
+      q.set('route', routeSel.value);
+      location.search = q.toString();
+    });
+  }
   let app = null, ridePending = false;
   const beginRide = async () => {
     if (!app) { ridePending = true; return; }
@@ -198,7 +219,7 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, same: quality.coarse ? 2 : 3, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap });
   const score = EVO.createScore(bike, traffic);
   const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);

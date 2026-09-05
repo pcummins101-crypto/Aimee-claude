@@ -3,6 +3,7 @@ const E=window.EVO, R=E.route, {clamp,lerp,smoothstep,mod}=E;
 const originalBuild=E.buildWorld;
 E.buildWorld=function(renderer,quality){
   const w=originalBuild(renderer,quality), scene=w.scene, P=R.detailPlan, rnd=E.rng(61123);
+  const ROUTE=E.ROUTE, S=ROUTE.scenery, LEN=R.length, frac=(t)=>t*LEN;
   const UP=new THREE.Vector3(0,1,0), temp=new THREE.Matrix4(), quat=new THREE.Quaternion();
   const materials={}, textures=[];
   const material=(name,color,extra={})=>materials[name]||(materials[name]=new THREE.MeshStandardMaterial({name,color,roughness:0.88,...extra}));
@@ -147,9 +148,9 @@ E.buildWorld=function(renderer,quality){
   const at=(s,d,y=0)=>{const g=w.groundAt(s,d);return new THREE.Vector3(g.x,g.y+y,g.z);};
   const road=(s,d,y=.012)=>R.point(s,d,y,new THREE.Vector3());
   // Sample the triangulated verge, not just its underlying height function.
-  const vergeOffsets=[3.02,3.5,4.2,5,6,7.5,9.5,12,16,22,30];
+  const vergeOffsets=[R.LANE_HALF+0.02,R.LANE_HALF+0.5,R.LANE_HALF+1.2,R.LANE_HALF+2,R.LANE_HALF+3,R.LANE_HALF+4.5,9.5,12,16,22,30];
   function renderedGround(s,d,raised=0){
-    if(Math.abs(d)<=3.1)return road(s,d,raised);
+    if(Math.abs(d)<=R.ROAD_HALF)return road(s,d,raised);
     const ad=Math.abs(d),side=Math.sign(d),g=w.groundAt(s,d);
     if(ad>=30)return new THREE.Vector3(g.x,g.y+raised,g.z);
     const step=R.SAMPLE*2,s0=Math.floor(mod(s,R.length)/step)*step,s1=s0+step;
@@ -205,17 +206,20 @@ E.buildWorld=function(renderer,quality){
       }
     });
   }
-  const speedTex=signTexture('speed','20'), humpTex=signTexture('humps',''), nameTex=signTexture('name',P.village.name);
-  for(const [s,dir]of [[P.village.start,1],[P.village.end,-1]]){
-    for(const side of [1,-1]){
-      const g=w.groundAt(s,side*4.2),f={...R.frame(s)},yaw=Math.atan2(-f.tx*dir,-f.tz*dir);
-      w.signPost(g.x,g.y,g.z,yaw,speedTex,.76,.76,1.55);
-      if(side===dir)w.signPost(g.x+f.nx*side*.5,g.y,g.z+f.nz*side*.5,yaw,nameTex,1.65,.52,.82,true);
-      // Return journey leaves the settlement into the open-road limit.
-      w.signPost(g.x-f.tx*dir*.3,g.y,g.z-f.tz*dir*.3,yaw+Math.PI,E.tex.signNSL(),.60,.60,1.62);
+  if (P.village) { // villages only
+    const speedTex=signTexture('speed','20'), humpTex=signTexture('humps',''), nameTex=signTexture('name',P.village.name);
+    for(const [s,dir]of [[P.village.start,1],[P.village.end,-1]]){
+      for(const side of [1,-1]){
+        const g=w.groundAt(s,side*4.2),f={...R.frame(s)},yaw=Math.atan2(-f.tx*dir,-f.tz*dir);
+        w.signPost(g.x,g.y,g.z,yaw,speedTex,.76,.76,1.55);
+        if(side===dir)w.signPost(g.x+f.nx*side*.5,g.y,g.z+f.nz*side*.5,yaw,nameTex,1.65,.52,.82,true);
+        // Return journey leaves the settlement into the open-road limit.
+        w.signPost(g.x-f.tx*dir*.3,g.y,g.z-f.tz*dir*.3,yaw+Math.PI,E.tex.signNSL(),.60,.60,1.62);
+      }
+      w.vergeSign(s-25*dir,dir,humpTex,.86,.86,1.42,dir<0);
     }
-    w.vergeSign(s-25*dir,dir,humpTex,.86,.86,1.42,dir<0);
   }
+
   // Keep paint aged and embedded in the asphalt; no neon racing-game stripes.
   const paint=material('worn hump paint',0xcac8b8,{roughness:.95,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3,side:THREE.DoubleSide});
   const humpAsphalt=material('traffic calming asphalt',0x777574,{map:w.textures.asphalt.map,roughness:.95});
@@ -260,9 +264,12 @@ E.buildWorld=function(renderer,quality){
     c.fillStyle='#2b2f29';c.fillRect(W/2-4,10,8,H-20);
   });
   const drainMat=material('slotted drain gratings',0xa2a399,{map:drainMap,metalness:.25,roughness:.9,side:THREE.DoubleSide});
-  for(let s=P.village.start+16;s<P.village.end-4;s+=26)for(const side of [1,-1]){
-    surfaceRibbon(s-.32,s+.32,side*2.94-.20,side*2.94+.20,drainMat,.2,.014);
+  if (P.village) { // village drainage
+    for(let s=P.village.start+16;s<P.village.end-4;s+=26)for(const side of [1,-1]){
+      surfaceRibbon(s-.32,s+.32,side*2.94-.20,side*2.94+.20,drainMat,.2,.014);
+    }
   }
+
   // Hairline tar snakes and road-edge seams are static world geometry.
   const tar=material('tar seams',0x383b35,{roughness:.65,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   for(let i=0;i<45;i++){
@@ -325,13 +332,15 @@ E.buildWorld=function(renderer,quality){
       surfaceRibbon(ss-span,ss+span,-d-.75,-d+.75,dampMat,.35,.011);
     }
   }
-  // Village footways: a small upstand, continuous paving and drainage channels.
-  for(const side of [1,-1])for(let s=P.village.start+4;s<P.village.end-4;s+=1.6){
-    const f={...R.frame(s)},p=at(s,side*3.22,.016);
-    const nearLot=P.lots.find(l=>l.side===side&&Math.abs(l.s-s)<4.2);
-    const drop=nearLot?1-smoothstep(2.8,4.2,Math.abs(nearLot.s-s)):0;
-    box(concrete,p.x,p.y-.05*drop,p.z,.22,.15-.05*drop,1.65,f.heading);
-    const g=at(s,side*4.25,.025);box(material('footway',0x85867f),g.x,g.y-.023*drop,g.z,1.84,.115-.04*drop,1.65,f.heading);
+  if (P.village) { // village footways
+    // Village footways: a small upstand, continuous paving and drainage channels.
+    for(const side of [1,-1])for(let s=P.village.start+4;s<P.village.end-4;s+=1.6){
+      const f={...R.frame(s)},p=at(s,side*3.22,.016);
+      const nearLot=P.lots.find(l=>l.side===side&&Math.abs(l.s-s)<4.2);
+      const drop=nearLot?1-smoothstep(2.8,4.2,Math.abs(nearLot.s-s)):0;
+      box(concrete,p.x,p.y-.05*drop,p.z,.22,.15-.05*drop,1.65,f.heading);
+      const g=at(s,side*4.25,.025);box(material('footway',0x85867f),g.x,g.y-.023*drop,g.z,1.84,.115-.04*drop,1.65,f.heading);
+    }
   }
 
   function roofGeo(width,depth,eave,ridge){
@@ -467,15 +476,18 @@ E.buildWorld=function(renderer,quality){
     }
     return {base,g,f};
   }
-  const buildings=[
-    [345,-1,8.3,6.1,false,false],[351,1,7.8,6,false,false],[368,1,8.0,6.1,false,true],
-    [378,-1,8.2,6.2,false,false],[391,-1,9.5,6.4,false,false],[401,1,7.7,6,false,false],
-    [417,1,8.1,6.2,false,true],[425,-1,9.2,6.5,false,false],
-    [463,-1,11.5,7,true,false],[469,1,8.4,6.1,false,true],[489,1,7.5,6,false,false],
-    [493,-1,8.5,6.2,false,false],[518,1,8.3,6,false,false],[537,-1,8.9,6.5,false,false],
-    [558,1,9.6,6.5,false,false],[570,-1,7.4,5.8,false,true],[580,1,7.8,6,false,false]
-  ];
-  buildings.forEach(args=>cottage(...args));
+  let buildings=[];
+  if (P.village) { // the village itself
+    buildings=[
+      [345,-1,8.3,6.1,false,false],[351,1,7.8,6,false,false],[368,1,8.0,6.1,false,true],
+      [378,-1,8.2,6.2,false,false],[391,-1,9.5,6.4,false,false],[401,1,7.7,6,false,false],
+      [417,1,8.1,6.2,false,true],[425,-1,9.2,6.5,false,false],
+      [463,-1,11.5,7,true,false],[469,1,8.4,6.1,false,true],[489,1,7.5,6,false,false],
+      [493,-1,8.5,6.2,false,false],[518,1,8.3,6,false,false],[537,-1,8.9,6.5,false,false],
+      [558,1,9.6,6.5,false,false],[570,-1,7.4,5.8,false,true],[580,1,7.8,6,false,false]
+    ];
+    buildings.forEach(args=>cottage(...args));
+  }
 
   // Driveways, frontage parking cues and wheelie bins help the village read as inhabited.
   const driveTex=canvasTexture(384,384,(c,W,H)=>{c.fillStyle='#8d877c';c.fillRect(0,0,W,H);for(let i=0;i<8500;i++){const v=118+Math.floor(rnd()*52);c.fillStyle=`rgba(${v},${v-3},${v-7},${.08+rnd()*.18})`;c.fillRect(rnd()*W,rnd()*H,1+rnd()*3,1+rnd()*3);}c.strokeStyle='rgba(88,79,68,.22)';c.lineWidth=5;for(let y=18;y<H;y+=32){c.beginPath();c.moveTo(0,y);c.lineTo(W,y+rnd()*9-4);c.stroke();}});
@@ -507,77 +519,162 @@ E.buildWorld=function(renderer,quality){
       plantAt(p.x,p.y-.31,p.z,.72+rnd()*.24);
     }
   }
-  // Authentic scale cues: a post box, litter bin, timetable, timber shelter and bench.
-  {
-    const s=451,d=6.15,g=w.groundAt(s,d),f={...R.frame(s)};
-    object(poleGeo,red,g.x,g.y+.64,g.z,.22,1.25,.22);
-    object(new THREE.SphereGeometry(1,14,8),red,g.x,g.y+1.29,g.z,.245,.11,.245);
-    const base=new THREE.Matrix4().compose(at(s,d),new THREE.Quaternion().setFromAxisAngle(UP,Math.atan2(-f.nx,-f.nz)),new THREE.Vector3(1,1,1));
-    box(dark,0,1.0,.224,.22,.04,.018,0,base);box(cream,0,.68,.227,.17,.24,.02,0,base);
-    const b=at(456,6.3,.44);object(poleGeo,dark,b.x,b.y,b.z,.24,.88,.24);
-    const sb=w.groundAt(440,7.0),sf={...R.frame(440)},syaw=Math.atan2(-sf.nx,-sf.nz);
-    const sh=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
-    for(const x of [-1.22,1.22])for(const z of [-.50,.55])box(wood,x,1.12,z,.11,2.24,.11,0,sh);
-    box(wood,0,1.05,-.54,2.5,1.9,.10,0,sh);box(slate,0,2.3,0,2.86,.18,1.55,0,sh);
-    for(let y=.23;y<2.0;y+=.22)box(material('shelter boards',0x6a604e),0,y,-.604,2.48,.028,.026,0,sh);
-    box(wood,0,.5,-.17,2.13,.10,.42,0,sh);box(wood,0,.87,-.44,2.1,.3,.06,0,sh);
-    for(const x of [-.85,.85])box(dark,x,.24,-.13,.065,.5,.08,0,sh);
-    const tt=canvasTexture(128,256,(c,W,H)=>{c.fillStyle='#ebe8dc';c.fillRect(0,0,W,H);c.fillStyle='#29594b';c.fillRect(0,0,W,42);c.fillStyle='#fff';c.font='bold 16px Arial';c.fillText('DALEBECK',10,27);c.fillStyle='#66695e';for(let y=58;y<240;y+=15){c.fillRect(10,y,25,3);c.fillRect(46,y,70,3);}});
-    object(new THREE.PlaneGeometry(.32,.64),material('timetable',0xffffff,{map:tt}),.69,1.4,-.478,1,1,1,0,sh);
-    const busTex=canvasTexture(256,384,(c,W,H)=>{c.fillStyle='#e7dda3';c.fillRect(0,0,W,H);c.fillStyle='#304638';c.fillRect(44,45,168,117);c.fillStyle='#f4efd9';c.fillRect(57,57,142,50);c.fillStyle='#304638';c.beginPath();c.arc(72,169,19,0,7);c.arc(185,169,19,0,7);c.fill();c.font='bold 35px Arial';c.textAlign='center';c.fillText('BUS STOP',W/2,242);c.font='22px Arial';c.fillText('DALEBECK',W/2,292);});
-    w.vergeSign(436,1,busTex,.35,.53,2.04,false);
-  }
-  // Small lived-in village furniture: bench, noticeboard, grit bin and fingerpost.
-  {
-    const grit=material('grit bin',0xc9a53d,{roughness:.82}),greenBin=material('green metal bin',0x365240,{roughness:.9}),signWhite=material('fingerpost white',0xe7e3d7,{roughness:.8});
-    const sb=w.groundAt(431,6.2),sf={...R.frame(431)},syaw=Math.atan2(-sf.nx,-sf.nz);
-    const bench=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
-    for(const x of [-.62,.62])box(dark,x,.22,0,.07,.44,.07,0,bench);
-    for(const y of [.43,.58])box(wood,0,y,0,1.42,.07,.24,0,bench);
-    box(wood,0,.81,-.08,1.38,.07,.18,.15,bench);
-    const nb=w.groundAt(453,-6.6),nf={...R.frame(453)},nyaw=Math.atan2(nf.nx,nf.nz);
-    const board=new THREE.Matrix4().compose(new THREE.Vector3(nb.x,nb.y,nb.z),new THREE.Quaternion().setFromAxisAngle(UP,nyaw),new THREE.Vector3(1,1,1));
-    for(const x of [-.45,.45])box(wood,x,1.06,0,.09,2.12,.09,0,board);
-    box(wood,0,1.92,0,1.24,1.04,.09,0,board);
-    const noteTex=canvasTexture(320,220,(c,W,H)=>{c.fillStyle='#efe9d7';c.fillRect(0,0,W,H);c.fillStyle='#a89a71';c.fillRect(0,0,W,32);c.fillStyle='#314233';c.font='bold 18px Arial';c.fillText('PARISH NOTICEBOARD',14,22);for(let y=52;y<198;y+=28){c.fillStyle='rgba(82,82,72,.85)';c.fillRect(18,y,W-36,3);}c.fillStyle='#6b5d47';c.fillRect(28,132,90,46);});
-    object(new THREE.PlaneGeometry(1.06,.72),material('noticeboard poster',0xffffff,{map:noteTex}),0,1.92,.055,1,1,1,0,board);
-    const gb=at(459,-6.35,.44);box(greenBin,gb.x,gb.y,gb.z,.28,.76,.28,R.frame(459).heading);box(dark,gb.x,gb.y+.39,gb.z,.30,.05,.30,R.frame(459).heading);
-    const gr=at(576,6.45,.36);box(grit,gr.x,gr.y,gr.z,.86,.56,.46,R.frame(576).heading);
-    const fp=w.groundAt(584,-5.8),ff={...R.frame(584)},fyaw=Math.atan2(ff.nx,ff.nz);
-    const finger=new THREE.Matrix4().compose(new THREE.Vector3(fp.x,fp.y,fp.z),new THREE.Quaternion().setFromAxisAngle(UP,fyaw),new THREE.Vector3(1,1,1));
-    box(dark,0,1.12,0,.09,2.24,.09,0,finger);
-    box(signWhite,.52,1.55,.02,1.04,.17,.11,.08,finger); box(signWhite,-.52,1.92,.02,1.04,.17,.11,-.08,finger);
-    box(dark,.52,1.55,.08,.77,.03,.03,.08,finger); box(dark,-.52,1.92,.08,.74,.03,.03,-.08,finger);
+  if (P.village) { // village furniture
+    // Authentic scale cues: a post box, litter bin, timetable, timber shelter and bench.
+    {
+      const s=451,d=6.15,g=w.groundAt(s,d),f={...R.frame(s)};
+      object(poleGeo,red,g.x,g.y+.64,g.z,.22,1.25,.22);
+      object(new THREE.SphereGeometry(1,14,8),red,g.x,g.y+1.29,g.z,.245,.11,.245);
+      const base=new THREE.Matrix4().compose(at(s,d),new THREE.Quaternion().setFromAxisAngle(UP,Math.atan2(-f.nx,-f.nz)),new THREE.Vector3(1,1,1));
+      box(dark,0,1.0,.224,.22,.04,.018,0,base);box(cream,0,.68,.227,.17,.24,.02,0,base);
+      const b=at(456,6.3,.44);object(poleGeo,dark,b.x,b.y,b.z,.24,.88,.24);
+      const sb=w.groundAt(440,7.0),sf={...R.frame(440)},syaw=Math.atan2(-sf.nx,-sf.nz);
+      const sh=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
+      for(const x of [-1.22,1.22])for(const z of [-.50,.55])box(wood,x,1.12,z,.11,2.24,.11,0,sh);
+      box(wood,0,1.05,-.54,2.5,1.9,.10,0,sh);box(slate,0,2.3,0,2.86,.18,1.55,0,sh);
+      for(let y=.23;y<2.0;y+=.22)box(material('shelter boards',0x6a604e),0,y,-.604,2.48,.028,.026,0,sh);
+      box(wood,0,.5,-.17,2.13,.10,.42,0,sh);box(wood,0,.87,-.44,2.1,.3,.06,0,sh);
+      for(const x of [-.85,.85])box(dark,x,.24,-.13,.065,.5,.08,0,sh);
+      const tt=canvasTexture(128,256,(c,W,H)=>{c.fillStyle='#ebe8dc';c.fillRect(0,0,W,H);c.fillStyle='#29594b';c.fillRect(0,0,W,42);c.fillStyle='#fff';c.font='bold 16px Arial';c.fillText('DALEBECK',10,27);c.fillStyle='#66695e';for(let y=58;y<240;y+=15){c.fillRect(10,y,25,3);c.fillRect(46,y,70,3);}});
+      object(new THREE.PlaneGeometry(.32,.64),material('timetable',0xffffff,{map:tt}),.69,1.4,-.478,1,1,1,0,sh);
+      const busTex=canvasTexture(256,384,(c,W,H)=>{c.fillStyle='#e7dda3';c.fillRect(0,0,W,H);c.fillStyle='#304638';c.fillRect(44,45,168,117);c.fillStyle='#f4efd9';c.fillRect(57,57,142,50);c.fillStyle='#304638';c.beginPath();c.arc(72,169,19,0,7);c.arc(185,169,19,0,7);c.fill();c.font='bold 35px Arial';c.textAlign='center';c.fillText('BUS STOP',W/2,242);c.font='22px Arial';c.fillText('DALEBECK',W/2,292);});
+      w.vergeSign(436,1,busTex,.35,.53,2.04,false);
+    }
+    // Small lived-in village furniture: bench, noticeboard, grit bin and fingerpost.
+    {
+      const grit=material('grit bin',0xc9a53d,{roughness:.82}),greenBin=material('green metal bin',0x365240,{roughness:.9}),signWhite=material('fingerpost white',0xe7e3d7,{roughness:.8});
+      const sb=w.groundAt(431,6.2),sf={...R.frame(431)},syaw=Math.atan2(-sf.nx,-sf.nz);
+      const bench=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
+      for(const x of [-.62,.62])box(dark,x,.22,0,.07,.44,.07,0,bench);
+      for(const y of [.43,.58])box(wood,0,y,0,1.42,.07,.24,0,bench);
+      box(wood,0,.81,-.08,1.38,.07,.18,.15,bench);
+      const nb=w.groundAt(453,-6.6),nf={...R.frame(453)},nyaw=Math.atan2(nf.nx,nf.nz);
+      const board=new THREE.Matrix4().compose(new THREE.Vector3(nb.x,nb.y,nb.z),new THREE.Quaternion().setFromAxisAngle(UP,nyaw),new THREE.Vector3(1,1,1));
+      for(const x of [-.45,.45])box(wood,x,1.06,0,.09,2.12,.09,0,board);
+      box(wood,0,1.92,0,1.24,1.04,.09,0,board);
+      const noteTex=canvasTexture(320,220,(c,W,H)=>{c.fillStyle='#efe9d7';c.fillRect(0,0,W,H);c.fillStyle='#a89a71';c.fillRect(0,0,W,32);c.fillStyle='#314233';c.font='bold 18px Arial';c.fillText('PARISH NOTICEBOARD',14,22);for(let y=52;y<198;y+=28){c.fillStyle='rgba(82,82,72,.85)';c.fillRect(18,y,W-36,3);}c.fillStyle='#6b5d47';c.fillRect(28,132,90,46);});
+      object(new THREE.PlaneGeometry(1.06,.72),material('noticeboard poster',0xffffff,{map:noteTex}),0,1.92,.055,1,1,1,0,board);
+      const gb=at(459,-6.35,.44);box(greenBin,gb.x,gb.y,gb.z,.28,.76,.28,R.frame(459).heading);box(dark,gb.x,gb.y+.39,gb.z,.30,.05,.30,R.frame(459).heading);
+      const gr=at(576,6.45,.36);box(grit,gr.x,gr.y,gr.z,.86,.56,.46,R.frame(576).heading);
+      const fp=w.groundAt(584,-5.8),ff={...R.frame(584)},fyaw=Math.atan2(ff.nx,ff.nz);
+      const finger=new THREE.Matrix4().compose(new THREE.Vector3(fp.x,fp.y,fp.z),new THREE.Quaternion().setFromAxisAngle(UP,fyaw),new THREE.Vector3(1,1,1));
+      box(dark,0,1.12,0,.09,2.24,.09,0,finger);
+      box(signWhite,.52,1.55,.02,1.04,.17,.11,.08,finger); box(signWhite,-.52,1.92,.02,1.04,.17,.11,-.08,finger);
+      box(dark,.52,1.55,.08,.77,.03,.03,.08,finger); box(dark,-.52,1.92,.08,.74,.03,.03,-.08,finger);
+    }
+
+    // A K6 telephone box by the bus shelter: cast-iron red, domed roof, glazed on three sides.
+    {
+      const kb=w.groundAt(447,-6.9),kf={...R.frame(447)},kyaw=Math.atan2(kf.nx,kf.nz);
+      const base=new THREE.Matrix4().compose(new THREE.Vector3(kb.x,kb.y,kb.z),new THREE.Quaternion().setFromAxisAngle(UP,kyaw),new THREE.Vector3(1,1,1));
+      const kiosk=material('kiosk red',0xa3141c,{roughness:.42,metalness:.2});
+      box(kiosk,0,.16,0,1.0,.32,1.0,0,base);                                   // plinth
+      for(const [x,z] of [[-.44,-.44],[.44,-.44],[-.44,.44],[.44,.44]])box(kiosk,x,1.3,z,.12,2.3,.12,0,base);
+      box(kiosk,0,1.3,-.45,1.0,2.3,.08,0,base);                                 // solid back
+      for(const face of [[0,.45,0],[-.45,0,Math.PI/2],[.45,0,Math.PI/2]]){
+        const [x,z,yaw]=face;
+        for(let r=0;r<6;r++)glazing(x,.62+r*.31,z,.74,.27,yaw,r,base);
+        for(let r=0;r<7;r++)box(kiosk,x,.47+r*.31,z,yaw?.08:.8,.035,yaw?.8:.08,0,base);
+        for(const off of [-.25,.25])box(kiosk,yaw?x:x+off,1.4,yaw?z+off:z,yaw?.08:.05,1.9,yaw?.05:.08,0,base);
+      }
+      box(kiosk,0,2.53,0,1.0,.16,1.0,0,base);
+      for(const x of [-.45,0,.45])box(cream,x,2.53,x?0:.51,x?.02:.8,.1,x?.9:.02,0,base);   // TELEPHONE strips
+      box(kiosk,0,2.68,0,.86,.14,.86,0,base);box(kiosk,0,2.8,0,.6,.12,.6,0,base);box(kiosk,0,2.9,0,.3,.1,.3,0,base);
+    }
   }
 
-  // A K6 telephone box by the bus shelter: cast-iron red, domed roof, glazed on three sides.
-  {
-    const kb=w.groundAt(447,-6.9),kf={...R.frame(447)},kyaw=Math.atan2(kf.nx,kf.nz);
-    const base=new THREE.Matrix4().compose(new THREE.Vector3(kb.x,kb.y,kb.z),new THREE.Quaternion().setFromAxisAngle(UP,kyaw),new THREE.Vector3(1,1,1));
-    const kiosk=material('kiosk red',0xa3141c,{roughness:.42,metalness:.2});
-    box(kiosk,0,.16,0,1.0,.32,1.0,0,base);                                   // plinth
-    for(const [x,z] of [[-.44,-.44],[.44,-.44],[-.44,.44],[.44,.44]])box(kiosk,x,1.3,z,.12,2.3,.12,0,base);
-    box(kiosk,0,1.3,-.45,1.0,2.3,.08,0,base);                                 // solid back
-    for(const face of [[0,.45,0],[-.45,0,Math.PI/2],[.45,0,Math.PI/2]]){
-      const [x,z,yaw]=face;
-      for(let r=0;r<6;r++)glazing(x,.62+r*.31,z,.74,.27,yaw,r,base);
-      for(let r=0;r<7;r++)box(kiosk,x,.47+r*.31,z,yaw?.08:.8,.035,yaw?.8:.08,0,base);
-      for(const off of [-.25,.25])box(kiosk,yaw?x:x+off,1.4,yaw?z+off:z,yaw?.08:.05,1.9,yaw?.05:.08,0,base);
+  if (S.farmsteads) { // lowland farmsteads
+    // Farmsteads out in the fields, the way the Dales are actually dotted with them.
+    for(const [s,side,d,rot] of [[.296,1,96,.4],[.659,-1,112,-.7],[.845,1,84,1.2]].map(([t,a,b,c])=>[frac(t),a,b,c])){
+      const a=w.groundAt(s,side*d),f={...R.frame(s)};
+      const fb=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.2,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading+rot),new THREE.Vector3(1,1,1));
+      box(stone,0,2.4,0,13,4.8,7.5,0,fb);const r1=roofGeo(13.6,8.2,4.8,7.1);batch.add(r1,slate,fb);r1.dispose();
+      for(const x of [-4.2,4.2]){box(stone,x,7.4,0,.7,1.3,.8,0,fb);}
+      box(stone,10.5,1.7,-1,8,3.4,7,0,fb);const r2=roofGeo(8.5,7.6,3.4,5.0);const t2=new THREE.Matrix4().makeTranslation(10.5,0,-1);t2.premultiply(fb);batch.add(r2,slate,t2);r2.dispose();
+      box(material('farmyard',0x7d766a,{map:mineralMap,roughness:1}),4,.03,7,22,.06,9,0,fb);
+      for(let k=0;k<12;k++){const x=-9+k*2.1;box(stone,x,.55,11.5,2.1,1.1,.5,0,fb);}
     }
-    box(kiosk,0,2.53,0,1.0,.16,1.0,0,base);
-    for(const x of [-.45,0,.45])box(cream,x,2.53,x?0:.51,x?.02:.8,.1,x?.9:.02,0,base);   // TELEPHONE strips
-    box(kiosk,0,2.68,0,.86,.14,.86,0,base);box(kiosk,0,2.8,0,.6,.12,.6,0,base);box(kiosk,0,2.9,0,.3,.1,.3,0,base);
+
   }
-  // Farmsteads out in the fields, the way the Dales are actually dotted with them.
-  for(const [s,side,d,rot] of [[700,1,96,.4],[1560,-1,112,-.7],[2000,1,84,1.2]]){
-    const a=w.groundAt(s,side*d),f={...R.frame(s)};
-    const fb=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.2,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading+rot),new THREE.Vector3(1,1,1));
-    box(stone,0,2.4,0,13,4.8,7.5,0,fb);const r1=roofGeo(13.6,8.2,4.8,7.1);batch.add(r1,slate,fb);r1.dispose();
-    for(const x of [-4.2,4.2]){box(stone,x,7.4,0,.7,1.3,.8,0,fb);}
-    box(stone,10.5,1.7,-1,8,3.4,7,0,fb);const r2=roofGeo(8.5,7.6,3.4,5.0);const t2=new THREE.Matrix4().makeTranslation(10.5,0,-1);t2.premultiply(fb);batch.add(r2,slate,t2);r2.dispose();
-    box(material('farmyard',0x7d766a,{map:mineralMap,roughness:1}),4,.03,7,22,.06,9,0,fb);
-    for(let k=0;k<12;k++){const x=-9+k*2.1;box(stone,x,.55,11.5,2.1,1.1,.5,0,fb);}
+
+  /* ------------------------------------------------- moorland road furniture */
+// Cattle grids where the walls give out, laybys on the straights, a summit
+// marker and the snow gate that closes the road in winter.
+if (P.grids.length || P.laybys.length) {
+  const steel=material('cattle grid bars',0x6f7378,{roughness:.45,metalness:.75});
+  const pit=material('cattle grid pit',0x14171a,{roughness:.95});
+  const kerbMat=material('grid kerb',0xb4b0a4,{map:mineralMap,roughness:1});
+  const gridLine=material('grid stop line',0xe7e4d6,{roughness:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3});
+  const gridTex=canvasTexture(256,256,(c,W,H)=>{
+    c.fillStyle='#e8e4d6';c.fillRect(0,0,W,H);c.strokeStyle='#30342f';c.lineWidth=8;c.strokeRect(5,5,W-10,H-10);
+    c.fillStyle='#23272a';for(let i=0;i<7;i++)c.fillRect(38,58+i*22,180,11);
+    c.fillStyle='#23272a';c.font='bold 34px Arial';c.textAlign='center';c.fillText('CATTLE GRID',W/2,232);
+  });
+  for(const g of P.grids){
+    const half=g.length/2, W=R.LANE_HALF+0.15;
+    // the pit floor, then the bars across it
+    surfaceRibbon(g.s-half,g.s+half,-W,W,pit,.22,-.03);
+    for(let b=0;b<15;b++){
+      const ss=g.s-half+0.22+b*(g.length-0.44)/14, f={...R.frame(ss)}, p=at(ss,0,.012);
+      box(steel,p.x,p.y,p.z,W*2,.055,.075,f.heading);
+    }
+    for(const end of [-1,1]){
+      const f={...R.frame(g.s+end*(half+.18))}, p=at(g.s+end*(half+.18),0,.03);
+      box(kerbMat,p.x,p.y,p.z,W*2+.3,.16,.34,f.heading);
+    }
+    // fence wings funnelling the stock away from the opening
+    for(const side of [1,-1])for(const end of [-1,1]){
+      const p=at(g.s+end*(half+1.2),side*(R.HEDGE_OFFSET-0.4),.55);
+      box(wood,p.x,p.y,p.z,.11,1.2,.11,R.frame(g.s).heading);
+    }
+    // white stop lines either side, so the deck reads from a distance
+    for(const end of [-1,1]) surfaceRibbon(g.s+end*(half+0.45),g.s+end*(half+0.78),-W,W,gridLine,.12,.014);
+    w.vergeSign(g.s-46,1,gridTex,.62,.62,1.5,false);
   }
+  // Laybys: a widened, tapered strip of coarser tarmac with a marker post.
+  const laybyMat=material('layby surface',0x8f8d87,{map:w.textures.asphalt.map,roughness:.95,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  for(const b of P.laybys){
+    const half=b.length/2, inner=R.LANE_HALF+0.05, outer=R.LANE_HALF+3.3, pp=[],uv=[],ix=[],rows=26;
+    for(let i=0;i<=rows;i++){
+      const t=i/rows, ss=b.s-half+t*b.length;
+      // Taper in and out, but never to nothing: a zero-width row makes
+      // degenerate triangles whose computed normals come out black.
+      const wide=smoothstep(0,1,Math.min(1,Math.min(t,1-t)/0.22));
+      const outerD=E.lerp(inner+0.4,outer,wide);
+      const q0=at(ss,b.side*inner,.022), q1=at(ss,b.side*outerD,.022);
+      pp.push(q0.x,q0.y,q0.z,q1.x,q1.y,q1.z);uv.push(0,t*3,1,t*3);
+      if(i<rows){const a=i*2;ix.push(a,a+2,a+3,a,a+3,a+1);}
+    }
+    groundMesh(pp,uv,ix,laybyMat);
+    const post=at(b.s,b.side*(outer+.5),.5);
+    box(cream,post.x,post.y,post.z,.11,1.0,.16,R.frame(b.s).heading);
+    const rp=at(b.s-.09,b.side*(outer+.5),.72);
+    box(b.side===1?material('layby reflector red',0x9c3227):cream,rp.x,rp.y,rp.z,.07,.08,.014,R.frame(b.s).heading);
+  }
+}
+if (P.summit) {
+  // Summit board and the snow gate that shuts the road in a bad winter.
+  const tex=canvasTexture(768,224,(c,W,H)=>{
+    c.fillStyle='#e6e2d4';c.fillRect(0,0,W,H);c.strokeStyle='#33372f';c.lineWidth=9;c.strokeRect(6,6,W-12,H-12);
+    c.fillStyle='#23281f';c.textAlign='center';c.font='bold 60px Georgia';c.fillText(P.summit.name,W/2,94);
+    c.font='bold 44px Georgia';c.fillText(P.summit.height+' ft',W/2,168);
+  });
+  const g=w.groundAt(P.summit.s,-5.6),f={...R.frame(P.summit.s)};
+  w.signPost(g.x,g.y,g.z,Math.atan2(f.nx,f.nz),tex,2.1,.62,1.4,true);
+  // trig pillar up on the tops
+  const tp=w.groundAt(P.summit.s+40,-64);
+  box(material('trig pillar',0xc9c6ba,{map:mineralMap,roughness:1}),tp.x,tp.y+.6,tp.z,.55,1.2,.55,0.4);
+  // snow gate: a red and white barrier hinged clear of the carriageway
+  const sg=P.summit.s-120, red=material('snow gate red',0xa8242c,{roughness:.7});
+  for(const side of [1,-1]){
+    const p=at(sg,side*(R.LANE_HALF+1.4),.62),f2={...R.frame(sg)};
+    box(dark,p.x,p.y,p.z,.16,1.25,.16,f2.heading);
+    for(let k=0;k<5;k++){
+      const q=at(sg,side*(R.LANE_HALF+1.4-k*0.52-0.3),.95);
+      box(k%2?red:cream,q.x,q.y,q.z,.5,.14,.09,f2.heading);
+    }
+  }
+}
 
   // Working farm entrances align with real gaps in the boundary, not through a hedge.
   const mudMat=material('muddy gateway',0x635545,{map:patchTex,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
@@ -606,35 +703,38 @@ E.buildWorld=function(renderer,quality){
   // Hay bales and field barns set behind boundaries, never on the carriageway.
   const hay=material('hay',0xa29558,{map:w.textures.grass.map,roughness:1});
   const baleGeo=new THREE.CylinderGeometry(.77,.77,1.15,20);baleGeo.rotateZ(Math.PI/2);
-  for(const [s,side]of [[840,-1],[1710,1],[2152,-1]]){
+  for(const [s,side]of [[.355,-1],[.723,1],[.909,-1]].map(([t,d])=>[frac(t),d])){
     for(let k=0;k<9;k++){const a=at(s+(k%3)*3.1,side*(22+Math.floor(k/3)*3),.76);object(baleGeo,hay,a.x,a.y,a.z,1,1,1,R.frame(s).heading);}
     const a=w.groundAt(s+22,side*30),f={...R.frame(s+22)},base=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.1,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading),new THREE.Vector3(1,1,1));
     box(stone,0,1.7,0,12,3.4,7,0,base);const rg=roofGeo(12.5,7.6,3.4,5.1);batch.add(rg,slate,base);rg.dispose();box(material('barn doors',0x464e42),0,1.45,3.53,3.0,2.9,.09,0,base);
   }
-  // Crop texture is shaded into the existing terrain: no duplicate ground, floating strips or new draw calls.
-  const fieldPlans=[{s:846,side:-1,d:45,wide:18,long:54},{s:1144,side:1,d:48,wide:18,long:57},{s:1485,side:-1,d:47,wide:19,long:49}];
-  const fieldDefs=fieldPlans.map((p,i)=>{const f={...R.frame(p.s)};return {x:f.x+f.nx*p.side*p.d,z:f.z+f.nz*p.side*p.d,tx:f.tx,tz:f.tz,nx:f.nx,nz:f.nz,...p};});
-  const oldGrass=w.materials.grassMat.onBeforeCompile;
-  w.materials.grassMat.onBeforeCompile=(shader,r)=>{
-    if(oldGrass)oldGrass(shader,r);
-    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;').replace('#include <project_vertex>','#include <project_vertex>\nvFieldWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;');
-    const code=fieldDefs.map((f,i)=>`{
-      vec2 dp=vFieldWorld-vec2(${f.x.toFixed(3)},${f.z.toFixed(3)});
-      float across=dot(dp,vec2(${f.nx.toFixed(6)},${f.nz.toFixed(6)})),along=dot(dp,vec2(${f.tx.toFixed(6)},${f.tz.toFixed(6)}));
-      float mask=(1.0-smoothstep(${(f.wide-2).toFixed(1)},${f.wide.toFixed(1)},abs(across)))*(1.0-smoothstep(${(f.long-4).toFixed(1)},${f.long.toFixed(1)},abs(along)));
-      float aa=max(.06,fwidth(across)*1.4);
-      float rows=.98+.035*cos(across*13.0)*exp(-aa*6.0);
-      float tram=1.0-smoothstep(.13,.13+aa,min(abs(across-5.1),abs(across-6.45)));
-      vec3 tint=vec3(${i===1?'1.15,1.04,.84':i===2?'1.06,1.03,.91':'.97,1.035,.90'});
-      diffuseColor.rgb*=mix(vec3(1.0),tint*rows*(1.0-tram*.23),mask);
-    }`).join('\n');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+code);
-  };
-  E.tagShader(w.materials.grassMat,'terrain-crops-v3');w.materials.grassMat.needsUpdate=true;
+
+  if (S.farmsteads) { // arable fields
+    // Crop texture is shaded into the existing terrain: no duplicate ground, floating strips or new draw calls.
+    const fieldPlans=[{t:.357,side:-1,d:45,wide:18,long:54},{t:.483,side:1,d:48,wide:18,long:57},{t:.627,side:-1,d:47,wide:19,long:49}].map(f=>({...f,s:frac(f.t)}));
+    const fieldDefs=fieldPlans.map((p,i)=>{const f={...R.frame(p.s)};return {x:f.x+f.nx*p.side*p.d,z:f.z+f.nz*p.side*p.d,tx:f.tx,tz:f.tz,nx:f.nx,nz:f.nz,...p};});
+    const oldGrass=w.materials.grassMat.onBeforeCompile;
+    w.materials.grassMat.onBeforeCompile=(shader,r)=>{
+      if(oldGrass)oldGrass(shader,r);
+      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;').replace('#include <project_vertex>','#include <project_vertex>\nvFieldWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
+      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;');
+      const code=fieldDefs.map((f,i)=>`{
+        vec2 dp=vFieldWorld-vec2(${f.x.toFixed(3)},${f.z.toFixed(3)});
+        float across=dot(dp,vec2(${f.nx.toFixed(6)},${f.nz.toFixed(6)})),along=dot(dp,vec2(${f.tx.toFixed(6)},${f.tz.toFixed(6)}));
+        float mask=(1.0-smoothstep(${(f.wide-2).toFixed(1)},${f.wide.toFixed(1)},abs(across)))*(1.0-smoothstep(${(f.long-4).toFixed(1)},${f.long.toFixed(1)},abs(along)));
+        float aa=max(.06,fwidth(across)*1.4);
+        float rows=.98+.035*cos(across*13.0)*exp(-aa*6.0);
+        float tram=1.0-smoothstep(.13,.13+aa,min(abs(across-5.1),abs(across-6.45)));
+        vec3 tint=vec3(${i===1?'1.15,1.04,.84':i===2?'1.06,1.03,.91':'.97,1.035,.90'});
+        diffuseColor.rgb*=mix(vec3(1.0),tint*rows*(1.0-tram*.23),mask);
+      }`).join('\n');
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+code);
+    };
+    E.tagShader(w.materials.grassMat,'terrain-crops-v3');w.materials.grassMat.needsUpdate=true;
+  }
 
   // White verge delineators occur in a few runs rather than ringing the entire road.
-  for(const [a,b]of [[735,817],[1295,1375],[1825,1885]])for(let s=a;s<b;s+=17)for(const side of [1,-1]){
+  for(const [a,b]of [[.31,.345],[.547,.581],[.771,.796]].map(([x,y])=>[frac(x),frac(y)]))for(let s=a;s<b;s+=17)for(const side of [1,-1]){
     if(R.inJunctionMouth(s,side,14))continue;
     const p=at(s,side*3.65,.48),f={...R.frame(s)};
     box(cream,p.x,p.y,p.z,.105,.94,.15,f.heading);
@@ -642,7 +742,7 @@ E.buildWorld=function(renderer,quality){
     const r=at(s-.085,side*3.65,.71);box(side===1?material('red reflector',0x9c3227):cream,r.x,r.y,r.z,.065,.07,.012,f.heading);
   }
   // Continuous wires meet their posts. Entrances are excluded from each run.
-  for(const seg of [{a:728,b:842,side:-1,d:13.4},{a:1088,b:1190,side:1,d:14.2},{a:1468,b:1530,side:-1,d:15}]){
+  for(const seg of [{a:.308,b:.356,side:-1,d:13.4},{a:.46,b:.503,side:1,d:14.2},{a:.62,b:.647,side:-1,d:15}].map(g=>({...g,a:frac(g.a),b:frac(g.b)}))){
     let last=null;
     for(let ss=seg.a;ss<=seg.b;ss+=5.5){
       if(P.gates.some(g=>g.side===seg.side&&Math.abs(g.s-ss)<5)||R.inJunctionMouth(ss,seg.side,20)){last=null;continue;}

@@ -24,7 +24,12 @@ const EYE_HEIGHT = 1.28;
 const A_LAT_SAFE = 5.6;             // ~0.57 g: comfortable road pace
 const A_LAT_MAX = 8.6;              // ~0.88 g: the tyres' limit on dry tarmac
 const DECEL_PLAN = 7.2;             // braking the planner assumes, m/s²
-const LOOKAHEAD = 170, LOOK_STEP = 4;
+const LOOK_STEP = 4;
+// How far ahead the planner looks: far enough to brake from the current speed,
+// plus about three seconds of reaction. A fixed horizon that suits a B road is
+// far too short on a fast road, where you arrive at a bend having covered it in
+// well under a second.
+const lookAhead = (v) => clamp(v * v / (2 * DECEL_PLAN) + v * 3, 70, 340);
 const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
 
 EVO.V_MAX = V_MAX;
@@ -65,7 +70,8 @@ EVO.createBike = function createBike() {
   function planCorner() {
     let allowedSafe = V_MAX, allowedMax = V_MAX;
     let bendDist = Infinity, bendDir = 0, bendRadius = Infinity, bendK = 0, inBend = false, bendDone = false;
-    for (let dist = 0; dist <= LOOKAHEAD; dist += LOOK_STEP) {
+    const horizon = lookAhead(bike.v);
+    for (let dist = 0; dist <= horizon; dist += LOOK_STEP) {
       const f = RT.frame(bike.s + dist, scratch);
       const k = Math.abs(f.kappa);
       const radius = 1 / Math.max(k, 1e-4);
@@ -116,6 +122,16 @@ EVO.createBike = function createBike() {
     bike.steerSmoothed = lerp(bike.steerSmoothed, crashed ? 0 : inp.steer, 1 - Math.exp(-dt * 9));
     const lateralRate = Math.min(3.2, 0.9 + bike.v * 0.09) * Math.min(1,bike.v/1.5);
     bike.d += bike.steerSmoothed * lateralRate * dt;
+    // Crosswind on exposed ground: gusts push the bike across its lane, and
+    // they push hardest when there is nothing beside the road to break them.
+    const gust = EVO.ROUTE.wind;
+    if (gust) {
+      const exposed = (RT.boundaryAt(bike.s, 1).type === 'open' ? 0.6 : 0) + (RT.boundaryAt(bike.s, -1).type === 'open' ? 0.6 : 0);
+      if (exposed > 0) {
+        const g = (EVO.noise2(bike.s / 140, bike.elapsed * 0.22) - 0.5) * 2;
+        bike.d += g * gust * exposed * Math.min(1, bike.v / 18) * dt;
+      }
+    }
 
     // Cornering physics: above the safe lateral acceleration the bike wants to
     // run wide; above the tyres' limit it will.

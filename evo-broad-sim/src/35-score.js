@@ -12,7 +12,7 @@ import * as THREE from 'three';
 const EVO = window.EVO;
 const { clamp, mod } = EVO;
 
-const BEST_KEY = 'evo.bestLap';
+const BEST_KEY = `evo.bestLap.${EVO.activeRoute}`;
 const CLEAN_BEND = 60, CAUTIOUS_BEND = 15, RAGGED_BEND = 10;
 const CLEAN_OVERTAKE = 150, UNSAFE_OVERTAKE = -200, CLOSE_CALL = -80, CRASH = -250;
 const HUMP_SMOOTH = 15, HUMP_HARD = -40;

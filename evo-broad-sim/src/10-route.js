@@ -11,27 +11,19 @@ import * as THREE from 'three';
 const EVO = window.EVO;
 const { clamp, lerp, smoothstep, mod } = EVO;
 
-const LANE_HALF = 3.0;         // carriageway half width (6.0 m B road)
-const ROAD_HALF = 3.1;         // asphalt mesh half width incl. broken edge
-const HEDGE_OFFSET = 5.2;      // boundary line from centre
+// Everything road-specific comes from the selected route record (05-routes.js),
+// so this module builds whichever road is chosen without knowing which it is.
+const ROUTE = EVO.ROUTE;
+const LANE_HALF = ROUTE.laneHalf;   // carriageway half width
+const ROAD_HALF = ROUTE.roadHalf;   // asphalt mesh half width incl. broken edge
+const HEDGE_OFFSET = ROUTE.hedgeOffset; // boundary line from centre
 let SAMPLE = 1.0;            // metres between samples
 
-// Loop control points (metres). Roughly 2.4 km with a mix of fast sweepers,
-// a tight double bend and two blind crests.
-const CONTROL = [
-  [0, 0], [110, -18], [230, -6], [330, 48], [392, 150], [388, 262],
-  [318, 332], [232, 348], [150, 402], [52, 428], [-58, 402], [-140, 330],
-  [-160, 226], [-232, 148], [-282, 52], [-236, -46], [-130, -72], [-52, -36]
-];
-
-function terrainBase(x, z) {
-  // Rolling Dales pasture: broad undulation plus finer hummocks.
-  return EVO.fbm(x / 420 + 3.1, z / 420 - 1.7, 3) * 26 - 13 +
-    (EVO.fbm(x / 95 - 2.2, z / 95 + 4.4, 3) - 0.5) * 5.5;
-}
+const CONTROL = ROUTE.control;
+const terrainBase = ROUTE.terrain;
 
 function buildRoute() {
-  const SCALE = 1.25;
+  const SCALE = ROUTE.scale;
   const pts = CONTROL.map(([x, z]) => new THREE.Vector3(x * SCALE, 0, z * SCALE));
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.5);
   curve.arcLengthDivisions = 4000;
@@ -42,11 +34,14 @@ function buildRoute() {
     const p = curve.getPointAt(i / n);
     px[i] = p.x; pz[i] = p.z;
   }
-  // Elevation: periodic harmonics of the loop length so the loop closes, kept
-  // gentle enough for a B road (max ~6 %), plus a touch of the terrain itself.
+  // Elevation: periodic harmonics of the loop length so the loop closes, plus a
+  // touch of the terrain itself. Amplitudes are per route: a B road stays gentle,
+  // a moor road climbs to a summit and falls off the edge.
   for (let i = 0; i < n; i += 1) {
     const s = i * SAMPLE, w = Math.PI * 2 / length;
-    py[i] = 4.2 * Math.sin(w * 2 * s + 0.4) + 2.6 * Math.sin(w * 3 * s + 2.1) + 1.4 * Math.sin(w * 7 * s + 1.0) + 0.8 * Math.sin(w * 11 * s + 2.8);
+    let h = 0;
+    for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
+    py[i] = h;
   }
   // Smooth terrain sample blended in so fields and road agree broadly.
   const tBlend = new Float32Array(n);
@@ -59,7 +54,7 @@ function buildRoute() {
       tBlend[i] = acc / cnt;
     }
   }
-  for (let i = 0; i < n; i += 1) py[i] = py[i] * 0.55 + tBlend[i] * 0.85;
+  for (let i = 0; i < n; i += 1) py[i] = py[i] * ROUTE.elevationWeight + tBlend[i] * ROUTE.terrainWeight;
 
   const tx = new Float32Array(n), tz = new Float32Array(n), ty = new Float32Array(n);
   const nx = new Float32Array(n), nz = new Float32Array(n);
@@ -118,11 +113,7 @@ function point(s, d, up = 0, out = new THREE.Vector3()) {
 function crown(d) { return -0.025 * Math.abs(d); }
 
 /* ------------------------------------------------------------ side roads */
-const JUNCTIONS = [
-  { s: 700, side: -1, angle: 92, name: 'HAWES 4' },
-  { s: 1550, side: 1, angle: 85, name: 'ASKRIGG 3' },
-  { s: 2450, side: -1, angle: 98, name: 'BAINBRIDGE 2' }
-].map((j) => {
+const JUNCTIONS = ROUTE.junctions.map((j) => {
   const f = frame(j.s);
   const a = THREE.MathUtils.degToRad(j.angle) * j.side; // rotate tangent towards side
   // rotate tangent by angle about y: left rotation for side +1
@@ -204,7 +195,7 @@ function terrainHeight(x, z) {
 // Bends: local maxima of |curvature| above a threshold.
 function findBends() {
   const bends = [];
-  const thresh = 1 / 130;
+  const thresh = ROUTE.bendThreshold;
   let i = 0;
   while (i < R.n) {
     if (Math.abs(R.kappa[i]) > thresh) {
@@ -226,19 +217,25 @@ const BENDS = findBends();
 
 // Boundary sections per side: hedge / wall / fence.
 function planBoundaries() {
-  const rnd = EVO.rng(2024);
+  const plan = ROUTE.boundaries;
+  const rnd = EVO.rng(plan.seed);
+  const first = plan.mix[0][0], second = plan.mix[1][0];
   const sides = {};
   for (const side of [1, -1]) {
     const list = [];
     let s = side === 1 ? 0 : 35;
-    let last = 'hedge';
+    let last = first;
     while (s < R.length) {
-      const len = 70 + rnd() * 190;
-      let type;
+      const len = plan.min + rnd() * plan.span;
       const r = rnd();
-      type = r < 0.5 ? 'hedge' : r < 0.78 ? 'wall' : 'fence';
-      if (type === last && rnd() < 0.6) type = type === 'hedge' ? 'wall' : 'hedge';
-      list.push({ start: s, end: Math.min(R.length, s + len), type, height: type === 'hedge' ? 1.5 + rnd() * 0.8 : type === 'wall' ? 1.05 + rnd() * 0.2 : 1.1 });
+      let type = plan.mix[plan.mix.length - 1][0];
+      for (const [name, upTo] of plan.mix) if (r < upTo) { type = name; break; }
+      // avoid long identical runs: the road should change character along its length
+      if (type === last && rnd() < 0.6) type = type === first ? second : first;
+      list.push({
+        start: s, end: Math.min(R.length, s + len), type,
+        height: type === 'hedge' ? 1.5 + rnd() * 0.8 : type === 'wall' ? 1.05 + rnd() * 0.2 : 1.1
+      });
       last = type; s += len;
     }
     sides[side] = list;
@@ -262,6 +259,7 @@ function inJunctionMouth(s, side, margin = 9) {
 }
 
 EVO.route = {
+  route: ROUTE, id: ROUTE.id,
   R, LANE_HALF, ROAD_HALF, HEDGE_OFFSET, SAMPLE,
   length: R.length, frame, point, crown, terrainBase, terrainHeight, nearest,
   JUNCTIONS, sidePoint, sideInfluence, BENDS, BOUNDARIES, boundaryAt, inJunctionMouth

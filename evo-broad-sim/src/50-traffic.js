@@ -219,6 +219,61 @@ EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality=
   world.parkedCars=parked;
 };
 
+/* An articulated lorry: a cab and a box trailer, built from panels rather than
+ * lofted. It is 16 m long and does 50 mph on the flat, which is what makes an
+ * overtake on a fast road a decision rather than a formality. */
+const LORRY = { L: 16.2, W: 2.55, cabL: 5.6, trailerH: 4.0 };
+function makeLorry(paint, envMap) {
+  const g = new THREE.Group();
+  CACHE.alloy = CACHE.alloy || EVO.tex.alloy();
+  CACHE.shadow = CACHE.shadow || contactShadowTexture();
+  const paintMat = new THREE.MeshPhysicalMaterial({ color: paint, metalness: 0.3, roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.12, envMap, envMapIntensity: 0.9 });
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.72, metalness: 0.05, envMap, envMapIntensity: 0.45 });
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0d1317, metalness: 0.1, roughness: 0.06, envMap, envMapIntensity: 1.2 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1f22, roughness: 0.8 });
+  const tyreMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.95 });
+  const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.35, envMap, envMapIntensity: 0.7 });
+  const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: 1.2, roughness: 0.1 });
+  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x8e1119, emissive: 0x6d0a12, emissiveIntensity: 0.7, roughness: 0.14 });
+  g.userData.tail = tailMat;
+  const halfL = LORRY.L / 2, halfW = LORRY.W / 2;
+  const add = (geo, mat, x, y, z, rx = 0, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.rotation.set(rx, ry, 0);
+    m.castShadow = true; m.receiveShadow = true; g.add(m); return m;
+  };
+  // cab: nose at +z
+  const cabZ = halfL - LORRY.cabL / 2;
+  add(new THREE.BoxGeometry(LORRY.W, 2.05, LORRY.cabL), paintMat, 0, 1.9, cabZ);
+  add(new THREE.BoxGeometry(LORRY.W - 0.12, 0.95, 0.1), glassMat, 0, 2.55, cabZ + LORRY.cabL / 2 - 0.02);   // windscreen
+  for (const sx of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.1, 0.8, 1.5), glassMat, sx * (halfW - 0.02), 2.45, cabZ + 0.3);              // door glass
+    add(new THREE.BoxGeometry(0.5, 0.24, 0.16), lampMat, sx * (halfW * 0.62), 1.15, halfL - 0.04);           // headlamps
+    add(new THREE.BoxGeometry(0.16, 0.5, 0.1), darkMat, sx * (halfW + 0.12), 2.7, cabZ + LORRY.cabL / 2 - 0.5); // mirror arms
+  }
+  add(new THREE.BoxGeometry(LORRY.W * 0.9, 0.5, 0.22), darkMat, 0, 0.72, halfL - 0.02);                      // bumper
+  add(new THREE.BoxGeometry(LORRY.W - 0.2, 0.9, 0.3), paintMat, 0, 3.35, cabZ + 0.6);                        // roof deflector
+  // trailer: a plain box body on a chassis
+  const trZ = -halfL + (LORRY.L - LORRY.cabL) / 2 + 0.2;
+  add(new THREE.BoxGeometry(LORRY.W, LORRY.trailerH - 1.1, LORRY.L - LORRY.cabL - 0.4), boxMat, 0, 1.25 + (LORRY.trailerH - 1.1) / 2, trZ);
+  add(new THREE.BoxGeometry(LORRY.W - 0.06, 0.18, LORRY.L - LORRY.cabL - 0.4), darkMat, 0, 1.2, trZ);        // chassis rail
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.34, 0.2, 0.1), tailMat, sx * (halfW * 0.7), 1.5, -halfL + 0.03);
+  add(new THREE.BoxGeometry(LORRY.W * 0.85, 0.4, 0.14), darkMat, 0, 0.85, -halfL + 0.05);                    // rear underrun bar
+  // wheels: steer axle, drive pair, trailer triple
+  const tyre = new THREE.CylinderGeometry(0.52, 0.52, 0.34, 16); tyre.rotateZ(Math.PI / 2);
+  const hub = new THREE.CircleGeometry(0.34, 18); hub.rotateY(Math.PI / 2);
+  for (const z of [halfL - 1.5, cabZ - 1.9, cabZ - 3.2, trZ - 2.2, trZ - 3.6, trZ - 5.0]) {
+    for (const sx of [-1, 1]) {
+      add(tyre, tyreMat, sx * (halfW - 0.2), 0.52, z);
+      add(hub, alloyMat, sx * (halfW - 0.02), 0.52, z, 0, sx > 0 ? 0 : Math.PI);
+    }
+  }
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(LORRY.W * 1.3, LORRY.L * 1.02),
+    new THREE.MeshBasicMaterial({ map: CACHE.shadow, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.03; g.add(shadow);
+  return g;
+}
+
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const count = opts.count ?? 5;
   const sameCount = opts.same ?? 3;
@@ -229,23 +284,30 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const rnd = EVO.rng(777);
   const cars = [];
   for (let i = 0; i < count; i += 1) {
-    const kind = kinds[i % kinds.length];
-    const mesh = makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
+    const hgvHere = (opts.hgv ?? 0) > 0 && i % 4 === 3;
+    const kind = hgvHere ? 'lorry' : kinds[i % kinds.length];
+    const mesh = hgvHere ? makeLorry([0x35507a, 0x8d8f93][i % 2], envMap)
+      : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
     scene.add(mesh);
     // spread them around the loop, none right on top of the rider at the start
     const s = mod(bike.s + L * (0.28 + i / count * 0.92) + rnd() * 50, L);
-    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null, braking: 0 });
+    const cruise = hgvHere ? 22 + rnd() * 1.5 : ((kind === 'van' ? 16.5 : 18) + rnd() * 5) * (opts.cruise ?? 1);
+    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: Math.min(16 + rnd() * 4, cruise), cruise, lastRel: null, braking: 0, lorry: hgvHere, half: hgvHere ? LORRY.L / 2 : 2.4 });
   }
   // Same-direction traffic: slower than the EVO wants to go, so the rider has
   // to sit behind it or pick the moment to pass. One of them is a dawdling van.
+  const hgv = opts.hgv ?? 0, cruiseScale = opts.cruise ?? 1;
   const sameKinds = ['van', 'hatch', 'suv', 'hatch'];
   for (let i = 0; i < sameCount; i += 1) {
-    const kind = sameKinds[i % sameKinds.length];
-    const mesh = makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
+    const lorry = hgv > 0 && (i % Math.max(2, Math.round(1 / hgv)) === 0);
+    const kind = lorry ? 'lorry' : sameKinds[i % sameKinds.length];
+    const mesh = lorry ? makeLorry([0x9d2a2f, 0x2c4a7a, 0xe6e3da][i % 3], envMap)
+      : makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
     scene.add(mesh);
     const s = mod(bike.s + 140 + i * (L / sameCount) + rnd() * 60, L);
-    const cruise = kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4; // 26-42 mph
-    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0 });
+    // a laden lorry sits at about 50 mph and will not be hurried
+    const cruise = lorry ? 21.5 + rnd() * 1.4 : (kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4) * cruiseScale;
+    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0, lorry, half: lorry ? LORRY.L / 2 : 2.4 });
   }
   let mode = 'both';
 
@@ -283,7 +345,8 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       for (const other of cars) {
         if (other === car || other.dir !== dir || !active(other)) continue;
         const gap = mod((other.s - car.s) * dir, L);
-        if (gap > 0 && gap < 26) limit = Math.min(limit, other.v * (gap / 26));
+        const need = 26 + other.half + car.half;
+        if (gap > 0 && gap < need) limit = Math.min(limit, other.v * (gap / need));
       }
       if (dir > 0) {
         const gap = mod(bike.s - car.s, L);
@@ -311,9 +374,9 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       }
       car.lastRel = rel;
       if (dir < 0) {
-        if (Math.abs(rel) < 2.5 && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: 'COLLISION · ONCOMING CAR' };
-      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -2.4 && rel < 2.6 && bike.v > car.v + 0.5) {
-        events.collision = { car, reason: 'RAN INTO THE CAR AHEAD' };
+        if (Math.abs(rel) < car.half && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: car.lorry ? 'COLLISION · ONCOMING LORRY' : 'COLLISION · ONCOMING CAR' };
+      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -car.half && rel < car.half + 0.2 && bike.v > car.v + 0.5) {
+        events.collision = { car, reason: car.lorry ? 'RAN INTO THE LORRY AHEAD' : 'RAN INTO THE CAR AHEAD' };
       }
     }
     return events;

@@ -12,6 +12,7 @@ import * as THREE from 'three';
 const EVO = window.EVO;
 const { clamp, lerp, smoothstep, mod } = EVO;
 const RT = EVO.route;
+const SCENE = EVO.ROUTE.scenery;
 
 /* -------------------------------------------------------- geometry sink */
 class GeoSink {
@@ -86,6 +87,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   };
   EVO.tagShader(roadMat, 'roadwear');
   const grassMat = new THREE.MeshStandardMaterial({
+    color: SCENE.grass ?? 0xffffff,
     map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.24, 0.24), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -105,7 +107,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   EVO.addFoliageFill(leafMat, 0.16);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
-  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color:0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
+  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color: SCENE.blade ?? 0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
   const windUniform = { value: 0 };
   EVO.windUniform = windUniform;
   bladeMat.onBeforeCompile = (shader) => {
@@ -202,10 +204,21 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   /* --------------------------------------------------- verges (ribbons) */
-  const grassTint = (x, z) => {
-    const n = EVO.fbm(x / 60 + 7, z / 60, 2);
-    return { r: 0.86 + n * 0.28, g: 0.9 + n * 0.2, b: 0.85 + n * 0.2 };
-  };
+  const grassTint = SCENE.heather
+    ? (x, z) => {
+      // moor: bleached rough grass and rush, with heather in patches
+      const n = EVO.fbm(x / 60 + 7, z / 60, 2), h = EVO.fbm(x / 140 - 3, z / 140 + 5, 2);
+      const heath = smoothstep(0.56, 0.74, h);
+      return {
+        r: (0.92 + n * 0.22) * (1 + heath * 0.16),
+        g: (0.82 + n * 0.16) * (1 - heath * 0.22),
+        b: (0.62 + n * 0.14) * (1 + heath * 0.5)
+      };
+    }
+    : (x, z) => {
+      const n = EVO.fbm(x / 60 + 7, z / 60, 2);
+      return { r: 0.86 + n * 0.28, g: 0.9 + n * 0.2, b: 0.85 + n * 0.2 };
+    };
   for (const side of [1, -1]) {
     const sink = new GeoSink();
     const D = [3.02, 3.5, 4.2, 5.0, 6.0, 7.5, 9.5, 12, 16, 22, 30];
@@ -248,7 +261,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
         // fields: pasture variants, hay meadow, and the odd ploughed strip
         const field = EVO.fbm(x / 240 + 9, z / 240 + 2, 2);
         let r = 0.85, g = 0.92, b = 0.8;
-        if (field > 0.62) { r = 1.05; g = 0.98; b = 0.7; } // hay
+        if (SCENE.heather) { const heath = smoothstep(0.5, 0.72, field); r = 0.94 + heath * 0.2; g = 0.82 - heath * 0.16; b = 0.64 + heath * 0.3; }
+        else if (field > 0.62) { r = 1.05; g = 0.98; b = 0.7; } // hay
         else if (field < 0.36) { r = 0.78; g = 0.85; b = 0.7; }
         const t = grassTint(x, z);
         row.push(sink.vertex(x, y, z, x / 4, z / 4, r * t.r, g * t.g, b * t.b));
@@ -529,7 +543,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     let run = null, runType = null, runH = 0;
     const flush = () => {
       if (!run || run.length < 2) { run = null; return; }
-      if (runType === 'hedge') hedgeRun(run, runH); else if (runType === 'wall') wallRun(run, runH); else fenceRun(run);
+      if (runType === 'hedge') hedgeRun(run, runH);
+      else if (runType === 'wall') wallRun(run, runH);
+      else if (runType === 'fence') fenceRun(run);
+      // 'open': unfenced moorland, nothing along the verge at all
       run = null;
     };
     for (let s = 0; s <= L; s += 1) {
@@ -561,7 +578,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
   }
   // foxgloves and campion where the road runs through the woods
-  for (let s = 3; s < L; s += 2.2 + rnd() * 3.5) {
+  if (SCENE.flowers) for (let s = 3; s < L; s += 2.2 + rnd() * 3.5) {
     if (!RT.woodland(s)) continue;
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.clearance(s, side) || RT.inJunctionMouth(s, side, 12)) continue;
@@ -569,7 +586,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     foxgloveInstances.push({ x: g.x, y: g.y - 0.04, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.9 + rnd() * 0.6, tint: 0.85 + rnd() * 0.3 });
   }
   // cow parsley and hogweed along the verges
-  for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
+  if (SCENE.flowers) for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.inVillage(s,10) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 12)) continue;
     const g = groundAt(s, side * (3.5 + rnd() * 1.1));
@@ -581,7 +598,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     if(near&&RT.inVillage(near.s,30)&&near.dist<19)return;
     treePlacements.push({x,y,z,species,scale,yaw:rnd()*Math.PI*2,tint:0.85+rnd()*.3});
   };
-  for (let s = 8; s < L; s += 8 + rnd() * 13) {
+  const treeGap = SCENE.trees === 'sparse' ? 46 : 8, treeSpread = SCENE.trees === 'sparse' ? 70 : 13;
+  for (let s = 8; s < L; s += treeGap + rnd() * treeSpread) {
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.inVillage(s,20) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 36)) continue;
     const b = RT.boundaryAt(s, side);
@@ -589,8 +607,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const d = inLine ? RT.HEDGE_OFFSET + 0.3 : RT.HEDGE_OFFSET + 1.8 + rnd() * 10;
     const g = groundAt(s, side * d);
     const r = rnd();
-    const species = inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
-    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.8 + rnd() * 0.6 : 0.8 + rnd() * 0.5);
+    const species = SCENE.trees === 'sparse' ? 'hawthorn' : inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
+    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.55 + rnd() * 0.5 : 0.8 + rnd() * 0.5);
   }
   // Coherent woodland belts: layered near trees and understorey, with open pasture
   // between them. Extra density is authored by place, not uniform random clutter.
@@ -608,11 +626,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
   }
   // Garden trees and an irregular shelter belt behind the houses, not inside them.
-  for(let s=335;s<596;s+=9.5)for(const side of [1,-1]){
+  if (SCENE.farmsteads) for(let s=335;s<596;s+=9.5)for(const side of [1,-1]){
     const g=groundAt(s+(rnd()-.5)*3,side*(21+rnd()*12));
     placeTree(g.x,g.y-.10,g.z,rnd()<.6?'ash':'oak',.58+rnd()*.40);
   }
-  for (let k = 0; k < 265; k += 1) {
+  for (let k = 0, kn = SCENE.trees === 'sparse' ? 60 : 265; k < kn; k += 1) {
     const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
@@ -719,7 +737,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.95 });
     const flock = [];
     for (let gI = 0; gI < 34; gI += 1) {
-      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 13 + rnd() * 60;
+      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1;
+      // on unfenced moor the sheep come right down to the verge
+      const openHere = SCENE.heather && RT.boundaryAt(s, side).type === 'open';
+      const d = (openHere ? 6.5 : 13) + rnd() * (openHere ? 30 : 60);
       const f = RT.frame(s);
       const gx = f.x + f.nx * side * d, gz = f.z + f.nz * side * d;
       const n = 3 + Math.floor(rnd() * 6);
@@ -765,7 +786,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ------------------------------------------------------- grass blades */
   {
-    const count = quality.blades;
+    const count = Math.round(quality.blades * (SCENE.blades ?? 1));
     const geo = new THREE.PlaneGeometry(0.22, 0.27); geo.translate(0, 0.135, 0);
     const im = new THREE.InstancedMesh(geo, bladeMat, count);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
@@ -1002,7 +1023,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     sun.color.set(P.sunColor); sun.intensity = P.sunI; sun.shadow.radius = P.radius;
     hemi.color.set(P.hemi[0]); hemi.groundColor.set(P.hemi[1]); hemi.intensity = P.hemi[2];
     ambient.intensity = P.ambient;
-    scene.fog.color.set(P.fog[0]); scene.fog.density = P.fog[1];
+    scene.fog.color.set(P.fog[0]); scene.fog.density = P.fog[1] * (SCENE.fogScale ?? 1);
     skyUniforms.uZenith.value.setRGB(...P.zenith); skyUniforms.uHorizon.value.setRGB(...P.horizon);
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);

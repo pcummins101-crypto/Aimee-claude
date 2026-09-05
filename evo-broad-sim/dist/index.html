@@ -115,7 +115,8 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
         <li><b>Score</b> pace while the bar is green, clean bends chain a multiplier, a clean overtake is +150; passing blind or into oncoming, speeding in the village, humps hit hard and crashes all cost. Your best lap is kept</li>
       </ul>
       <div class="ride-options">
-        <label>START LOCATION<select id="spawn"><option value="180">Woodland approach</option><option value="339">Village &amp; humps</option><option value="800">Open pasture</option><option value="1030">Wooded bends</option></select></label>
+        <label>ROUTE<select id="route"><option value="dales">Dales B-road · 2.4 km</option><option value="moor">Moorland A-road · 5.4 km</option></select></label>
+        <label>START LOCATION<select id="spawn"></select></label>
         <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option><option value="rain">Rain</option></select></label>
         <label>DETAIL<select id="quality"><option value="auto">Auto</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
         <label>TRAFFIC<select id="traffic"><option value="both">Both directions</option><option value="oncoming">Oncoming only</option><option value="none">Empty road</option></select></label>
@@ -914,6 +915,195 @@ EVO.tex.carDecal = function carDecal(kind = 'hatch') {
 
 }
 
+/* ---- 05-routes.js ---- */
+{
+
+/*
+ * AVENRÀ EVO — route registry.
+ *
+ * Everything that makes one road different from another lives here as data:
+ * geometry, width, elevation character, terrain, boundary mix, junctions and
+ * the authored places along it. The route modules read the selected entry and
+ * build from it, so adding a road means adding a record, not editing builders.
+ *
+ * The active route is fixed for the life of the page (the world is built once),
+ * chosen by ?route= or the last choice made on the start screen.
+ */
+const EVO = window.EVO;
+
+const ROUTES = {
+  /* ------------------------------------------------------------ Dales B road */
+  dales: {
+    id: 'dales',
+    name: 'Dales B-road',
+    kicker: 'DETAILED SCENERY · DALES-INSPIRED B-ROAD',
+    roadHint: 'slow for bends and village humps; R resets you in your lane, P pauses the ride',
+    blurb: 'Wooded lanes, patterned fields and the stone-built village of Dalebeck. Road humps, rumble strips and a changing surface beneath the tyres. Keep left; side turnings are coned off.',
+    scale: 1.25,
+    laneHalf: 3.0,          // 6.0 m carriageway
+    roadHalf: 3.1,
+    hedgeOffset: 5.2,
+    limit: 60,
+    bendThreshold: 1 / 130,
+    elevationWeight: 0.55,
+    terrainWeight: 0.85,
+    // harmonics of the loop length: [k, amplitude m, phase]
+    elevation: [[2, 4.2, 0.4], [3, 2.6, 2.1], [7, 1.4, 1.0], [11, 0.8, 2.8]],
+    terrain: (x, z) => EVO.fbm(x / 420 + 3.1, z / 420 - 1.7, 3) * 26 - 13 +
+      (EVO.fbm(x / 95 - 2.2, z / 95 + 4.4, 3) - 0.5) * 5.5,
+    spawns: [[180, 'Woodland approach'], [339, 'Village & humps'], [800, 'Open pasture'], [1030, 'Wooded bends']],
+    control: [
+      [0, 0], [110, -18], [230, -6], [330, 48], [392, 150], [388, 262],
+      [318, 332], [232, 348], [150, 402], [52, 428], [-58, 402], [-140, 330],
+      [-160, 226], [-232, 148], [-282, 52], [-236, -46], [-130, -72], [-52, -36]
+    ],
+    junctions: [
+      { s: 700, side: -1, angle: 92, name: 'HAWES 4' },
+      { s: 1550, side: 1, angle: 85, name: 'ASKRIGG 3' },
+      { s: 2450, side: -1, angle: 98, name: 'BAINBRIDGE 2' }
+    ],
+    boundaries: { seed: 2024, min: 70, span: 190, mix: [['hedge', 0.5], ['wall', 0.28], ['fence', 1]] },
+    // Authored places along this road. `s` is absolute metres; `t` is a fraction
+    // of the loop, resolved once the geometry is built.
+    places: {
+      village: { name: 'DALEBECK', start: 330, end: 595, limit: 20 },
+      woodland: [[95, 310], [995, 1260], [1940, 2075]],
+      gates: [{ s: 236, side: 1 }, { s: 811, side: -1 }, { s: 963, side: 1 }, { s: 1390, side: -1 }, { s: 1700, side: 1 }, { s: 2128, side: -1 }],
+      humps: [
+        { s: 372, length: 3.8, height: 0.075, type: 'hump' },
+        { s: 448, length: 7.0, height: 0.075, type: 'table' },
+        { s: 530, length: 3.8, height: 0.075, type: 'hump' }
+      ],
+      stripAt: [301, 610],
+      covers: [{ s: 357, d: 1.80 }, { s: 403, d: -1.40 }, { s: 468, d: 1.05 }, { s: 558, d: -1.65 }, { s: 873, d: 1.8 }, { s: 1890, d: -1.8 }],
+      potholes: [
+        { s: 214, d: 2.42, length: 1.05, width: 0.64, height: -0.030, seed: 13 },
+        { s: 844, d: 2.42, length: 1.24, width: 0.68, height: -0.034, seed: 27 },
+        { s: 1168, d: -2.42, length: 0.92, width: 0.60, height: -0.025, seed: 38 },
+        { s: 1458, d: 1.80, length: 1.14, width: 0.70, height: -0.028, seed: 42 },
+        { s: 1842, d: -2.42, length: 1.38, width: 0.72, height: -0.035, seed: 55 },
+        { s: 2090, d: 2.42, length: 0.96, width: 0.62, height: -0.028, seed: 67 }
+      ],
+      lots: [
+        { s: 361, side: -1, d: 8.65, kind: 'hatch', paint: 0xd2d1c9, dir: 1 },
+        { s: 384, side: 1, d: 8.70, kind: 'suv', paint: 0x324d65, dir: -1 },
+        { s: 442, side: -1, d: 8.80, kind: 'van', paint: 0xe1ded3, dir: 1 },
+        { s: 504, side: 1, d: 8.65, kind: 'hatch', paint: 0x883839, dir: -1 },
+        { s: 552, side: -1, d: 8.65, kind: 'hatch', paint: 0x777d7a, dir: 1 }
+      ],
+      grids: [], laybys: [],
+      repairs: { count: 58, seed: 9031, step: 39, from: 143 }
+    },
+    // What the road-information panel says about where you are.
+    readout(RT, s) {
+      const hump = RT.nextHump(s), wood = RT.woodland(s), v = RT.inVillage(s);
+      if (hump && hump.dist < 125) return { name: v ? 'DALEBECK VILLAGE' : wood ? 'WOODED B-ROAD' : 'OPEN PASTURE', note: `${hump.type === 'table' ? 'RAISED TABLE' : 'ROAD HUMP'} · ${Math.round(hump.dist)} m`, warn: true };
+      if (v) return { name: 'DALEBECK VILLAGE', note: '20 mph · traffic-calmed village' };
+      if (wood) return { name: 'WOODED B-ROAD', note: 'Coarse surface · shaded bends' };
+      return { name: 'OPEN PASTURE', note: 'Two-way road · keep left' };
+    },
+    scenery: { trees: 'dense', flowers: true, blades: 1, farmsteads: true, fells: true, grass: 0xffffff, fogScale: 1 },
+    traffic: { oncoming: 1, same: 1, cruise: 1, hgv: 0 }
+  },
+
+  /* --------------------------------------------------------- moorland A road */
+  moor: {
+    id: 'moor',
+    name: 'Moorland A-road',
+    kicker: 'HIGH MOOR · FAST A-ROAD',
+    roadHint: 'unfenced moor, cattle grids and crosswind on the tops; R resets you in your lane, P pauses',
+    blurb: 'A trans-Pennine A-road over open moor: mile-long straights, fast sweepers and a hard stop where the road drops off the edge. Unfenced in places, so watch for sheep. Lorries to pass where you can see far enough to do it.',
+    scale: 1.32,
+    laneHalf: 3.65,         // 7.3 m carriageway
+    roadHalf: 3.78,
+    hedgeOffset: 6.4,
+    limit: 60,
+    wind: 0.55,          // crosswind across the open tops, m/s of lateral drift
+    bendThreshold: 1 / 260, // sweepers count as bends on a fast road
+    elevationWeight: 0.8,
+    terrainWeight: 0.7,
+    elevation: [[1, 26, 0.9], [2, 13, 2.4], [3, 6.5, 0.6], [5, 2.8, 1.9], [8, 1.3, 3.1]],
+    terrain: (x, z) => EVO.fbm(x / 640 + 5.5, z / 640 + 2.2, 3) * 46 - 23 +
+      (EVO.fbm(x / 175 - 1.1, z / 175 + 3.3, 3) - 0.5) * 9,
+    // A big irregular ring: two long straights, fast sweepers between them and
+    // one hard left where the road falls off the moor edge.
+    spawns: [[0.01, 'Summit straight'], [0.2, 'Eastern flank'], [0.42, 'Off the moor edge'], [0.63, 'The clough'], [0.86, 'Western climb']],
+    control: [
+      // the summit straight, west to east (~950 m)
+      [-772, -448], [-520, -462], [-268, -472], [-20, -470],
+      // opening right-hand sweeper off the summit
+      [232, -452], [452, -372], [592, -216],
+      // the eastern straight, running south (~450 m)
+      [648, -40], [656, 150],
+      // fast entry that tightens as the road falls off the moor edge
+      [634, 306], [570, 408], [462, 452],
+      // S-bend through the clough
+      [356, 428], [284, 348], [206, 300], [96, 300], [-16, 348],
+      // fast left along the bottom
+      [-148, 372], [-296, 366], [-424, 316],
+      // tighter right at the beck bridge
+      [-534, 232], [-576, 122],
+      // long left climbing back to the summit
+      [-664, 20], [-762, -118], [-800, -290]
+    ],
+    junctions: [
+      { s: 1180, side: 1, angle: 96, name: 'GRASSHOLME 5' },
+      { s: 3600, side: -1, angle: 88, name: 'HARWOOD 3' }
+    ],
+    // Open moor for long runs, wall where the road is enclosed, wire on the tops.
+    boundaries: { seed: 5150, min: 150, span: 320, mix: [['open', 0.42], ['wall', 0.78], ['fence', 1]] },
+    // Moorland furniture: cattle grids where the walls give out, laybys on the
+    // straights, frost-damaged edges, and no village at all.
+    places: {
+      village: null,
+      woodland: [],
+      gates: [{ t: 0.075, side: -1 }, { t: 0.30, side: 1 }, { t: 0.52, side: -1 }, { t: 0.79, side: 1 }],
+      humps: [],
+      stripAt: [],
+      covers: [{ t: 0.235, d: 1.9 }, { t: 0.61, d: -2.0 }],
+      // cattle grids: a recessed steel deck, felt through the bars at any speed
+      grids: [{ t: 0.055 }, { t: 0.335 }, { t: 0.585 }, { t: 0.86 }],
+      laybys: [{ t: 0.145, side: 1, length: 42 }, { t: 0.435, side: -1, length: 36 }, { t: 0.72, side: 1, length: 44 }],
+      potholes: [
+        { t: 0.115, d: 2.9, length: 1.3, width: 0.72, height: -0.032, seed: 21 },
+        { t: 0.28, d: -2.95, length: 1.1, width: 0.66, height: -0.028, seed: 34 },
+        { t: 0.505, d: 2.85, length: 1.45, width: 0.78, height: -0.036, seed: 46 },
+        { t: 0.66, d: -2.9, length: 1.2, width: 0.70, height: -0.030, seed: 58 },
+        { t: 0.905, d: 2.95, length: 1.35, width: 0.74, height: -0.034, seed: 62 }
+      ],
+      lots: [],
+      summit: { t: 0.955, name: 'HIGH GILL SUMMIT', height: 486 },
+      repairs: { count: 96, seed: 4411, step: 47, from: 90 }
+    },
+    readout(RT, s) {
+      const grid = RT.nextGrid(s), P = RT.detailPlan, L = RT.length;
+      const near = (a, b) => ((a - b) % L + L) % L;
+      if (grid && grid.dist < 140) return { name: 'HIGH MOOR', note: `CATTLE GRID · ${Math.round(grid.dist)} m`, warn: true };
+      if (P.summit && near(P.summit.s, s) < 260) return { name: P.summit.name, note: `Summit · ${P.summit.height} ft · exposed to crosswind` };
+      const layby = P.laybys.find((b) => near(b.s, s) < 200);
+      if (layby) return { name: 'HIGH MOOR', note: `Layby · ${Math.round(near(layby.s, s))} m` };
+      const open = RT.boundaryAt(s, 1).type === 'open' || RT.boundaryAt(s, -1).type === 'open';
+      if (open) return { name: 'OPEN MOOR', note: 'Unfenced · sheep on the road', warn: true };
+      return { name: 'MOOR ROAD', note: 'Two-way road · keep left' };
+    },
+    scenery: { trees: 'sparse', flowers: false, blades: 0.55, farmsteads: false, fells: true, heather: true, grass: 0xbdb389, blade: 0x9aa07e, fogScale: 0.62 },
+    traffic: { oncoming: 1.15, same: 1, cruise: 1.45, hgv: 0.34 }
+  }
+};
+
+function pickRoute() {
+  const q = new URLSearchParams(location.search).get('route');
+  if (q && ROUTES[q]) return q;
+  try { const saved = localStorage.getItem('evo.route'); if (saved && ROUTES[saved]) return saved; } catch (e) { /* private mode */ }
+  return 'dales';
+}
+
+EVO.ROUTES = ROUTES;
+EVO.activeRoute = pickRoute();
+EVO.ROUTE = ROUTES[EVO.activeRoute];
+
+}
+
 /* ---- 10-route.js ---- */
 {
 
@@ -928,27 +1118,19 @@ EVO.tex.carDecal = function carDecal(kind = 'hatch') {
 const EVO = window.EVO;
 const { clamp, lerp, smoothstep, mod } = EVO;
 
-const LANE_HALF = 3.0;         // carriageway half width (6.0 m B road)
-const ROAD_HALF = 3.1;         // asphalt mesh half width incl. broken edge
-const HEDGE_OFFSET = 5.2;      // boundary line from centre
+// Everything road-specific comes from the selected route record (05-routes.js),
+// so this module builds whichever road is chosen without knowing which it is.
+const ROUTE = EVO.ROUTE;
+const LANE_HALF = ROUTE.laneHalf;   // carriageway half width
+const ROAD_HALF = ROUTE.roadHalf;   // asphalt mesh half width incl. broken edge
+const HEDGE_OFFSET = ROUTE.hedgeOffset; // boundary line from centre
 let SAMPLE = 1.0;            // metres between samples
 
-// Loop control points (metres). Roughly 2.4 km with a mix of fast sweepers,
-// a tight double bend and two blind crests.
-const CONTROL = [
-  [0, 0], [110, -18], [230, -6], [330, 48], [392, 150], [388, 262],
-  [318, 332], [232, 348], [150, 402], [52, 428], [-58, 402], [-140, 330],
-  [-160, 226], [-232, 148], [-282, 52], [-236, -46], [-130, -72], [-52, -36]
-];
-
-function terrainBase(x, z) {
-  // Rolling Dales pasture: broad undulation plus finer hummocks.
-  return EVO.fbm(x / 420 + 3.1, z / 420 - 1.7, 3) * 26 - 13 +
-    (EVO.fbm(x / 95 - 2.2, z / 95 + 4.4, 3) - 0.5) * 5.5;
-}
+const CONTROL = ROUTE.control;
+const terrainBase = ROUTE.terrain;
 
 function buildRoute() {
-  const SCALE = 1.25;
+  const SCALE = ROUTE.scale;
   const pts = CONTROL.map(([x, z]) => new THREE.Vector3(x * SCALE, 0, z * SCALE));
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.5);
   curve.arcLengthDivisions = 4000;
@@ -959,11 +1141,14 @@ function buildRoute() {
     const p = curve.getPointAt(i / n);
     px[i] = p.x; pz[i] = p.z;
   }
-  // Elevation: periodic harmonics of the loop length so the loop closes, kept
-  // gentle enough for a B road (max ~6 %), plus a touch of the terrain itself.
+  // Elevation: periodic harmonics of the loop length so the loop closes, plus a
+  // touch of the terrain itself. Amplitudes are per route: a B road stays gentle,
+  // a moor road climbs to a summit and falls off the edge.
   for (let i = 0; i < n; i += 1) {
     const s = i * SAMPLE, w = Math.PI * 2 / length;
-    py[i] = 4.2 * Math.sin(w * 2 * s + 0.4) + 2.6 * Math.sin(w * 3 * s + 2.1) + 1.4 * Math.sin(w * 7 * s + 1.0) + 0.8 * Math.sin(w * 11 * s + 2.8);
+    let h = 0;
+    for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
+    py[i] = h;
   }
   // Smooth terrain sample blended in so fields and road agree broadly.
   const tBlend = new Float32Array(n);
@@ -976,7 +1161,7 @@ function buildRoute() {
       tBlend[i] = acc / cnt;
     }
   }
-  for (let i = 0; i < n; i += 1) py[i] = py[i] * 0.55 + tBlend[i] * 0.85;
+  for (let i = 0; i < n; i += 1) py[i] = py[i] * ROUTE.elevationWeight + tBlend[i] * ROUTE.terrainWeight;
 
   const tx = new Float32Array(n), tz = new Float32Array(n), ty = new Float32Array(n);
   const nx = new Float32Array(n), nz = new Float32Array(n);
@@ -1035,11 +1220,7 @@ function point(s, d, up = 0, out = new THREE.Vector3()) {
 function crown(d) { return -0.025 * Math.abs(d); }
 
 /* ------------------------------------------------------------ side roads */
-const JUNCTIONS = [
-  { s: 700, side: -1, angle: 92, name: 'HAWES 4' },
-  { s: 1550, side: 1, angle: 85, name: 'ASKRIGG 3' },
-  { s: 2450, side: -1, angle: 98, name: 'BAINBRIDGE 2' }
-].map((j) => {
+const JUNCTIONS = ROUTE.junctions.map((j) => {
   const f = frame(j.s);
   const a = THREE.MathUtils.degToRad(j.angle) * j.side; // rotate tangent towards side
   // rotate tangent by angle about y: left rotation for side +1
@@ -1121,7 +1302,7 @@ function terrainHeight(x, z) {
 // Bends: local maxima of |curvature| above a threshold.
 function findBends() {
   const bends = [];
-  const thresh = 1 / 130;
+  const thresh = ROUTE.bendThreshold;
   let i = 0;
   while (i < R.n) {
     if (Math.abs(R.kappa[i]) > thresh) {
@@ -1143,19 +1324,25 @@ const BENDS = findBends();
 
 // Boundary sections per side: hedge / wall / fence.
 function planBoundaries() {
-  const rnd = EVO.rng(2024);
+  const plan = ROUTE.boundaries;
+  const rnd = EVO.rng(plan.seed);
+  const first = plan.mix[0][0], second = plan.mix[1][0];
   const sides = {};
   for (const side of [1, -1]) {
     const list = [];
     let s = side === 1 ? 0 : 35;
-    let last = 'hedge';
+    let last = first;
     while (s < R.length) {
-      const len = 70 + rnd() * 190;
-      let type;
+      const len = plan.min + rnd() * plan.span;
       const r = rnd();
-      type = r < 0.5 ? 'hedge' : r < 0.78 ? 'wall' : 'fence';
-      if (type === last && rnd() < 0.6) type = type === 'hedge' ? 'wall' : 'hedge';
-      list.push({ start: s, end: Math.min(R.length, s + len), type, height: type === 'hedge' ? 1.5 + rnd() * 0.8 : type === 'wall' ? 1.05 + rnd() * 0.2 : 1.1 });
+      let type = plan.mix[plan.mix.length - 1][0];
+      for (const [name, upTo] of plan.mix) if (r < upTo) { type = name; break; }
+      // avoid long identical runs: the road should change character along its length
+      if (type === last && rnd() < 0.6) type = type === first ? second : first;
+      list.push({
+        start: s, end: Math.min(R.length, s + len), type,
+        height: type === 'hedge' ? 1.5 + rnd() * 0.8 : type === 'wall' ? 1.05 + rnd() * 0.2 : 1.1
+      });
       last = type; s += len;
     }
     sides[side] = list;
@@ -1179,6 +1366,7 @@ function inJunctionMouth(s, side, margin = 9) {
 }
 
 EVO.route = {
+  route: ROUTE, id: ROUTE.id,
   R, LANE_HALF, ROAD_HALF, HEDGE_OFFSET, SAMPLE,
   length: R.length, frame, point, crown, terrainBase, terrainHeight, nearest,
   JUNCTIONS, sidePoint, sideInfluence, BENDS, BOUNDARIES, boundaryAt, inJunctionMouth
@@ -1189,120 +1377,144 @@ EVO.route = {
 /* ---- 15-road-detail.js ---- */
 {
 
+/*
+ * AVENRÀ EVO — coherent road surface and authored places.
+ *
+ * The surface is one function of (s, d) shared by the geometry, the paint, the
+ * tyres and the traffic, so what you see, what you feel and what the cars do
+ * all agree. Every feature along the road comes from the selected route's
+ * `places` record: a village and humps on the B road, cattle grids and laybys
+ * on the moor.
+ */
 const E = window.EVO, R = E.route;
-const {clamp, mod, smoothstep} = E;
+const { clamp, mod, smoothstep } = E;
 const L = R.length;
-const village = {name:'DALEBECK', start:330, end:595, limit:20};
-const gates = [{s:236,side:1},{s:811,side:-1},{s:963,side:1},{s:1390,side:-1},{s:1700,side:1},{s:2128,side:-1}];
-const humps = [
-  {s:372,length:3.8,height:0.075,type:'hump'},
-  {s:448,length:7.0,height:0.075,type:'table'},
-  {s:530,length:3.8,height:0.075,type:'hump'}
-];
-const strips=[];
-for(const s0 of [301,610]) for(let i=0;i<6;i++) strips.push({s:s0+i*1.35,length:0.34,height:0.004,type:'strip'});
-const rnd=E.rng(9031), repairs=[];
-for(let i=0;i<58;i++) {
-  const s=mod(143+i*39+rnd()*15,L);
-  if(humps.some(h=>Math.abs(s-h.s)<9)) continue;
-  repairs.push({s,d:(rnd()<0.5?1:-1)*(0.6+rnd()*1.75),length:0.9+rnd()*4.3,width:0.4+rnd()*0.85,seed:i+80});
+const ROUTE = E.ROUTE;
+const P = ROUTE.places;
+
+// `t` in a place record is a fraction of the loop; `s` is absolute metres.
+const at = (p) => (p.t !== undefined ? p.t * L : p.s);
+const resolve = (list) => (list || []).map((p) => ({ ...p, s: mod(at(p), L) }));
+
+const village = P.village;
+const woodlands = P.woodland || [];
+const gates = resolve(P.gates);
+const humps = resolve(P.humps);
+const covers = resolve(P.covers);
+const potholes = resolve(P.potholes).map((p) => ({ ...p, type: 'pothole' }));
+const grids = resolve(P.grids).map((g) => ({ ...g, type: 'grid', length: 3.4, height: -0.016 }));
+const laybys = resolve(P.laybys);
+const lots = resolve(P.lots);
+const summit = P.summit ? { ...P.summit, s: mod(at(P.summit), L) } : null;
+
+const strips = [];
+for (const s0 of (P.stripAt || [])) for (let i = 0; i < 6; i += 1) strips.push({ s: s0 + i * 1.35, length: 0.34, height: 0.004, type: 'strip' });
+
+const rep = P.repairs;
+const rnd = E.rng(rep.seed), repairs = [];
+for (let i = 0; i < rep.count; i += 1) {
+  const s = mod(rep.from + i * rep.step + rnd() * 15, L);
+  if (humps.some((h) => Math.abs(s - h.s) < 9)) continue;
+  repairs.push({ s, d: (rnd() < 0.5 ? 1 : -1) * (0.6 + rnd() * 1.75 * (R.LANE_HALF / 3)), length: 0.9 + rnd() * 4.3, width: 0.4 + rnd() * 0.85, seed: i + 80 });
 }
-const covers=[{s:357,d:1.80},{s:403,d:-1.40},{s:468,d:1.05},{s:558,d:-1.65},{s:873,d:1.8},{s:1890,d:-1.8}];
-const potholes = [
-  {s:214,d:2.42,length:1.05,width:.64,height:-.030,seed:13},
-  {s:844,d:2.42,length:1.24,width:.68,height:-.034,seed:27},
-  {s:1168,d:-2.42,length:.92,width:.60,height:-.025,seed:38},
-  {s:1458,d:1.80,length:1.14,width:.70,height:-.028,seed:42},
-  {s:1842,d:-2.42,length:1.38,width:.72,height:-.035,seed:55},
-  {s:2090,d:2.42,length:.96,width:.62,height:-.028,seed:67}
-].map(p=>({...p,type:'pothole'}));
-const lots = [
-  {s:361,side:-1,d:8.65,kind:'hatch',paint:0xd2d1c9,dir:1},
-  {s:384,side:1,d:8.70,kind:'suv',paint:0x324d65,dir:-1},
-  {s:442,side:-1,d:8.80,kind:'van',paint:0xe1ded3,dir:1},
-  {s:504,side:1,d:8.65,kind:'hatch',paint:0x883839,dir:-1},
-  {s:552,side:-1,d:8.65,kind:'hatch',paint:0x777d7a,dir:1}
-];
-const ds=(a,b)=>mod(a-b+L/2,L)-L/2;
-const potholeRadius=(p,s,d)=>{
-  const a=ds(s,p.s)/(p.length*.5),b=(d-p.d)/(p.width*.5);
-  const angle=Math.atan2(b,a),edge=.91+.045*Math.sin(angle*5+p.seed)+.04*Math.cos(angle*7-p.seed);
-  return Math.hypot(a,b)/edge;
+
+const ds = (a, b) => mod(a - b + L / 2, L) - L / 2;
+const potholeRadius = (p, s, d) => {
+  const a = ds(s, p.s) / (p.length * 0.5), b = (d - p.d) / (p.width * 0.5);
+  const angle = Math.atan2(b, a), edge = 0.91 + 0.045 * Math.sin(angle * 5 + p.seed) + 0.04 * Math.cos(angle * 7 - p.seed);
+  return Math.hypot(a, b) / edge;
 };
-R.potholeRadius=potholeRadius;
-const inVillage=(s,margin=0)=>{s=mod(s,L);return s>=village.start-margin&&s<=village.end+margin;};
-const woodland=(s)=>{s=mod(s,L);return (s>95&&s<310)||(s>995&&s<1260)||(s>1940&&s<2075);};
-const clearance=(s,side)=>inVillage(s,8)||gates.some(g=>g.side===side&&Math.abs(ds(s,g.s))<3.15);
+R.potholeRadius = potholeRadius;
+
+const inVillage = (s, margin = 0) => {
+  if (!village) return false;
+  s = mod(s, L);
+  return s >= village.start - margin && s <= village.end + margin;
+};
+const woodland = (s) => { s = mod(s, L); return woodlands.some(([a, b]) => s > a && s < b); };
+const clearance = (s, side) => inVillage(s, 8) ||
+  gates.some((g) => g.side === side && Math.abs(ds(s, g.s)) < 3.15) ||
+  laybys.some((b) => b.side === side && Math.abs(ds(s, b.s)) < b.length / 2 + 4);
 
 // Small longitudinal bins avoid scanning every feature for both wheels each physics step.
-const binSize=16, binCount=Math.ceil(L/binSize), bins=Array.from({length:binCount},()=>[]);
-const surfaces=[...humps,...strips,...potholes,...covers.map(c=>({...c,type:'cover',length:0.66,width:0.65,height:-0.012}))];
-for(const f of surfaces){
-  const keys=new Set();
-  for(let s=f.s-f.length/2-1;s<=f.s+f.length/2+binSize+1;s+=binSize)keys.add(Math.floor(mod(s,L)/binSize));
-  for(const k of keys)bins[k].push(f);
+const binSize = 16, binCount = Math.ceil(L / binSize), bins = Array.from({ length: binCount }, () => []);
+const surfaces = [...humps, ...strips, ...potholes, ...grids, ...covers.map((c) => ({ ...c, type: 'cover', length: 0.66, width: 0.65, height: -0.012 }))];
+for (const f of surfaces) {
+  const keys = new Set();
+  for (let s = f.s - f.length / 2 - 1; s <= f.s + f.length / 2 + binSize + 1; s += binSize) keys.add(Math.floor(mod(s, L) / binSize));
+  for (const k of keys) bins[k].push(f);
 }
-function surfaceAt(s,d){
-  if(Math.abs(d)>3.1)return 0;
-  let h=0;
-  for(const f of bins[Math.floor(mod(s,L)/binSize)]){
-    const t=ds(s,f.s), a=Math.abs(t), half=f.length/2;
-    if(a>=half)continue;
-    if(f.type==='pothole'){
-      const q=potholeRadius(f,s,d);if(q<1)h+=f.height*(1-smoothstep(.32,1,q));
-    }else if(f.type==='cover'){
-      const q=Math.abs(d-f.d)/(f.width/2); if(q>=1)continue;
-      h+=f.height*(1-smoothstep(0.62,1,q))*(1-smoothstep(0.22,half,a));
-    }else{
-      const lateral=1-smoothstep(2.87,3.08,Math.abs(d));
-      const shape=f.type==='table' ? 1-smoothstep(half-1.2,half,a) : 0.5+0.5*Math.cos(Math.PI*t/half);
-      h+=f.height*shape*lateral;
+function surfaceAt(s, d) {
+  if (Math.abs(d) > R.LANE_HALF + 0.1) return 0;
+  let h = 0;
+  for (const f of bins[Math.floor(mod(s, L) / binSize)]) {
+    const t = ds(s, f.s), a = Math.abs(t), half = f.length / 2;
+    if (a >= half) continue;
+    if (f.type === 'pothole') {
+      const q = potholeRadius(f, s, d); if (q < 1) h += f.height * (1 - smoothstep(0.32, 1, q));
+    } else if (f.type === 'cover') {
+      const q = Math.abs(d - f.d) / (f.width / 2); if (q >= 1) continue;
+      h += f.height * (1 - smoothstep(0.62, 1, q)) * (1 - smoothstep(0.22, half, a));
+    } else if (f.type === 'grid') {
+      // the deck sits a little below the road, with the bars felt through it
+      const lateral = 1 - smoothstep(R.LANE_HALF - 0.25, R.LANE_HALF + 0.05, Math.abs(d));
+      h += (f.height + Math.sin(t * 22) * 0.004) * lateral * (1 - smoothstep(half - 0.35, half, a));
+    } else {
+      const lateral = 1 - smoothstep(R.LANE_HALF - 0.23, R.LANE_HALF - 0.02, Math.abs(d));
+      const shape = f.type === 'table' ? 1 - smoothstep(half - 1.2, half, a) : 0.5 + 0.5 * Math.cos(Math.PI * t / half);
+      h += f.height * shape * lateral;
     }
   }
   return h;
 }
-function roughnessAt(s,d){
-  let q=woodland(s)?0.32:inVillage(s)?0.11:0.18;
-  const ss=mod(s,L);
+function roughnessAt(s, d) {
+  let q = woodland(s) ? 0.32 : inVillage(s) ? 0.11 : 0.18;
+  const ss = mod(s, L);
   // Texture character is spatial, not tied to frame rate or elapsed wall-clock time.
-  q+=0.17*E.noise2(ss*0.11,d*1.3+7);
-  for(const f of bins[Math.floor(ss/binSize)]){
-    if(Math.abs(ds(ss,f.s))>=f.length/2)continue;
-    if(f.type==='strip')q+=0.9;
-    if(f.type==='pothole'&&potholeRadius(f,s,d)<1)q+=.72;
-    if(f.type==='cover'&&Math.abs(d-f.d)<f.width/2)q+=0.58;
+  q += 0.17 * E.noise2(ss * 0.11, d * 1.3 + 7);
+  for (const f of bins[Math.floor(ss / binSize)]) {
+    if (Math.abs(ds(ss, f.s)) >= f.length / 2) continue;
+    if (f.type === 'strip') q += 0.9;
+    if (f.type === 'grid') q += 1.1;
+    if (f.type === 'pothole' && potholeRadius(f, s, d) < 1) q += 0.72;
+    if (f.type === 'cover' && Math.abs(d - f.d) < f.width / 2) q += 0.58;
   }
-  return clamp(q,0,1.5);
+  return clamp(q, 0, 1.6);
 }
-R.surfaceAt=surfaceAt;
-R.roughnessAt=roughnessAt;
-R.inVillage=inVillage;
-R.woodland=woodland;
-R.clearance=clearance;
-R.detailPlan={village,gates,humps,strips,repairs,covers,potholes,lots};
-R.speedLimitAt=s=>inVillage(s)?20:60; // fictional signed road, not a real surveyed route
-R.nextHump=(s,direction=1)=>{
-  let best=null;
-  for(const h of humps){const dist=mod((h.s-s)*direction,L);if(!best||dist<best.dist)best={...h,dist};}
+R.surfaceAt = surfaceAt;
+R.roughnessAt = roughnessAt;
+R.inVillage = inVillage;
+R.woodland = woodland;
+R.clearance = clearance;
+R.detailPlan = { village, gates, humps, strips, repairs, covers, potholes, lots, grids, laybys, summit };
+R.speedLimitAt = (s) => (inVillage(s) ? village.limit : ROUTE.limit); // fictional signed road, not a real surveyed route
+R.nextHump = (s, direction = 1) => {
+  let best = null;
+  for (const h of humps) { const dist = mod((h.s - s) * direction, L); if (!best || dist < best.dist) best = { ...h, dist }; }
+  return best;
+};
+R.nextGrid = (s, direction = 1) => {
+  let best = null;
+  for (const g of grids) { const dist = mod((g.s - s) * direction, L); if (!best || dist < best.dist) best = { ...g, dist }; }
   return best;
 };
 // A consistent surface function is shared by geometry, paint, tyres and traffic.
-const basePoint=R.point;
-R.point=function(s,d,up=0,out){const p=basePoint(s,d,up,out);p.y+=surfaceAt(s,d);return p;};
-R.villageGround=(s,d,h,frame)=>{
-  if(!inVillage(s,24)||Math.abs(d)<3.12||Math.abs(d)>40)return h;
-  const longitudinal=smoothstep(village.start-24,village.start+5,s)*(1-smoothstep(village.end-5,village.end+24,s));
-  const lateral=1-smoothstep(26,40,Math.abs(d));
-  return E.lerp(h,frame.y+R.crown(3)+0.055,longitudinal*lateral);
+const basePoint = R.point;
+R.point = function (s, d, up = 0, out) { const p = basePoint(s, d, up, out); p.y += surfaceAt(s, d); return p; };
+R.villageGround = (s, d, h, frame) => {
+  if (!village || !inVillage(s, 24) || Math.abs(d) < R.LANE_HALF + 0.02 || Math.abs(d) > 40) return h;
+  const longitudinal = smoothstep(village.start - 24, village.start + 5, s) * (1 - smoothstep(village.end - 5, village.end + 24, s));
+  const lateral = 1 - smoothstep(26, 40, Math.abs(d));
+  return E.lerp(h, frame.y + R.crown(3) + 0.055, longitudinal * lateral);
 };
-const baseTerrain=R.terrainHeight;
-R.terrainHeight=function(x,z){
-  const h=baseTerrain(x,z), near=R.nearest(x,z);
-  return near?R.villageGround(mod(near.s,L),near.d,h,{y:near.y}):h;
+const baseTerrain = R.terrainHeight;
+R.terrainHeight = function (x, z) {
+  const h = baseTerrain(x, z), near = R.nearest(x, z);
+  return near ? R.villageGround(mod(near.s, L), near.d, h, { y: near.y }) : h;
 };
 // Fix the sub-metre loop seam: sampled route distance and wrap length must agree.
-R.sampleDistance=R.length/R.R.n;
-E.VERSION='0.3.0-scenery';
+R.sampleDistance = R.length / R.R.n;
+E.VERSION = '0.4.0-routes';
 
 }
 
@@ -1321,6 +1533,7 @@ E.VERSION='0.3.0-scenery';
 const EVO = window.EVO;
 const { clamp, lerp, smoothstep, mod } = EVO;
 const RT = EVO.route;
+const SCENE = EVO.ROUTE.scenery;
 
 /* -------------------------------------------------------- geometry sink */
 class GeoSink {
@@ -1395,6 +1608,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   };
   EVO.tagShader(roadMat, 'roadwear');
   const grassMat = new THREE.MeshStandardMaterial({
+    color: SCENE.grass ?? 0xffffff,
     map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.24, 0.24), roughness: 1, metalness: 0, vertexColors: true
   });
   const markMat = new THREE.MeshStandardMaterial({ color: 0xdcd9cc, roughness: 0.72, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -1414,7 +1628,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   EVO.addFoliageFill(leafMat, 0.16);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
-  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color:0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
+  const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color: SCENE.blade ?? 0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
   const windUniform = { value: 0 };
   EVO.windUniform = windUniform;
   bladeMat.onBeforeCompile = (shader) => {
@@ -1511,10 +1725,21 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   /* --------------------------------------------------- verges (ribbons) */
-  const grassTint = (x, z) => {
-    const n = EVO.fbm(x / 60 + 7, z / 60, 2);
-    return { r: 0.86 + n * 0.28, g: 0.9 + n * 0.2, b: 0.85 + n * 0.2 };
-  };
+  const grassTint = SCENE.heather
+    ? (x, z) => {
+      // moor: bleached rough grass and rush, with heather in patches
+      const n = EVO.fbm(x / 60 + 7, z / 60, 2), h = EVO.fbm(x / 140 - 3, z / 140 + 5, 2);
+      const heath = smoothstep(0.56, 0.74, h);
+      return {
+        r: (0.92 + n * 0.22) * (1 + heath * 0.16),
+        g: (0.82 + n * 0.16) * (1 - heath * 0.22),
+        b: (0.62 + n * 0.14) * (1 + heath * 0.5)
+      };
+    }
+    : (x, z) => {
+      const n = EVO.fbm(x / 60 + 7, z / 60, 2);
+      return { r: 0.86 + n * 0.28, g: 0.9 + n * 0.2, b: 0.85 + n * 0.2 };
+    };
   for (const side of [1, -1]) {
     const sink = new GeoSink();
     const D = [3.02, 3.5, 4.2, 5.0, 6.0, 7.5, 9.5, 12, 16, 22, 30];
@@ -1557,7 +1782,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
         // fields: pasture variants, hay meadow, and the odd ploughed strip
         const field = EVO.fbm(x / 240 + 9, z / 240 + 2, 2);
         let r = 0.85, g = 0.92, b = 0.8;
-        if (field > 0.62) { r = 1.05; g = 0.98; b = 0.7; } // hay
+        if (SCENE.heather) { const heath = smoothstep(0.5, 0.72, field); r = 0.94 + heath * 0.2; g = 0.82 - heath * 0.16; b = 0.64 + heath * 0.3; }
+        else if (field > 0.62) { r = 1.05; g = 0.98; b = 0.7; } // hay
         else if (field < 0.36) { r = 0.78; g = 0.85; b = 0.7; }
         const t = grassTint(x, z);
         row.push(sink.vertex(x, y, z, x / 4, z / 4, r * t.r, g * t.g, b * t.b));
@@ -1838,7 +2064,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     let run = null, runType = null, runH = 0;
     const flush = () => {
       if (!run || run.length < 2) { run = null; return; }
-      if (runType === 'hedge') hedgeRun(run, runH); else if (runType === 'wall') wallRun(run, runH); else fenceRun(run);
+      if (runType === 'hedge') hedgeRun(run, runH);
+      else if (runType === 'wall') wallRun(run, runH);
+      else if (runType === 'fence') fenceRun(run);
+      // 'open': unfenced moorland, nothing along the verge at all
       run = null;
     };
     for (let s = 0; s <= L; s += 1) {
@@ -1870,7 +2099,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
   }
   // foxgloves and campion where the road runs through the woods
-  for (let s = 3; s < L; s += 2.2 + rnd() * 3.5) {
+  if (SCENE.flowers) for (let s = 3; s < L; s += 2.2 + rnd() * 3.5) {
     if (!RT.woodland(s)) continue;
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.clearance(s, side) || RT.inJunctionMouth(s, side, 12)) continue;
@@ -1878,7 +2107,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     foxgloveInstances.push({ x: g.x, y: g.y - 0.04, z: g.z, yaw: rnd() * Math.PI * 2, size: 0.9 + rnd() * 0.6, tint: 0.85 + rnd() * 0.3 });
   }
   // cow parsley and hogweed along the verges
-  for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
+  if (SCENE.flowers) for (let s = 3; s < L; s += 1.6 + rnd() * 2.2) {
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.inVillage(s,10) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 12)) continue;
     const g = groundAt(s, side * (3.5 + rnd() * 1.1));
@@ -1890,7 +2119,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     if(near&&RT.inVillage(near.s,30)&&near.dist<19)return;
     treePlacements.push({x,y,z,species,scale,yaw:rnd()*Math.PI*2,tint:0.85+rnd()*.3});
   };
-  for (let s = 8; s < L; s += 8 + rnd() * 13) {
+  const treeGap = SCENE.trees === 'sparse' ? 46 : 8, treeSpread = SCENE.trees === 'sparse' ? 70 : 13;
+  for (let s = 8; s < L; s += treeGap + rnd() * treeSpread) {
     const side = rnd() < 0.5 ? 1 : -1;
     if (RT.inVillage(s,20) || RT.clearance(s,side) || RT.inJunctionMouth(s, side, 36)) continue;
     const b = RT.boundaryAt(s, side);
@@ -1898,8 +2128,8 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const d = inLine ? RT.HEDGE_OFFSET + 0.3 : RT.HEDGE_OFFSET + 1.8 + rnd() * 10;
     const g = groundAt(s, side * d);
     const r = rnd();
-    const species = inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
-    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.8 + rnd() * 0.6 : 0.8 + rnd() * 0.5);
+    const species = SCENE.trees === 'sparse' ? 'hawthorn' : inLine && r < 0.5 ? 'hawthorn' : r < 0.6 ? 'oak' : r < 0.85 ? 'ash' : 'oak';
+    placeTree(g.x, g.y - 0.2, g.z, species, species === 'hawthorn' ? 0.55 + rnd() * 0.5 : 0.8 + rnd() * 0.5);
   }
   // Coherent woodland belts: layered near trees and understorey, with open pasture
   // between them. Extra density is authored by place, not uniform random clutter.
@@ -1917,11 +2147,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
   }
   // Garden trees and an irregular shelter belt behind the houses, not inside them.
-  for(let s=335;s<596;s+=9.5)for(const side of [1,-1]){
+  if (SCENE.farmsteads) for(let s=335;s<596;s+=9.5)for(const side of [1,-1]){
     const g=groundAt(s+(rnd()-.5)*3,side*(21+rnd()*12));
     placeTree(g.x,g.y-.10,g.z,rnd()<.6?'ash':'oak',.58+rnd()*.40);
   }
-  for (let k = 0; k < 265; k += 1) {
+  for (let k = 0, kn = SCENE.trees === 'sparse' ? 60 : 265; k < kn; k += 1) {
     const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
@@ -2028,7 +2258,10 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.95 });
     const flock = [];
     for (let gI = 0; gI < 34; gI += 1) {
-      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 13 + rnd() * 60;
+      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1;
+      // on unfenced moor the sheep come right down to the verge
+      const openHere = SCENE.heather && RT.boundaryAt(s, side).type === 'open';
+      const d = (openHere ? 6.5 : 13) + rnd() * (openHere ? 30 : 60);
       const f = RT.frame(s);
       const gx = f.x + f.nx * side * d, gz = f.z + f.nz * side * d;
       const n = 3 + Math.floor(rnd() * 6);
@@ -2074,7 +2307,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
 
   /* ------------------------------------------------------- grass blades */
   {
-    const count = quality.blades;
+    const count = Math.round(quality.blades * (SCENE.blades ?? 1));
     const geo = new THREE.PlaneGeometry(0.22, 0.27); geo.translate(0, 0.135, 0);
     const im = new THREE.InstancedMesh(geo, bladeMat, count);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
@@ -2311,7 +2544,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     sun.color.set(P.sunColor); sun.intensity = P.sunI; sun.shadow.radius = P.radius;
     hemi.color.set(P.hemi[0]); hemi.groundColor.set(P.hemi[1]); hemi.intensity = P.hemi[2];
     ambient.intensity = P.ambient;
-    scene.fog.color.set(P.fog[0]); scene.fog.density = P.fog[1];
+    scene.fog.color.set(P.fog[0]); scene.fog.density = P.fog[1] * (SCENE.fogScale ?? 1);
     skyUniforms.uZenith.value.setRGB(...P.zenith); skyUniforms.uHorizon.value.setRGB(...P.horizon);
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
@@ -2499,6 +2732,7 @@ const E=window.EVO, R=E.route, {clamp,lerp,smoothstep,mod}=E;
 const originalBuild=E.buildWorld;
 E.buildWorld=function(renderer,quality){
   const w=originalBuild(renderer,quality), scene=w.scene, P=R.detailPlan, rnd=E.rng(61123);
+  const ROUTE=E.ROUTE, S=ROUTE.scenery, LEN=R.length, frac=(t)=>t*LEN;
   const UP=new THREE.Vector3(0,1,0), temp=new THREE.Matrix4(), quat=new THREE.Quaternion();
   const materials={}, textures=[];
   const material=(name,color,extra={})=>materials[name]||(materials[name]=new THREE.MeshStandardMaterial({name,color,roughness:0.88,...extra}));
@@ -2643,9 +2877,9 @@ E.buildWorld=function(renderer,quality){
   const at=(s,d,y=0)=>{const g=w.groundAt(s,d);return new THREE.Vector3(g.x,g.y+y,g.z);};
   const road=(s,d,y=.012)=>R.point(s,d,y,new THREE.Vector3());
   // Sample the triangulated verge, not just its underlying height function.
-  const vergeOffsets=[3.02,3.5,4.2,5,6,7.5,9.5,12,16,22,30];
+  const vergeOffsets=[R.LANE_HALF+0.02,R.LANE_HALF+0.5,R.LANE_HALF+1.2,R.LANE_HALF+2,R.LANE_HALF+3,R.LANE_HALF+4.5,9.5,12,16,22,30];
   function renderedGround(s,d,raised=0){
-    if(Math.abs(d)<=3.1)return road(s,d,raised);
+    if(Math.abs(d)<=R.ROAD_HALF)return road(s,d,raised);
     const ad=Math.abs(d),side=Math.sign(d),g=w.groundAt(s,d);
     if(ad>=30)return new THREE.Vector3(g.x,g.y+raised,g.z);
     const step=R.SAMPLE*2,s0=Math.floor(mod(s,R.length)/step)*step,s1=s0+step;
@@ -2701,17 +2935,20 @@ E.buildWorld=function(renderer,quality){
       }
     });
   }
-  const speedTex=signTexture('speed','20'), humpTex=signTexture('humps',''), nameTex=signTexture('name',P.village.name);
-  for(const [s,dir]of [[P.village.start,1],[P.village.end,-1]]){
-    for(const side of [1,-1]){
-      const g=w.groundAt(s,side*4.2),f={...R.frame(s)},yaw=Math.atan2(-f.tx*dir,-f.tz*dir);
-      w.signPost(g.x,g.y,g.z,yaw,speedTex,.76,.76,1.55);
-      if(side===dir)w.signPost(g.x+f.nx*side*.5,g.y,g.z+f.nz*side*.5,yaw,nameTex,1.65,.52,.82,true);
-      // Return journey leaves the settlement into the open-road limit.
-      w.signPost(g.x-f.tx*dir*.3,g.y,g.z-f.tz*dir*.3,yaw+Math.PI,E.tex.signNSL(),.60,.60,1.62);
+  if (P.village) { // villages only
+    const speedTex=signTexture('speed','20'), humpTex=signTexture('humps',''), nameTex=signTexture('name',P.village.name);
+    for(const [s,dir]of [[P.village.start,1],[P.village.end,-1]]){
+      for(const side of [1,-1]){
+        const g=w.groundAt(s,side*4.2),f={...R.frame(s)},yaw=Math.atan2(-f.tx*dir,-f.tz*dir);
+        w.signPost(g.x,g.y,g.z,yaw,speedTex,.76,.76,1.55);
+        if(side===dir)w.signPost(g.x+f.nx*side*.5,g.y,g.z+f.nz*side*.5,yaw,nameTex,1.65,.52,.82,true);
+        // Return journey leaves the settlement into the open-road limit.
+        w.signPost(g.x-f.tx*dir*.3,g.y,g.z-f.tz*dir*.3,yaw+Math.PI,E.tex.signNSL(),.60,.60,1.62);
+      }
+      w.vergeSign(s-25*dir,dir,humpTex,.86,.86,1.42,dir<0);
     }
-    w.vergeSign(s-25*dir,dir,humpTex,.86,.86,1.42,dir<0);
   }
+
   // Keep paint aged and embedded in the asphalt; no neon racing-game stripes.
   const paint=material('worn hump paint',0xcac8b8,{roughness:.95,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3,side:THREE.DoubleSide});
   const humpAsphalt=material('traffic calming asphalt',0x777574,{map:w.textures.asphalt.map,roughness:.95});
@@ -2756,9 +2993,12 @@ E.buildWorld=function(renderer,quality){
     c.fillStyle='#2b2f29';c.fillRect(W/2-4,10,8,H-20);
   });
   const drainMat=material('slotted drain gratings',0xa2a399,{map:drainMap,metalness:.25,roughness:.9,side:THREE.DoubleSide});
-  for(let s=P.village.start+16;s<P.village.end-4;s+=26)for(const side of [1,-1]){
-    surfaceRibbon(s-.32,s+.32,side*2.94-.20,side*2.94+.20,drainMat,.2,.014);
+  if (P.village) { // village drainage
+    for(let s=P.village.start+16;s<P.village.end-4;s+=26)for(const side of [1,-1]){
+      surfaceRibbon(s-.32,s+.32,side*2.94-.20,side*2.94+.20,drainMat,.2,.014);
+    }
   }
+
   // Hairline tar snakes and road-edge seams are static world geometry.
   const tar=material('tar seams',0x383b35,{roughness:.65,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   for(let i=0;i<45;i++){
@@ -2821,13 +3061,15 @@ E.buildWorld=function(renderer,quality){
       surfaceRibbon(ss-span,ss+span,-d-.75,-d+.75,dampMat,.35,.011);
     }
   }
-  // Village footways: a small upstand, continuous paving and drainage channels.
-  for(const side of [1,-1])for(let s=P.village.start+4;s<P.village.end-4;s+=1.6){
-    const f={...R.frame(s)},p=at(s,side*3.22,.016);
-    const nearLot=P.lots.find(l=>l.side===side&&Math.abs(l.s-s)<4.2);
-    const drop=nearLot?1-smoothstep(2.8,4.2,Math.abs(nearLot.s-s)):0;
-    box(concrete,p.x,p.y-.05*drop,p.z,.22,.15-.05*drop,1.65,f.heading);
-    const g=at(s,side*4.25,.025);box(material('footway',0x85867f),g.x,g.y-.023*drop,g.z,1.84,.115-.04*drop,1.65,f.heading);
+  if (P.village) { // village footways
+    // Village footways: a small upstand, continuous paving and drainage channels.
+    for(const side of [1,-1])for(let s=P.village.start+4;s<P.village.end-4;s+=1.6){
+      const f={...R.frame(s)},p=at(s,side*3.22,.016);
+      const nearLot=P.lots.find(l=>l.side===side&&Math.abs(l.s-s)<4.2);
+      const drop=nearLot?1-smoothstep(2.8,4.2,Math.abs(nearLot.s-s)):0;
+      box(concrete,p.x,p.y-.05*drop,p.z,.22,.15-.05*drop,1.65,f.heading);
+      const g=at(s,side*4.25,.025);box(material('footway',0x85867f),g.x,g.y-.023*drop,g.z,1.84,.115-.04*drop,1.65,f.heading);
+    }
   }
 
   function roofGeo(width,depth,eave,ridge){
@@ -2963,15 +3205,18 @@ E.buildWorld=function(renderer,quality){
     }
     return {base,g,f};
   }
-  const buildings=[
-    [345,-1,8.3,6.1,false,false],[351,1,7.8,6,false,false],[368,1,8.0,6.1,false,true],
-    [378,-1,8.2,6.2,false,false],[391,-1,9.5,6.4,false,false],[401,1,7.7,6,false,false],
-    [417,1,8.1,6.2,false,true],[425,-1,9.2,6.5,false,false],
-    [463,-1,11.5,7,true,false],[469,1,8.4,6.1,false,true],[489,1,7.5,6,false,false],
-    [493,-1,8.5,6.2,false,false],[518,1,8.3,6,false,false],[537,-1,8.9,6.5,false,false],
-    [558,1,9.6,6.5,false,false],[570,-1,7.4,5.8,false,true],[580,1,7.8,6,false,false]
-  ];
-  buildings.forEach(args=>cottage(...args));
+  let buildings=[];
+  if (P.village) { // the village itself
+    buildings=[
+      [345,-1,8.3,6.1,false,false],[351,1,7.8,6,false,false],[368,1,8.0,6.1,false,true],
+      [378,-1,8.2,6.2,false,false],[391,-1,9.5,6.4,false,false],[401,1,7.7,6,false,false],
+      [417,1,8.1,6.2,false,true],[425,-1,9.2,6.5,false,false],
+      [463,-1,11.5,7,true,false],[469,1,8.4,6.1,false,true],[489,1,7.5,6,false,false],
+      [493,-1,8.5,6.2,false,false],[518,1,8.3,6,false,false],[537,-1,8.9,6.5,false,false],
+      [558,1,9.6,6.5,false,false],[570,-1,7.4,5.8,false,true],[580,1,7.8,6,false,false]
+    ];
+    buildings.forEach(args=>cottage(...args));
+  }
 
   // Driveways, frontage parking cues and wheelie bins help the village read as inhabited.
   const driveTex=canvasTexture(384,384,(c,W,H)=>{c.fillStyle='#8d877c';c.fillRect(0,0,W,H);for(let i=0;i<8500;i++){const v=118+Math.floor(rnd()*52);c.fillStyle=`rgba(${v},${v-3},${v-7},${.08+rnd()*.18})`;c.fillRect(rnd()*W,rnd()*H,1+rnd()*3,1+rnd()*3);}c.strokeStyle='rgba(88,79,68,.22)';c.lineWidth=5;for(let y=18;y<H;y+=32){c.beginPath();c.moveTo(0,y);c.lineTo(W,y+rnd()*9-4);c.stroke();}});
@@ -3003,77 +3248,162 @@ E.buildWorld=function(renderer,quality){
       plantAt(p.x,p.y-.31,p.z,.72+rnd()*.24);
     }
   }
-  // Authentic scale cues: a post box, litter bin, timetable, timber shelter and bench.
-  {
-    const s=451,d=6.15,g=w.groundAt(s,d),f={...R.frame(s)};
-    object(poleGeo,red,g.x,g.y+.64,g.z,.22,1.25,.22);
-    object(new THREE.SphereGeometry(1,14,8),red,g.x,g.y+1.29,g.z,.245,.11,.245);
-    const base=new THREE.Matrix4().compose(at(s,d),new THREE.Quaternion().setFromAxisAngle(UP,Math.atan2(-f.nx,-f.nz)),new THREE.Vector3(1,1,1));
-    box(dark,0,1.0,.224,.22,.04,.018,0,base);box(cream,0,.68,.227,.17,.24,.02,0,base);
-    const b=at(456,6.3,.44);object(poleGeo,dark,b.x,b.y,b.z,.24,.88,.24);
-    const sb=w.groundAt(440,7.0),sf={...R.frame(440)},syaw=Math.atan2(-sf.nx,-sf.nz);
-    const sh=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
-    for(const x of [-1.22,1.22])for(const z of [-.50,.55])box(wood,x,1.12,z,.11,2.24,.11,0,sh);
-    box(wood,0,1.05,-.54,2.5,1.9,.10,0,sh);box(slate,0,2.3,0,2.86,.18,1.55,0,sh);
-    for(let y=.23;y<2.0;y+=.22)box(material('shelter boards',0x6a604e),0,y,-.604,2.48,.028,.026,0,sh);
-    box(wood,0,.5,-.17,2.13,.10,.42,0,sh);box(wood,0,.87,-.44,2.1,.3,.06,0,sh);
-    for(const x of [-.85,.85])box(dark,x,.24,-.13,.065,.5,.08,0,sh);
-    const tt=canvasTexture(128,256,(c,W,H)=>{c.fillStyle='#ebe8dc';c.fillRect(0,0,W,H);c.fillStyle='#29594b';c.fillRect(0,0,W,42);c.fillStyle='#fff';c.font='bold 16px Arial';c.fillText('DALEBECK',10,27);c.fillStyle='#66695e';for(let y=58;y<240;y+=15){c.fillRect(10,y,25,3);c.fillRect(46,y,70,3);}});
-    object(new THREE.PlaneGeometry(.32,.64),material('timetable',0xffffff,{map:tt}),.69,1.4,-.478,1,1,1,0,sh);
-    const busTex=canvasTexture(256,384,(c,W,H)=>{c.fillStyle='#e7dda3';c.fillRect(0,0,W,H);c.fillStyle='#304638';c.fillRect(44,45,168,117);c.fillStyle='#f4efd9';c.fillRect(57,57,142,50);c.fillStyle='#304638';c.beginPath();c.arc(72,169,19,0,7);c.arc(185,169,19,0,7);c.fill();c.font='bold 35px Arial';c.textAlign='center';c.fillText('BUS STOP',W/2,242);c.font='22px Arial';c.fillText('DALEBECK',W/2,292);});
-    w.vergeSign(436,1,busTex,.35,.53,2.04,false);
-  }
-  // Small lived-in village furniture: bench, noticeboard, grit bin and fingerpost.
-  {
-    const grit=material('grit bin',0xc9a53d,{roughness:.82}),greenBin=material('green metal bin',0x365240,{roughness:.9}),signWhite=material('fingerpost white',0xe7e3d7,{roughness:.8});
-    const sb=w.groundAt(431,6.2),sf={...R.frame(431)},syaw=Math.atan2(-sf.nx,-sf.nz);
-    const bench=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
-    for(const x of [-.62,.62])box(dark,x,.22,0,.07,.44,.07,0,bench);
-    for(const y of [.43,.58])box(wood,0,y,0,1.42,.07,.24,0,bench);
-    box(wood,0,.81,-.08,1.38,.07,.18,.15,bench);
-    const nb=w.groundAt(453,-6.6),nf={...R.frame(453)},nyaw=Math.atan2(nf.nx,nf.nz);
-    const board=new THREE.Matrix4().compose(new THREE.Vector3(nb.x,nb.y,nb.z),new THREE.Quaternion().setFromAxisAngle(UP,nyaw),new THREE.Vector3(1,1,1));
-    for(const x of [-.45,.45])box(wood,x,1.06,0,.09,2.12,.09,0,board);
-    box(wood,0,1.92,0,1.24,1.04,.09,0,board);
-    const noteTex=canvasTexture(320,220,(c,W,H)=>{c.fillStyle='#efe9d7';c.fillRect(0,0,W,H);c.fillStyle='#a89a71';c.fillRect(0,0,W,32);c.fillStyle='#314233';c.font='bold 18px Arial';c.fillText('PARISH NOTICEBOARD',14,22);for(let y=52;y<198;y+=28){c.fillStyle='rgba(82,82,72,.85)';c.fillRect(18,y,W-36,3);}c.fillStyle='#6b5d47';c.fillRect(28,132,90,46);});
-    object(new THREE.PlaneGeometry(1.06,.72),material('noticeboard poster',0xffffff,{map:noteTex}),0,1.92,.055,1,1,1,0,board);
-    const gb=at(459,-6.35,.44);box(greenBin,gb.x,gb.y,gb.z,.28,.76,.28,R.frame(459).heading);box(dark,gb.x,gb.y+.39,gb.z,.30,.05,.30,R.frame(459).heading);
-    const gr=at(576,6.45,.36);box(grit,gr.x,gr.y,gr.z,.86,.56,.46,R.frame(576).heading);
-    const fp=w.groundAt(584,-5.8),ff={...R.frame(584)},fyaw=Math.atan2(ff.nx,ff.nz);
-    const finger=new THREE.Matrix4().compose(new THREE.Vector3(fp.x,fp.y,fp.z),new THREE.Quaternion().setFromAxisAngle(UP,fyaw),new THREE.Vector3(1,1,1));
-    box(dark,0,1.12,0,.09,2.24,.09,0,finger);
-    box(signWhite,.52,1.55,.02,1.04,.17,.11,.08,finger); box(signWhite,-.52,1.92,.02,1.04,.17,.11,-.08,finger);
-    box(dark,.52,1.55,.08,.77,.03,.03,.08,finger); box(dark,-.52,1.92,.08,.74,.03,.03,-.08,finger);
+  if (P.village) { // village furniture
+    // Authentic scale cues: a post box, litter bin, timetable, timber shelter and bench.
+    {
+      const s=451,d=6.15,g=w.groundAt(s,d),f={...R.frame(s)};
+      object(poleGeo,red,g.x,g.y+.64,g.z,.22,1.25,.22);
+      object(new THREE.SphereGeometry(1,14,8),red,g.x,g.y+1.29,g.z,.245,.11,.245);
+      const base=new THREE.Matrix4().compose(at(s,d),new THREE.Quaternion().setFromAxisAngle(UP,Math.atan2(-f.nx,-f.nz)),new THREE.Vector3(1,1,1));
+      box(dark,0,1.0,.224,.22,.04,.018,0,base);box(cream,0,.68,.227,.17,.24,.02,0,base);
+      const b=at(456,6.3,.44);object(poleGeo,dark,b.x,b.y,b.z,.24,.88,.24);
+      const sb=w.groundAt(440,7.0),sf={...R.frame(440)},syaw=Math.atan2(-sf.nx,-sf.nz);
+      const sh=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
+      for(const x of [-1.22,1.22])for(const z of [-.50,.55])box(wood,x,1.12,z,.11,2.24,.11,0,sh);
+      box(wood,0,1.05,-.54,2.5,1.9,.10,0,sh);box(slate,0,2.3,0,2.86,.18,1.55,0,sh);
+      for(let y=.23;y<2.0;y+=.22)box(material('shelter boards',0x6a604e),0,y,-.604,2.48,.028,.026,0,sh);
+      box(wood,0,.5,-.17,2.13,.10,.42,0,sh);box(wood,0,.87,-.44,2.1,.3,.06,0,sh);
+      for(const x of [-.85,.85])box(dark,x,.24,-.13,.065,.5,.08,0,sh);
+      const tt=canvasTexture(128,256,(c,W,H)=>{c.fillStyle='#ebe8dc';c.fillRect(0,0,W,H);c.fillStyle='#29594b';c.fillRect(0,0,W,42);c.fillStyle='#fff';c.font='bold 16px Arial';c.fillText('DALEBECK',10,27);c.fillStyle='#66695e';for(let y=58;y<240;y+=15){c.fillRect(10,y,25,3);c.fillRect(46,y,70,3);}});
+      object(new THREE.PlaneGeometry(.32,.64),material('timetable',0xffffff,{map:tt}),.69,1.4,-.478,1,1,1,0,sh);
+      const busTex=canvasTexture(256,384,(c,W,H)=>{c.fillStyle='#e7dda3';c.fillRect(0,0,W,H);c.fillStyle='#304638';c.fillRect(44,45,168,117);c.fillStyle='#f4efd9';c.fillRect(57,57,142,50);c.fillStyle='#304638';c.beginPath();c.arc(72,169,19,0,7);c.arc(185,169,19,0,7);c.fill();c.font='bold 35px Arial';c.textAlign='center';c.fillText('BUS STOP',W/2,242);c.font='22px Arial';c.fillText('DALEBECK',W/2,292);});
+      w.vergeSign(436,1,busTex,.35,.53,2.04,false);
+    }
+    // Small lived-in village furniture: bench, noticeboard, grit bin and fingerpost.
+    {
+      const grit=material('grit bin',0xc9a53d,{roughness:.82}),greenBin=material('green metal bin',0x365240,{roughness:.9}),signWhite=material('fingerpost white',0xe7e3d7,{roughness:.8});
+      const sb=w.groundAt(431,6.2),sf={...R.frame(431)},syaw=Math.atan2(-sf.nx,-sf.nz);
+      const bench=new THREE.Matrix4().compose(new THREE.Vector3(sb.x,sb.y,sb.z),new THREE.Quaternion().setFromAxisAngle(UP,syaw),new THREE.Vector3(1,1,1));
+      for(const x of [-.62,.62])box(dark,x,.22,0,.07,.44,.07,0,bench);
+      for(const y of [.43,.58])box(wood,0,y,0,1.42,.07,.24,0,bench);
+      box(wood,0,.81,-.08,1.38,.07,.18,.15,bench);
+      const nb=w.groundAt(453,-6.6),nf={...R.frame(453)},nyaw=Math.atan2(nf.nx,nf.nz);
+      const board=new THREE.Matrix4().compose(new THREE.Vector3(nb.x,nb.y,nb.z),new THREE.Quaternion().setFromAxisAngle(UP,nyaw),new THREE.Vector3(1,1,1));
+      for(const x of [-.45,.45])box(wood,x,1.06,0,.09,2.12,.09,0,board);
+      box(wood,0,1.92,0,1.24,1.04,.09,0,board);
+      const noteTex=canvasTexture(320,220,(c,W,H)=>{c.fillStyle='#efe9d7';c.fillRect(0,0,W,H);c.fillStyle='#a89a71';c.fillRect(0,0,W,32);c.fillStyle='#314233';c.font='bold 18px Arial';c.fillText('PARISH NOTICEBOARD',14,22);for(let y=52;y<198;y+=28){c.fillStyle='rgba(82,82,72,.85)';c.fillRect(18,y,W-36,3);}c.fillStyle='#6b5d47';c.fillRect(28,132,90,46);});
+      object(new THREE.PlaneGeometry(1.06,.72),material('noticeboard poster',0xffffff,{map:noteTex}),0,1.92,.055,1,1,1,0,board);
+      const gb=at(459,-6.35,.44);box(greenBin,gb.x,gb.y,gb.z,.28,.76,.28,R.frame(459).heading);box(dark,gb.x,gb.y+.39,gb.z,.30,.05,.30,R.frame(459).heading);
+      const gr=at(576,6.45,.36);box(grit,gr.x,gr.y,gr.z,.86,.56,.46,R.frame(576).heading);
+      const fp=w.groundAt(584,-5.8),ff={...R.frame(584)},fyaw=Math.atan2(ff.nx,ff.nz);
+      const finger=new THREE.Matrix4().compose(new THREE.Vector3(fp.x,fp.y,fp.z),new THREE.Quaternion().setFromAxisAngle(UP,fyaw),new THREE.Vector3(1,1,1));
+      box(dark,0,1.12,0,.09,2.24,.09,0,finger);
+      box(signWhite,.52,1.55,.02,1.04,.17,.11,.08,finger); box(signWhite,-.52,1.92,.02,1.04,.17,.11,-.08,finger);
+      box(dark,.52,1.55,.08,.77,.03,.03,.08,finger); box(dark,-.52,1.92,.08,.74,.03,.03,-.08,finger);
+    }
+
+    // A K6 telephone box by the bus shelter: cast-iron red, domed roof, glazed on three sides.
+    {
+      const kb=w.groundAt(447,-6.9),kf={...R.frame(447)},kyaw=Math.atan2(kf.nx,kf.nz);
+      const base=new THREE.Matrix4().compose(new THREE.Vector3(kb.x,kb.y,kb.z),new THREE.Quaternion().setFromAxisAngle(UP,kyaw),new THREE.Vector3(1,1,1));
+      const kiosk=material('kiosk red',0xa3141c,{roughness:.42,metalness:.2});
+      box(kiosk,0,.16,0,1.0,.32,1.0,0,base);                                   // plinth
+      for(const [x,z] of [[-.44,-.44],[.44,-.44],[-.44,.44],[.44,.44]])box(kiosk,x,1.3,z,.12,2.3,.12,0,base);
+      box(kiosk,0,1.3,-.45,1.0,2.3,.08,0,base);                                 // solid back
+      for(const face of [[0,.45,0],[-.45,0,Math.PI/2],[.45,0,Math.PI/2]]){
+        const [x,z,yaw]=face;
+        for(let r=0;r<6;r++)glazing(x,.62+r*.31,z,.74,.27,yaw,r,base);
+        for(let r=0;r<7;r++)box(kiosk,x,.47+r*.31,z,yaw?.08:.8,.035,yaw?.8:.08,0,base);
+        for(const off of [-.25,.25])box(kiosk,yaw?x:x+off,1.4,yaw?z+off:z,yaw?.08:.05,1.9,yaw?.05:.08,0,base);
+      }
+      box(kiosk,0,2.53,0,1.0,.16,1.0,0,base);
+      for(const x of [-.45,0,.45])box(cream,x,2.53,x?0:.51,x?.02:.8,.1,x?.9:.02,0,base);   // TELEPHONE strips
+      box(kiosk,0,2.68,0,.86,.14,.86,0,base);box(kiosk,0,2.8,0,.6,.12,.6,0,base);box(kiosk,0,2.9,0,.3,.1,.3,0,base);
+    }
   }
 
-  // A K6 telephone box by the bus shelter: cast-iron red, domed roof, glazed on three sides.
-  {
-    const kb=w.groundAt(447,-6.9),kf={...R.frame(447)},kyaw=Math.atan2(kf.nx,kf.nz);
-    const base=new THREE.Matrix4().compose(new THREE.Vector3(kb.x,kb.y,kb.z),new THREE.Quaternion().setFromAxisAngle(UP,kyaw),new THREE.Vector3(1,1,1));
-    const kiosk=material('kiosk red',0xa3141c,{roughness:.42,metalness:.2});
-    box(kiosk,0,.16,0,1.0,.32,1.0,0,base);                                   // plinth
-    for(const [x,z] of [[-.44,-.44],[.44,-.44],[-.44,.44],[.44,.44]])box(kiosk,x,1.3,z,.12,2.3,.12,0,base);
-    box(kiosk,0,1.3,-.45,1.0,2.3,.08,0,base);                                 // solid back
-    for(const face of [[0,.45,0],[-.45,0,Math.PI/2],[.45,0,Math.PI/2]]){
-      const [x,z,yaw]=face;
-      for(let r=0;r<6;r++)glazing(x,.62+r*.31,z,.74,.27,yaw,r,base);
-      for(let r=0;r<7;r++)box(kiosk,x,.47+r*.31,z,yaw?.08:.8,.035,yaw?.8:.08,0,base);
-      for(const off of [-.25,.25])box(kiosk,yaw?x:x+off,1.4,yaw?z+off:z,yaw?.08:.05,1.9,yaw?.05:.08,0,base);
+  if (S.farmsteads) { // lowland farmsteads
+    // Farmsteads out in the fields, the way the Dales are actually dotted with them.
+    for(const [s,side,d,rot] of [[.296,1,96,.4],[.659,-1,112,-.7],[.845,1,84,1.2]].map(([t,a,b,c])=>[frac(t),a,b,c])){
+      const a=w.groundAt(s,side*d),f={...R.frame(s)};
+      const fb=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.2,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading+rot),new THREE.Vector3(1,1,1));
+      box(stone,0,2.4,0,13,4.8,7.5,0,fb);const r1=roofGeo(13.6,8.2,4.8,7.1);batch.add(r1,slate,fb);r1.dispose();
+      for(const x of [-4.2,4.2]){box(stone,x,7.4,0,.7,1.3,.8,0,fb);}
+      box(stone,10.5,1.7,-1,8,3.4,7,0,fb);const r2=roofGeo(8.5,7.6,3.4,5.0);const t2=new THREE.Matrix4().makeTranslation(10.5,0,-1);t2.premultiply(fb);batch.add(r2,slate,t2);r2.dispose();
+      box(material('farmyard',0x7d766a,{map:mineralMap,roughness:1}),4,.03,7,22,.06,9,0,fb);
+      for(let k=0;k<12;k++){const x=-9+k*2.1;box(stone,x,.55,11.5,2.1,1.1,.5,0,fb);}
     }
-    box(kiosk,0,2.53,0,1.0,.16,1.0,0,base);
-    for(const x of [-.45,0,.45])box(cream,x,2.53,x?0:.51,x?.02:.8,.1,x?.9:.02,0,base);   // TELEPHONE strips
-    box(kiosk,0,2.68,0,.86,.14,.86,0,base);box(kiosk,0,2.8,0,.6,.12,.6,0,base);box(kiosk,0,2.9,0,.3,.1,.3,0,base);
+
   }
-  // Farmsteads out in the fields, the way the Dales are actually dotted with them.
-  for(const [s,side,d,rot] of [[700,1,96,.4],[1560,-1,112,-.7],[2000,1,84,1.2]]){
-    const a=w.groundAt(s,side*d),f={...R.frame(s)};
-    const fb=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.2,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading+rot),new THREE.Vector3(1,1,1));
-    box(stone,0,2.4,0,13,4.8,7.5,0,fb);const r1=roofGeo(13.6,8.2,4.8,7.1);batch.add(r1,slate,fb);r1.dispose();
-    for(const x of [-4.2,4.2]){box(stone,x,7.4,0,.7,1.3,.8,0,fb);}
-    box(stone,10.5,1.7,-1,8,3.4,7,0,fb);const r2=roofGeo(8.5,7.6,3.4,5.0);const t2=new THREE.Matrix4().makeTranslation(10.5,0,-1);t2.premultiply(fb);batch.add(r2,slate,t2);r2.dispose();
-    box(material('farmyard',0x7d766a,{map:mineralMap,roughness:1}),4,.03,7,22,.06,9,0,fb);
-    for(let k=0;k<12;k++){const x=-9+k*2.1;box(stone,x,.55,11.5,2.1,1.1,.5,0,fb);}
+
+  /* ------------------------------------------------- moorland road furniture */
+// Cattle grids where the walls give out, laybys on the straights, a summit
+// marker and the snow gate that closes the road in winter.
+if (P.grids.length || P.laybys.length) {
+  const steel=material('cattle grid bars',0x6f7378,{roughness:.45,metalness:.75});
+  const pit=material('cattle grid pit',0x14171a,{roughness:.95});
+  const kerbMat=material('grid kerb',0xb4b0a4,{map:mineralMap,roughness:1});
+  const gridLine=material('grid stop line',0xe7e4d6,{roughness:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3});
+  const gridTex=canvasTexture(256,256,(c,W,H)=>{
+    c.fillStyle='#e8e4d6';c.fillRect(0,0,W,H);c.strokeStyle='#30342f';c.lineWidth=8;c.strokeRect(5,5,W-10,H-10);
+    c.fillStyle='#23272a';for(let i=0;i<7;i++)c.fillRect(38,58+i*22,180,11);
+    c.fillStyle='#23272a';c.font='bold 34px Arial';c.textAlign='center';c.fillText('CATTLE GRID',W/2,232);
+  });
+  for(const g of P.grids){
+    const half=g.length/2, W=R.LANE_HALF+0.15;
+    // the pit floor, then the bars across it
+    surfaceRibbon(g.s-half,g.s+half,-W,W,pit,.22,-.03);
+    for(let b=0;b<15;b++){
+      const ss=g.s-half+0.22+b*(g.length-0.44)/14, f={...R.frame(ss)}, p=at(ss,0,.012);
+      box(steel,p.x,p.y,p.z,W*2,.055,.075,f.heading);
+    }
+    for(const end of [-1,1]){
+      const f={...R.frame(g.s+end*(half+.18))}, p=at(g.s+end*(half+.18),0,.03);
+      box(kerbMat,p.x,p.y,p.z,W*2+.3,.16,.34,f.heading);
+    }
+    // fence wings funnelling the stock away from the opening
+    for(const side of [1,-1])for(const end of [-1,1]){
+      const p=at(g.s+end*(half+1.2),side*(R.HEDGE_OFFSET-0.4),.55);
+      box(wood,p.x,p.y,p.z,.11,1.2,.11,R.frame(g.s).heading);
+    }
+    // white stop lines either side, so the deck reads from a distance
+    for(const end of [-1,1]) surfaceRibbon(g.s+end*(half+0.45),g.s+end*(half+0.78),-W,W,gridLine,.12,.014);
+    w.vergeSign(g.s-46,1,gridTex,.62,.62,1.5,false);
   }
+  // Laybys: a widened, tapered strip of coarser tarmac with a marker post.
+  const laybyMat=material('layby surface',0x8f8d87,{map:w.textures.asphalt.map,roughness:.95,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  for(const b of P.laybys){
+    const half=b.length/2, inner=R.LANE_HALF+0.05, outer=R.LANE_HALF+3.3, pp=[],uv=[],ix=[],rows=26;
+    for(let i=0;i<=rows;i++){
+      const t=i/rows, ss=b.s-half+t*b.length;
+      // Taper in and out, but never to nothing: a zero-width row makes
+      // degenerate triangles whose computed normals come out black.
+      const wide=smoothstep(0,1,Math.min(1,Math.min(t,1-t)/0.22));
+      const outerD=E.lerp(inner+0.4,outer,wide);
+      const q0=at(ss,b.side*inner,.022), q1=at(ss,b.side*outerD,.022);
+      pp.push(q0.x,q0.y,q0.z,q1.x,q1.y,q1.z);uv.push(0,t*3,1,t*3);
+      if(i<rows){const a=i*2;ix.push(a,a+2,a+3,a,a+3,a+1);}
+    }
+    groundMesh(pp,uv,ix,laybyMat);
+    const post=at(b.s,b.side*(outer+.5),.5);
+    box(cream,post.x,post.y,post.z,.11,1.0,.16,R.frame(b.s).heading);
+    const rp=at(b.s-.09,b.side*(outer+.5),.72);
+    box(b.side===1?material('layby reflector red',0x9c3227):cream,rp.x,rp.y,rp.z,.07,.08,.014,R.frame(b.s).heading);
+  }
+}
+if (P.summit) {
+  // Summit board and the snow gate that shuts the road in a bad winter.
+  const tex=canvasTexture(768,224,(c,W,H)=>{
+    c.fillStyle='#e6e2d4';c.fillRect(0,0,W,H);c.strokeStyle='#33372f';c.lineWidth=9;c.strokeRect(6,6,W-12,H-12);
+    c.fillStyle='#23281f';c.textAlign='center';c.font='bold 60px Georgia';c.fillText(P.summit.name,W/2,94);
+    c.font='bold 44px Georgia';c.fillText(P.summit.height+' ft',W/2,168);
+  });
+  const g=w.groundAt(P.summit.s,-5.6),f={...R.frame(P.summit.s)};
+  w.signPost(g.x,g.y,g.z,Math.atan2(f.nx,f.nz),tex,2.1,.62,1.4,true);
+  // trig pillar up on the tops
+  const tp=w.groundAt(P.summit.s+40,-64);
+  box(material('trig pillar',0xc9c6ba,{map:mineralMap,roughness:1}),tp.x,tp.y+.6,tp.z,.55,1.2,.55,0.4);
+  // snow gate: a red and white barrier hinged clear of the carriageway
+  const sg=P.summit.s-120, red=material('snow gate red',0xa8242c,{roughness:.7});
+  for(const side of [1,-1]){
+    const p=at(sg,side*(R.LANE_HALF+1.4),.62),f2={...R.frame(sg)};
+    box(dark,p.x,p.y,p.z,.16,1.25,.16,f2.heading);
+    for(let k=0;k<5;k++){
+      const q=at(sg,side*(R.LANE_HALF+1.4-k*0.52-0.3),.95);
+      box(k%2?red:cream,q.x,q.y,q.z,.5,.14,.09,f2.heading);
+    }
+  }
+}
 
   // Working farm entrances align with real gaps in the boundary, not through a hedge.
   const mudMat=material('muddy gateway',0x635545,{map:patchTex,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
@@ -3102,35 +3432,38 @@ E.buildWorld=function(renderer,quality){
   // Hay bales and field barns set behind boundaries, never on the carriageway.
   const hay=material('hay',0xa29558,{map:w.textures.grass.map,roughness:1});
   const baleGeo=new THREE.CylinderGeometry(.77,.77,1.15,20);baleGeo.rotateZ(Math.PI/2);
-  for(const [s,side]of [[840,-1],[1710,1],[2152,-1]]){
+  for(const [s,side]of [[.355,-1],[.723,1],[.909,-1]].map(([t,d])=>[frac(t),d])){
     for(let k=0;k<9;k++){const a=at(s+(k%3)*3.1,side*(22+Math.floor(k/3)*3),.76);object(baleGeo,hay,a.x,a.y,a.z,1,1,1,R.frame(s).heading);}
     const a=w.groundAt(s+22,side*30),f={...R.frame(s+22)},base=new THREE.Matrix4().compose(new THREE.Vector3(a.x,a.y-.1,a.z),new THREE.Quaternion().setFromAxisAngle(UP,f.heading),new THREE.Vector3(1,1,1));
     box(stone,0,1.7,0,12,3.4,7,0,base);const rg=roofGeo(12.5,7.6,3.4,5.1);batch.add(rg,slate,base);rg.dispose();box(material('barn doors',0x464e42),0,1.45,3.53,3.0,2.9,.09,0,base);
   }
-  // Crop texture is shaded into the existing terrain: no duplicate ground, floating strips or new draw calls.
-  const fieldPlans=[{s:846,side:-1,d:45,wide:18,long:54},{s:1144,side:1,d:48,wide:18,long:57},{s:1485,side:-1,d:47,wide:19,long:49}];
-  const fieldDefs=fieldPlans.map((p,i)=>{const f={...R.frame(p.s)};return {x:f.x+f.nx*p.side*p.d,z:f.z+f.nz*p.side*p.d,tx:f.tx,tz:f.tz,nx:f.nx,nz:f.nz,...p};});
-  const oldGrass=w.materials.grassMat.onBeforeCompile;
-  w.materials.grassMat.onBeforeCompile=(shader,r)=>{
-    if(oldGrass)oldGrass(shader,r);
-    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;').replace('#include <project_vertex>','#include <project_vertex>\nvFieldWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;');
-    const code=fieldDefs.map((f,i)=>`{
-      vec2 dp=vFieldWorld-vec2(${f.x.toFixed(3)},${f.z.toFixed(3)});
-      float across=dot(dp,vec2(${f.nx.toFixed(6)},${f.nz.toFixed(6)})),along=dot(dp,vec2(${f.tx.toFixed(6)},${f.tz.toFixed(6)}));
-      float mask=(1.0-smoothstep(${(f.wide-2).toFixed(1)},${f.wide.toFixed(1)},abs(across)))*(1.0-smoothstep(${(f.long-4).toFixed(1)},${f.long.toFixed(1)},abs(along)));
-      float aa=max(.06,fwidth(across)*1.4);
-      float rows=.98+.035*cos(across*13.0)*exp(-aa*6.0);
-      float tram=1.0-smoothstep(.13,.13+aa,min(abs(across-5.1),abs(across-6.45)));
-      vec3 tint=vec3(${i===1?'1.15,1.04,.84':i===2?'1.06,1.03,.91':'.97,1.035,.90'});
-      diffuseColor.rgb*=mix(vec3(1.0),tint*rows*(1.0-tram*.23),mask);
-    }`).join('\n');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+code);
-  };
-  E.tagShader(w.materials.grassMat,'terrain-crops-v3');w.materials.grassMat.needsUpdate=true;
+
+  if (S.farmsteads) { // arable fields
+    // Crop texture is shaded into the existing terrain: no duplicate ground, floating strips or new draw calls.
+    const fieldPlans=[{t:.357,side:-1,d:45,wide:18,long:54},{t:.483,side:1,d:48,wide:18,long:57},{t:.627,side:-1,d:47,wide:19,long:49}].map(f=>({...f,s:frac(f.t)}));
+    const fieldDefs=fieldPlans.map((p,i)=>{const f={...R.frame(p.s)};return {x:f.x+f.nx*p.side*p.d,z:f.z+f.nz*p.side*p.d,tx:f.tx,tz:f.tz,nx:f.nx,nz:f.nz,...p};});
+    const oldGrass=w.materials.grassMat.onBeforeCompile;
+    w.materials.grassMat.onBeforeCompile=(shader,r)=>{
+      if(oldGrass)oldGrass(shader,r);
+      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;').replace('#include <project_vertex>','#include <project_vertex>\nvFieldWorld=(modelMatrix*vec4(transformed,1.0)).xz;');
+      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFieldWorld;');
+      const code=fieldDefs.map((f,i)=>`{
+        vec2 dp=vFieldWorld-vec2(${f.x.toFixed(3)},${f.z.toFixed(3)});
+        float across=dot(dp,vec2(${f.nx.toFixed(6)},${f.nz.toFixed(6)})),along=dot(dp,vec2(${f.tx.toFixed(6)},${f.tz.toFixed(6)}));
+        float mask=(1.0-smoothstep(${(f.wide-2).toFixed(1)},${f.wide.toFixed(1)},abs(across)))*(1.0-smoothstep(${(f.long-4).toFixed(1)},${f.long.toFixed(1)},abs(along)));
+        float aa=max(.06,fwidth(across)*1.4);
+        float rows=.98+.035*cos(across*13.0)*exp(-aa*6.0);
+        float tram=1.0-smoothstep(.13,.13+aa,min(abs(across-5.1),abs(across-6.45)));
+        vec3 tint=vec3(${i===1?'1.15,1.04,.84':i===2?'1.06,1.03,.91':'.97,1.035,.90'});
+        diffuseColor.rgb*=mix(vec3(1.0),tint*rows*(1.0-tram*.23),mask);
+      }`).join('\n');
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+code);
+    };
+    E.tagShader(w.materials.grassMat,'terrain-crops-v3');w.materials.grassMat.needsUpdate=true;
+  }
 
   // White verge delineators occur in a few runs rather than ringing the entire road.
-  for(const [a,b]of [[735,817],[1295,1375],[1825,1885]])for(let s=a;s<b;s+=17)for(const side of [1,-1]){
+  for(const [a,b]of [[.31,.345],[.547,.581],[.771,.796]].map(([x,y])=>[frac(x),frac(y)]))for(let s=a;s<b;s+=17)for(const side of [1,-1]){
     if(R.inJunctionMouth(s,side,14))continue;
     const p=at(s,side*3.65,.48),f={...R.frame(s)};
     box(cream,p.x,p.y,p.z,.105,.94,.15,f.heading);
@@ -3138,7 +3471,7 @@ E.buildWorld=function(renderer,quality){
     const r=at(s-.085,side*3.65,.71);box(side===1?material('red reflector',0x9c3227):cream,r.x,r.y,r.z,.065,.07,.012,f.heading);
   }
   // Continuous wires meet their posts. Entrances are excluded from each run.
-  for(const seg of [{a:728,b:842,side:-1,d:13.4},{a:1088,b:1190,side:1,d:14.2},{a:1468,b:1530,side:-1,d:15}]){
+  for(const seg of [{a:.308,b:.356,side:-1,d:13.4},{a:.46,b:.503,side:1,d:14.2},{a:.62,b:.647,side:-1,d:15}].map(g=>({...g,a:frac(g.a),b:frac(g.b)}))){
     let last=null;
     for(let ss=seg.a;ss<=seg.b;ss+=5.5){
       if(P.gates.some(g=>g.side===seg.side&&Math.abs(g.s-ss)<5)||R.inJunctionMouth(ss,seg.side,20)){last=null;continue;}
@@ -3349,7 +3682,12 @@ const EYE_HEIGHT = 1.28;
 const A_LAT_SAFE = 5.6;             // ~0.57 g: comfortable road pace
 const A_LAT_MAX = 8.6;              // ~0.88 g: the tyres' limit on dry tarmac
 const DECEL_PLAN = 7.2;             // braking the planner assumes, m/s²
-const LOOKAHEAD = 170, LOOK_STEP = 4;
+const LOOK_STEP = 4;
+// How far ahead the planner looks: far enough to brake from the current speed,
+// plus about three seconds of reaction. A fixed horizon that suits a B road is
+// far too short on a fast road, where you arrive at a bend having covered it in
+// well under a second.
+const lookAhead = (v) => clamp(v * v / (2 * DECEL_PLAN) + v * 3, 70, 340);
 const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
 
 EVO.V_MAX = V_MAX;
@@ -3390,7 +3728,8 @@ EVO.createBike = function createBike() {
   function planCorner() {
     let allowedSafe = V_MAX, allowedMax = V_MAX;
     let bendDist = Infinity, bendDir = 0, bendRadius = Infinity, bendK = 0, inBend = false, bendDone = false;
-    for (let dist = 0; dist <= LOOKAHEAD; dist += LOOK_STEP) {
+    const horizon = lookAhead(bike.v);
+    for (let dist = 0; dist <= horizon; dist += LOOK_STEP) {
       const f = RT.frame(bike.s + dist, scratch);
       const k = Math.abs(f.kappa);
       const radius = 1 / Math.max(k, 1e-4);
@@ -3441,6 +3780,16 @@ EVO.createBike = function createBike() {
     bike.steerSmoothed = lerp(bike.steerSmoothed, crashed ? 0 : inp.steer, 1 - Math.exp(-dt * 9));
     const lateralRate = Math.min(3.2, 0.9 + bike.v * 0.09) * Math.min(1,bike.v/1.5);
     bike.d += bike.steerSmoothed * lateralRate * dt;
+    // Crosswind on exposed ground: gusts push the bike across its lane, and
+    // they push hardest when there is nothing beside the road to break them.
+    const gust = EVO.ROUTE.wind;
+    if (gust) {
+      const exposed = (RT.boundaryAt(bike.s, 1).type === 'open' ? 0.6 : 0) + (RT.boundaryAt(bike.s, -1).type === 'open' ? 0.6 : 0);
+      if (exposed > 0) {
+        const g = (EVO.noise2(bike.s / 140, bike.elapsed * 0.22) - 0.5) * 2;
+        bike.d += g * gust * exposed * Math.min(1, bike.v / 18) * dt;
+      }
+    }
 
     // Cornering physics: above the safe lateral acceleration the bike wants to
     // run wide; above the tyres' limit it will.
@@ -3617,7 +3966,7 @@ EVO.createControls = function createControls(element, bike, opts = {}) {
 const EVO = window.EVO;
 const { clamp, mod } = EVO;
 
-const BEST_KEY = 'evo.bestLap';
+const BEST_KEY = `evo.bestLap.${EVO.activeRoute}`;
 const CLEAN_BEND = 60, CAUTIOUS_BEND = 15, RAGGED_BEND = 10;
 const CLEAN_OVERTAKE = 150, UNSAFE_OVERTAKE = -200, CLOSE_CALL = -80, CRASH = -250;
 const HUMP_SMOOTH = 15, HUMP_HARD = -40;
@@ -4390,6 +4739,61 @@ EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality=
   world.parkedCars=parked;
 };
 
+/* An articulated lorry: a cab and a box trailer, built from panels rather than
+ * lofted. It is 16 m long and does 50 mph on the flat, which is what makes an
+ * overtake on a fast road a decision rather than a formality. */
+const LORRY = { L: 16.2, W: 2.55, cabL: 5.6, trailerH: 4.0 };
+function makeLorry(paint, envMap) {
+  const g = new THREE.Group();
+  CACHE.alloy = CACHE.alloy || EVO.tex.alloy();
+  CACHE.shadow = CACHE.shadow || contactShadowTexture();
+  const paintMat = new THREE.MeshPhysicalMaterial({ color: paint, metalness: 0.3, roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.12, envMap, envMapIntensity: 0.9 });
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.72, metalness: 0.05, envMap, envMapIntensity: 0.45 });
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0d1317, metalness: 0.1, roughness: 0.06, envMap, envMapIntensity: 1.2 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1f22, roughness: 0.8 });
+  const tyreMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.95 });
+  const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.35, envMap, envMapIntensity: 0.7 });
+  const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: 1.2, roughness: 0.1 });
+  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x8e1119, emissive: 0x6d0a12, emissiveIntensity: 0.7, roughness: 0.14 });
+  g.userData.tail = tailMat;
+  const halfL = LORRY.L / 2, halfW = LORRY.W / 2;
+  const add = (geo, mat, x, y, z, rx = 0, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.rotation.set(rx, ry, 0);
+    m.castShadow = true; m.receiveShadow = true; g.add(m); return m;
+  };
+  // cab: nose at +z
+  const cabZ = halfL - LORRY.cabL / 2;
+  add(new THREE.BoxGeometry(LORRY.W, 2.05, LORRY.cabL), paintMat, 0, 1.9, cabZ);
+  add(new THREE.BoxGeometry(LORRY.W - 0.12, 0.95, 0.1), glassMat, 0, 2.55, cabZ + LORRY.cabL / 2 - 0.02);   // windscreen
+  for (const sx of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.1, 0.8, 1.5), glassMat, sx * (halfW - 0.02), 2.45, cabZ + 0.3);              // door glass
+    add(new THREE.BoxGeometry(0.5, 0.24, 0.16), lampMat, sx * (halfW * 0.62), 1.15, halfL - 0.04);           // headlamps
+    add(new THREE.BoxGeometry(0.16, 0.5, 0.1), darkMat, sx * (halfW + 0.12), 2.7, cabZ + LORRY.cabL / 2 - 0.5); // mirror arms
+  }
+  add(new THREE.BoxGeometry(LORRY.W * 0.9, 0.5, 0.22), darkMat, 0, 0.72, halfL - 0.02);                      // bumper
+  add(new THREE.BoxGeometry(LORRY.W - 0.2, 0.9, 0.3), paintMat, 0, 3.35, cabZ + 0.6);                        // roof deflector
+  // trailer: a plain box body on a chassis
+  const trZ = -halfL + (LORRY.L - LORRY.cabL) / 2 + 0.2;
+  add(new THREE.BoxGeometry(LORRY.W, LORRY.trailerH - 1.1, LORRY.L - LORRY.cabL - 0.4), boxMat, 0, 1.25 + (LORRY.trailerH - 1.1) / 2, trZ);
+  add(new THREE.BoxGeometry(LORRY.W - 0.06, 0.18, LORRY.L - LORRY.cabL - 0.4), darkMat, 0, 1.2, trZ);        // chassis rail
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.34, 0.2, 0.1), tailMat, sx * (halfW * 0.7), 1.5, -halfL + 0.03);
+  add(new THREE.BoxGeometry(LORRY.W * 0.85, 0.4, 0.14), darkMat, 0, 0.85, -halfL + 0.05);                    // rear underrun bar
+  // wheels: steer axle, drive pair, trailer triple
+  const tyre = new THREE.CylinderGeometry(0.52, 0.52, 0.34, 16); tyre.rotateZ(Math.PI / 2);
+  const hub = new THREE.CircleGeometry(0.34, 18); hub.rotateY(Math.PI / 2);
+  for (const z of [halfL - 1.5, cabZ - 1.9, cabZ - 3.2, trZ - 2.2, trZ - 3.6, trZ - 5.0]) {
+    for (const sx of [-1, 1]) {
+      add(tyre, tyreMat, sx * (halfW - 0.2), 0.52, z);
+      add(hub, alloyMat, sx * (halfW - 0.02), 0.52, z, 0, sx > 0 ? 0 : Math.PI);
+    }
+  }
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(LORRY.W * 1.3, LORRY.L * 1.02),
+    new THREE.MeshBasicMaterial({ map: CACHE.shadow, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.03; g.add(shadow);
+  return g;
+}
+
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const count = opts.count ?? 5;
   const sameCount = opts.same ?? 3;
@@ -4400,23 +4804,30 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const rnd = EVO.rng(777);
   const cars = [];
   for (let i = 0; i < count; i += 1) {
-    const kind = kinds[i % kinds.length];
-    const mesh = makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
+    const hgvHere = (opts.hgv ?? 0) > 0 && i % 4 === 3;
+    const kind = hgvHere ? 'lorry' : kinds[i % kinds.length];
+    const mesh = hgvHere ? makeLorry([0x35507a, 0x8d8f93][i % 2], envMap)
+      : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
     scene.add(mesh);
     // spread them around the loop, none right on top of the rider at the start
     const s = mod(bike.s + L * (0.28 + i / count * 0.92) + rnd() * 50, L);
-    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null, braking: 0 });
+    const cruise = hgvHere ? 22 + rnd() * 1.5 : ((kind === 'van' ? 16.5 : 18) + rnd() * 5) * (opts.cruise ?? 1);
+    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: Math.min(16 + rnd() * 4, cruise), cruise, lastRel: null, braking: 0, lorry: hgvHere, half: hgvHere ? LORRY.L / 2 : 2.4 });
   }
   // Same-direction traffic: slower than the EVO wants to go, so the rider has
   // to sit behind it or pick the moment to pass. One of them is a dawdling van.
+  const hgv = opts.hgv ?? 0, cruiseScale = opts.cruise ?? 1;
   const sameKinds = ['van', 'hatch', 'suv', 'hatch'];
   for (let i = 0; i < sameCount; i += 1) {
-    const kind = sameKinds[i % sameKinds.length];
-    const mesh = makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
+    const lorry = hgv > 0 && (i % Math.max(2, Math.round(1 / hgv)) === 0);
+    const kind = lorry ? 'lorry' : sameKinds[i % sameKinds.length];
+    const mesh = lorry ? makeLorry([0x9d2a2f, 0x2c4a7a, 0xe6e3da][i % 3], envMap)
+      : makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
     scene.add(mesh);
     const s = mod(bike.s + 140 + i * (L / sameCount) + rnd() * 60, L);
-    const cruise = kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4; // 26-42 mph
-    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0 });
+    // a laden lorry sits at about 50 mph and will not be hurried
+    const cruise = lorry ? 21.5 + rnd() * 1.4 : (kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4) * cruiseScale;
+    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0, lorry, half: lorry ? LORRY.L / 2 : 2.4 });
   }
   let mode = 'both';
 
@@ -4454,7 +4865,8 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       for (const other of cars) {
         if (other === car || other.dir !== dir || !active(other)) continue;
         const gap = mod((other.s - car.s) * dir, L);
-        if (gap > 0 && gap < 26) limit = Math.min(limit, other.v * (gap / 26));
+        const need = 26 + other.half + car.half;
+        if (gap > 0 && gap < need) limit = Math.min(limit, other.v * (gap / need));
       }
       if (dir > 0) {
         const gap = mod(bike.s - car.s, L);
@@ -4482,9 +4894,9 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
       }
       car.lastRel = rel;
       if (dir < 0) {
-        if (Math.abs(rel) < 2.5 && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: 'COLLISION · ONCOMING CAR' };
-      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -2.4 && rel < 2.6 && bike.v > car.v + 0.5) {
-        events.collision = { car, reason: 'RAN INTO THE CAR AHEAD' };
+        if (Math.abs(rel) < car.half && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: car.lorry ? 'COLLISION · ONCOMING LORRY' : 'COLLISION · ONCOMING CAR' };
+      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -car.half && rel < car.half + 0.2 && bike.v > car.v + 0.5) {
+        events.collision = { car, reason: car.lorry ? 'RAN INTO THE LORRY AHEAD' : 'RAN INTO THE CAR AHEAD' };
       }
     }
     return events;
@@ -4557,17 +4969,15 @@ EVO.createHud = function createHud(bike, score) {
   const text = document.getElementById('corner-text'), limits = document.getElementById('corner-limits');
   const notice = document.getElementById('notice');
   const mph = (v) => Math.round(v * 2.23694);
-  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '';
+  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '', lastRegion = '', lastNote = '';
   const scoreEl = document.getElementById('score-value'), scoreMeta = document.getElementById('score-meta'), popEl = document.getElementById('score-pop');
   return {
     update() {
       const region=document.getElementById('place-name'),surface=document.getElementById('surface-info'),limit=document.getElementById('limit-sign');
-      const v=EVO.route.inVillage(bike.s),hump=EVO.route.nextHump(bike.s),wood=EVO.route.woodland(bike.s);
-      region.textContent=v?'DALEBECK VILLAGE':wood?'WOODED B-ROAD':'OPEN PASTURE';
+      const r=EVO.ROUTE.readout(EVO.route,bike.s);
+      if(r.name!==lastRegion){region.textContent=r.name;lastRegion=r.name;}
       limit.textContent=String(EVO.route.speedLimitAt(bike.s));
-      const approaching=hump&&hump.dist<125;
-      surface.textContent=approaching?`${hump.type==='table'?'RAISED TABLE':'ROAD HUMP'} · ${Math.round(hump.dist)} m`:v?'20 mph · traffic-calmed village':wood?'Coarse surface · shaded bends':'Two-way road · keep left';
-      surface.classList.toggle('warn',approaching);
+      if(r.note!==lastNote){surface.textContent=r.note;surface.classList.toggle('warn',!!r.warn);lastNote=r.note;}
       const c = bike.corner;
       const scale = c.max * 1.25; // bar spans 0 .. 125 % of the maximum
       const x = EVO.clamp(bike.v / scale, 0, 1);
@@ -4612,6 +5022,29 @@ function boot() {
   const start = document.getElementById('start');
   const rideBtn = document.getElementById('ride');
   const tiltBtn = document.getElementById('tilt');
+  // Route picker. The world is built once, so switching roads reloads the page
+  // with the choice in the query string; the choice is remembered per device.
+  const routeSel = document.getElementById('route'), spawnSel = document.getElementById('spawn');
+  if (routeSel) {
+    routeSel.value = EVO.activeRoute;
+    const L = EVO.route.length;
+    spawnSel.innerHTML = '';
+    for (const [at, label] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
+      const o = document.createElement('option');
+      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label;
+      spawnSel.appendChild(o);
+    }
+    document.querySelector('#start .kicker').textContent = EVO.ROUTE.kicker;
+    document.querySelector('#start .copy').textContent = EVO.ROUTE.blurb;
+    const hint = document.querySelector('#start .controls li:nth-child(4)');
+    if (hint && EVO.ROUTE.roadHint) hint.innerHTML = `<b>Road</b> ${EVO.ROUTE.roadHint}`;
+    routeSel.addEventListener('change', () => {
+      try { localStorage.setItem('evo.route', routeSel.value); } catch (e) { /* private mode */ }
+      const q = new URLSearchParams(location.search);
+      q.set('route', routeSel.value);
+      location.search = q.toString();
+    });
+  }
   let app = null, ridePending = false;
   const beginRide = async () => {
     if (!app) { ridePending = true; return; }
@@ -4724,7 +5157,7 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, same: quality.coarse ? 2 : 3, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap });
   const score = EVO.createScore(bike, traffic);
   const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);
