@@ -606,19 +606,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     }
     EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
   }
-  function mergeGeometries(list) {
-    const p = [], n = [], uv = [], idx = [];
-    let base = 0;
-    for (const g of list) {
-      const pa = g.getAttribute('position'), na = g.getAttribute('normal'), ua = g.getAttribute('uv');
-      for (let i = 0; i < pa.count; i += 1) { p.push(pa.getX(i), pa.getY(i), pa.getZ(i)); n.push(na.getX(i), na.getY(i), na.getZ(i)); uv.push(ua.getX(i), ua.getY(i)); }
-      const ix = g.getIndex(); for (let i = 0; i < ix.count; i += 1) idx.push(ix.getX(i) + base);
-      base += pa.count;
-    }
-    const out = new THREE.BufferGeometry();
-    out.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); out.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3)); out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); out.setIndex(idx);
-    return out;
-  }
+  const mergeGeometries = EVO.mergeGeometries;
 
   /* ------------------------------------------- field boundary hedgerows */
   {

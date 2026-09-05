@@ -53,12 +53,71 @@ EVO.createHud = function createHud(bike) {
   };
 };
 
+/* VR setup sliders. Headset lenses differ enough that these have to be
+ * adjustable by hand; the values live in localStorage per device. */
+const VR_FIELDS = [
+  ['ipd', 'Eye separation', 54, 72, 1, 'mm'],
+  ['fov', 'Field of view', 70, 110, 1, '\u00b0'],
+  ['k1', 'Lens warp', 0, 60, 1, ''],
+  ['k2', 'Lens warp, edges', 0, 60, 1, ''],
+  ['ca', 'Colour fringe fix', 0, 20, 1, ''],
+  ['lensX', 'Lens centre', 35, 65, 1, '%'],
+  ['roll', 'View leans with bike', 0, 100, 5, '%'],
+  ['steerRoll', 'Head lean for full lock', 12, 45, 1, '\u00b0'],
+  ['dead', 'Head deadzone', 0, 10, 1, '\u00b0'],
+  ['scale', 'Render scale', 60, 130, 5, '%'],
+  ['invert', 'Reverse head steering', 0, 1, 1, '']
+];
+function buildVrFields(host) {
+  if (!host || !EVO.vrSettings) return;
+  for (const [key, label, min, max, step, unit] of VR_FIELDS) {
+    const row = document.createElement('label');
+    const name = document.createElement('span'); name.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'range'; input.min = min; input.max = max; input.step = step;
+    input.value = EVO.vrSettings[key];
+    const out = document.createElement('output'); out.textContent = input.value + unit;
+    input.addEventListener('input', () => {
+      EVO.vrSettings[key] = Number(input.value);
+      out.textContent = input.value + unit;
+      EVO.saveVrSettings();
+    });
+    row.append(name, input, out);
+    host.appendChild(row);
+  }
+}
+
+/* A live read of the head sensors, so the steering direction can be checked
+ * with the phone in your hands before it is strapped into a helmet. */
+function bindHeadTest(app) {
+  const btn = document.getElementById('vr-test');
+  const read = document.getElementById('vr-read');
+  if (!btn || !read || !app) return;
+  let running = false;
+  btn.addEventListener('click', async () => {
+    if (running) return;
+    if (!await app.vr.enableTracking()) { read.textContent = 'Motion sensors refused. The page must be served over https.'; return; }
+    running = true; btn.textContent = 'TESTING · LEAN THE PHONE';
+    app.vr.recentre();
+    const tick = () => {
+      const h = app.vr.sampleHead();
+      read.textContent = h.tracking
+        ? `head lean ${h.roll.toFixed(0)}\u00b0 \u2192 steering ${h.steer > 0.05 ? 'LEFT' : h.steer < -0.05 ? 'RIGHT' : 'straight'} ${Math.abs(h.steer * 100).toFixed(0)}%`
+        : 'waiting for motion sensors\u2026';
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 function boot() {
   // The start panel must work before anything heavy runs, so bind it first
   // and build the world on the next frame while the status line explains.
   const start = document.getElementById('start');
   const rideBtn = document.getElementById('ride');
   const tiltBtn = document.getElementById('tilt');
+  const vrBtn = document.getElementById('vr');
+  buildVrFields(document.getElementById('vr-fields'));
   let app = null, ridePending = false;
   const beginRide = async () => {
     if (!app) { ridePending = true; return; }
@@ -71,6 +130,16 @@ function boot() {
     }
   };
   rideBtn.addEventListener('click', beginRide);
+  vrBtn.addEventListener('click', async () => {
+    if (!app) return;
+    vrBtn.disabled = true; vrBtn.textContent = 'STARTING VR…';
+    const res = await app.vr.enter();
+    vrBtn.disabled = false; vrBtn.textContent = 'VR MODE';
+    if (!res.ok) { setStatus(res.reason, true); return; }
+    beginRide();
+  });
+  // leaving VR drops back into the ordinary ride rather than the start panel
+  document.addEventListener('evo-vr-exit', () => setStatus(''));
   tiltBtn.addEventListener('click', async () => {
     if (!app) return;
     const ok = await app.controls.enableTilt();
@@ -87,6 +156,9 @@ function boot() {
     try {
       app = buildApp();
       rideBtn.disabled = false; rideBtn.textContent = 'RIDE';
+      if (!app.vr.supported) { vrBtn.disabled = true; vrBtn.textContent = 'VR UNAVAILABLE'; }
+      bindHeadTest(app);
+      if (/vr=1/.test(location.search)) vrBtn.click();
       setStatus('');
       if (ridePending) beginRide();
     } catch (e) {
@@ -132,6 +204,7 @@ function buildApp() {
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
   const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, envMap: EVO.envMap });
   const hud = EVO.createHud(bike);
+  const vr = EVO.createVR(renderer, world, bike, post, quality);
   lap('traffic');
   EVO.timings = timings;
 
@@ -167,21 +240,31 @@ function buildApp() {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     renderer.info.reset();
     controls.update();
+    const inVR = vr.active;
+    if (inVR) vr.input();
     acc += dt;
     let steps = 0;
     while (acc >= STEP && steps < 8) { bike.step(STEP); acc -= STEP; steps += 1; }
     const events = traffic.update(dt);
     if (events.collision && bike.crashTimer <= 0) { bike.crash('COLLISION · ONCOMING CAR'); audio.thump(); }
     if (events.passBy) audio.passBy(events.passBy.closing, events.passBy.gap);
-    hud.update();
-    const portrait = window.innerHeight > window.innerWidth;
-    bike.applyCamera(camera, portrait);
-    bikePos.copy(bike.pos);
-    world.update(now / 1000, bikePos, bike.forward);
-    audio.update(bike);
-    if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000); }
-    else renderer.render(world.scene, camera);
-    if (cockpit) cockpit.render(camera, bike, now / 1000);
+    if (inVR) {
+      vr.place(dt);
+      bikePos.copy(bike.pos);
+      world.update(now / 1000, bikePos, bike.forward);
+      audio.update(bike);
+      vr.render(now / 1000);
+    } else {
+      hud.update();
+      const portrait = window.innerHeight > window.innerWidth;
+      bike.applyCamera(camera, portrait);
+      bikePos.copy(bike.pos);
+      world.update(now / 1000, bikePos, bike.forward);
+      audio.update(bike);
+      if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000); }
+      else renderer.render(world.scene, camera);
+      if (cockpit) cockpit.render(camera, bike, now / 1000);
+    }
     if (showStats) {
       frames += 1; fpsTime += dt;
       if (fpsTime >= 0.5) {
@@ -192,7 +275,7 @@ function buildApp() {
     }
   }
   requestAnimationFrame(loop);
-  EVO.app = { renderer, world, camera, bike, controls, audio, quality, traffic, post, get cockpit() { return cockpit; } };
+  EVO.app = { renderer, world, camera, bike, controls, audio, quality, traffic, post, vr, get cockpit() { return cockpit; } };
   return EVO.app;
 }
 

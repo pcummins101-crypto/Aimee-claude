@@ -36,7 +36,15 @@
       <div class="actions">
         <button id="ride" type="button" disabled>LOADING…</button>
         <button id="tilt" type="button" class="ghost">ENABLE TILT STEERING</button>
+        <button id="vr" type="button" class="ghost">VR MODE</button>
       </div>
+      <details id="vr-setup" class="vrsetup">
+        <summary>VR setup · phone in a headset</summary>
+        <p class="hint">Steer by leaning your head into the bend; a Bluetooth gamepad gives you the triggers for throttle and brake (A recentres your view, Start exits). Every headset's lenses differ, so ride a straight and adjust until the two images fuse and the edges look straight.</p>
+        <div id="vr-fields" class="vrgrid"></div>
+        <div class="vrtest"><button id="vr-test" type="button" class="ghost small">TEST HEAD TRACKING</button><span id="vr-read">lean the phone left and right and check the direction reads correctly</span></div>
+        <p class="hint">Settings are remembered on this device.</p>
+      </details>
       <p id="status" class="status" aria-live="polite">Loading the 3D engine…</p>
       <p class="safety">Virtual closed-road simulation. Never use while riding.</p>
     </div>
@@ -50,6 +58,7 @@
   <script type="module" src="./src/40-overlay.js"></script>
   <script type="module" src="./src/45-post.js"></script>
   <script type="module" src="./src/50-traffic.js"></script>
+  <script type="module" src="./src/60-vr.js"></script>
   <script type="module" src="./src/90-main.js"></script>
   <!-- /EVO_SCRIPTS -->
 </body>

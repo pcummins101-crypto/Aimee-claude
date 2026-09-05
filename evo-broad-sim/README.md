@@ -24,6 +24,22 @@ The powertrain is fitted to the EVO's figures: 0–60 mph in 3.9 s and a 109 mph
 
 Lean follows the corner physics (`atan(v²κ/g)`) plus a steering lean; the eye point sits 1.28 m up, moves to the inside of the corner and dips under braking. Leaving the carriageway rumbles and scrubs speed. The dash is live, and both mirrors show a real rear render.
 
+## VR (optional)
+
+The ordinary touch and desktop ride is unchanged and remains the default. **VR MODE** on the start screen adds a second way to ride it, aimed at a phone in a headset — the intended rig is a Galaxy Fold in a holder mounted in the visor aperture of a crash helmet.
+
+Chrome on Android no longer offers a WebXR `immersive-vr` session for a plain phone in a holder (Daydream is gone and WebVR was removed), so the stereo rig is built here rather than handed to the browser: two sub-cameras of a `THREE.ArrayCamera` draw side by side into the existing HDR target in one traversal with one shadow pass, and the post composite pre-warps each half with a barrel distortion that cancels the lens's pincushion, correcting the colour fringing at the same time. Head orientation is 3DoF, from `deviceorientation`.
+
+- **Steer** by leaning your head into the bend, as you would lean a bike; a gamepad's left stick overrides it.
+- **Throttle and brake** on a Bluetooth gamepad's triggers or bumpers. **A** recentres your view, **Start** exits; Escape and R do the same from a keyboard.
+- **The cockpit is real geometry** in VR — bars, levers, mirrors, fly screen, tank and the same live TFT dash — because a flat photograph has no parallax and reads as a sticker on the eyes in stereo. A stable near reference is also the single biggest comfort win available.
+
+Comfort governs the rest. The bike leans fully while the view stays nearly level (25 % by default, adjustable): rolling the horizon with the lean is the fastest way to make a headset rider ill. The radial speed blur is off, and a vignette tightens with speed and cornering load. Notices that would appear in the HUD are drawn on the dash instead.
+
+Lens geometry differs between holders, so **VR setup** on the start screen exposes eye separation, field of view, lens warp and centre, colour-fringe correction, how much the view leans, head-lean sensitivity and deadzone, and render scale; values are remembered per device. **Test head tracking** shows a live read of head lean and the steering it produces, so the direction can be checked with the phone in your hands before it goes into a helmet — and reversed with one slider if it reads backwards.
+
+VR needs WebGL2 with float render targets (the button reports it if unavailable). Serve over HTTPS: motion sensors are refused otherwise. Stereo roughly doubles the draw calls, so start at a lower render scale if frames drop — a dropped frame in a headset is felt, not just seen.
+
 ## Running
 
 Open `index.html` from any static server (it uses an import map pointing at the vendored Three.js in `vendor/`). Add `?stats=1` for a frame-rate / draw-call readout.
@@ -53,6 +69,7 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
 | `src/45-post.js` | HDR post-processing: bloom, speed blur, tone mapping, grade, vignette, grain |
 | `src/50-traffic.js` | oncoming cars: lofted bodies, PBR materials with sky reflections, bend-aware speed, spacing, pass-by and collision events |
+| `src/60-vr.js` | optional stereo VR: head tracking, gamepad, lens correction, 3D cockpit |
 | `src/90-main.js` | renderer setup, quality detection, corner-bar HUD, frame loop |
 
 Everything except the cockpit photograph (`assets/cockpit.png`) is generated at runtime from a fixed seed, so the road is identical on every device.
