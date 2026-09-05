@@ -14,7 +14,10 @@ A first-person WebGL simulation of riding an Avenrà EVO around quiet British ro
 | Longest straight | 35 m | 932 m |
 | Climb | 11 m | 70 m, to a 486 ft summit |
 | Character | hedgerows, walls, woods, the village of Dalebeck with humps and a 20 limit | open moor, dry-stone walls, long unfenced runs, cattle grids, laybys, a snow gate |
+| Ground | pasture, verge flowers, dense hedgerow trees | heather, rush, bracken, gorse and gritstone over peat, with trees only in the sheltered gills |
 | Traffic | cars and vans | cars, vans and 16 m articulated lorries at 50 mph |
+
+The moor carries a deep layer of ground cover: heather in flower where the fbm says it should be, rush tussocks in the wetter hollows, bracken on the sheltered slopes, gorse and loose gritstone, all instanced and distance-culled so the count runs to tens of thousands. Above it sit grouse butts stepping up the hill, sheepfolds, isolated field barns, becks running under stone parapets, and a network of enclosure-era field walls in parallel families with cross walls between them, which is what makes upland England read as a patchwork rather than a set of random lines. Trees appear only where the ground falls away into a gill, because that is the only place they survive.
 
 The **moorland A-road** is the fast one. Two long straights let the EVO reach its 109 mph terminal speed, and the tightest bend is a 44 mph corner at the end of the longest of them, so it needs 137 m of braking from flat out. The corner planner's horizon is not fixed: it looks as far ahead as the bike could need to brake from its current speed plus about three seconds of reaction, because a horizon that suits a B road is far too short on a road where you cover it in under a second. Long unfenced stretches mean sheep graze up to the verge and a crosswind pushes the bike across its lane on the exposed tops. Overtaking is the main event: a lorry takes real commitment to pass, and the sightlines are long enough that the decision is about closing speed rather than blind faith.
 

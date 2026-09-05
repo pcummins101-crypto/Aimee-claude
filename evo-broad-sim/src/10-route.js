@@ -129,7 +129,11 @@ const JUNCTIONS = ROUTE.junctions.map((j) => {
 // Side road centreline point at distance t from the main road edge, offset e (left of side-road travel).
 function sidePoint(j, t, e = 0, out = new THREE.Vector3()) {
   const lx = j.dz, lz = -j.dx; // left normal of side road direction
-  const y = lerp(j.y, terrainBase(j.x + j.dx * t, j.z + j.dz * t) * 0.85 + 0.6, smoothstep(14, 46, t)) - 0.012 * Math.abs(e);
+  // A coned-off stub falls away towards the land, but never off a cliff: on a
+  // road that rides high above its terrain the raw height is metres below.
+  const raw = terrainBase(j.x + j.dx * t, j.z + j.dz * t) * 0.85 + 0.6;
+  const target = j.y + clamp(raw - j.y, -5, 5);
+  const y = lerp(j.y, target, smoothstep(14, 46, t)) - 0.012 * Math.abs(e);
   out.set(j.x + j.dx * t + lx * e, y, j.z + j.dz * t + lz * e);
   return out;
 }
@@ -159,13 +163,22 @@ for (let i = 0; i < R.n; i += 1) {
 function nearest(x, z) {
   const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
   let bestI = -1, bestD = Infinity;
-  for (let a = -1; a <= 1; a += 1) for (let b = -1; b <= 1; b += 1) {
-    const list = grid.get(`${cx + a},${cz + b}`);
-    if (!list) continue;
-    for (const i of list) {
-      const dx = x - R.px[i], dz = z - R.pz[i], d2 = dx * dx + dz * dz;
-      if (d2 < bestD) { bestD = d2; bestI = i; }
+  const sweep = (r) => {
+    for (let a = -r; a <= r; a += 1) for (let b = -r; b <= r; b += 1) {
+      if (Math.max(Math.abs(a), Math.abs(b)) !== r) continue; // only the new ring
+      const list = grid.get(`${cx + a},${cz + b}`);
+      if (!list) continue;
+      for (const i of list) {
+        const dx = x - R.px[i], dz = z - R.pz[i], d2 = dx * dx + dz * dz;
+        if (d2 < bestD) { bestD = d2; bestI = i; }
+      }
     }
+  };
+  // Widen the sweep until the answer is certainly inside it: a ring of r cells
+  // guarantees everything within (r-1)*CELL, so a nearer hit ends the search.
+  for (let r = 0; r <= 4; r += 1) {
+    sweep(r);
+    if (bestI >= 0 && bestD <= (r * CELL) * (r * CELL)) break;
   }
   if (bestI < 0) return null;
   const dx = x - R.px[bestI], dz = z - R.pz[bestI];
@@ -175,12 +188,17 @@ function nearest(x, z) {
 }
 
 /* Terrain height with the road corridor flattened into it. */
+// How far the land is held to the road's own height before reverting to the
+// raw terrain. A lane through pasture sits in a narrow corridor; a moor road
+// runs along a broad shelf, and without one the ground falls away in sight of
+// the verge wherever the road climbs.
+const CORRIDOR = ROUTE.corridor || { inner: 6, outer: 30, reach: 36 };
 function terrainHeight(x, z) {
   const base = terrainBase(x, z) * 0.85 + 0.6;
   const near = nearest(x, z);
   let h = base;
-  if (near && near.dist < 36) {
-    const w = smoothstep(6, 30, near.dist);
+  if (near && near.dist < CORRIDOR.reach) {
+    const w = smoothstep(CORRIDOR.inner, CORRIDOR.outer, near.dist);
     h = lerp(near.y - 0.9, base, w);
   }
   const side = sideInfluence(x, z);

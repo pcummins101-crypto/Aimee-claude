@@ -148,7 +148,7 @@ E.buildWorld=function(renderer,quality){
   const at=(s,d,y=0)=>{const g=w.groundAt(s,d);return new THREE.Vector3(g.x,g.y+y,g.z);};
   const road=(s,d,y=.012)=>R.point(s,d,y,new THREE.Vector3());
   // Sample the triangulated verge, not just its underlying height function.
-  const vergeOffsets=[R.LANE_HALF+0.02,R.LANE_HALF+0.5,R.LANE_HALF+1.2,R.LANE_HALF+2,R.LANE_HALF+3,R.LANE_HALF+4.5,9.5,12,16,22,30];
+  const vergeOffsets=w.vergeOffsets;   // the same offsets the verge mesh was built from
   function renderedGround(s,d,raised=0){
     if(Math.abs(d)<=R.ROAD_HALF)return road(s,d,raised);
     const ad=Math.abs(d),side=Math.sign(d),g=w.groundAt(s,d);
@@ -676,6 +676,221 @@ if (P.summit) {
   }
 }
 
+  /* ------------------------------------------------------- moorland cover */
+  // A moor is not empty, it is deep in low scrub: heather, bilberry, rush and
+  // bracken over gritstone, with the odd gorse and a lot of loose rock. All of
+  // it is instanced and distance-culled, so the count can be large.
+  if (S.heather) {
+    const UPV = new THREE.Vector3(0, 1, 0);
+    const spot = (s, d) => {
+      const ad = Math.abs(d);
+      if (ad < 30) return renderedGround(s, d, 0);
+      const f = { ...R.frame(s) };
+      const x = f.x + f.nx * d, z = f.z + f.nz * d;
+      return new THREE.Vector3(x, R.terrainHeight(x, z), z);
+    };
+    // scatter along the road, biased towards the near ground where it is seen
+    const scatter = (count, minD, maxD, keep) => {
+      const out = [];
+      for (let i = 0; i < count; i += 1) {
+        const s = rnd() * LEN, side = rnd() < 0.5 ? 1 : -1;
+        const d = side * (minD + Math.pow(rnd(), 0.7) * (maxD - minD));
+        const g = spot(s, d);
+        const near = R.nearest(g.x, g.z);
+        if (near && near.dist < 4.7) continue;
+        if (R.clearance(s, side) && Math.abs(d) < 12) continue;
+        if (keep && !keep(s, d, g)) continue;
+        out.push({ g, s, d });
+      }
+      return out;
+    };
+    const build = (name, geo, mat, list, distance, place, shadow) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+      list.forEach((p, k) => {
+        const t = place(p, pos, sc, col);
+        q.setFromAxisAngle(UPV, rnd() * Math.PI * 2);
+        m.compose(pos, q, sc); im.setMatrixAt(k, m);
+        if (t) im.setColorAt(k, col);
+      });
+      im.name = name; im.castShadow = !!shadow; im.receiveShadow = true;
+      im.userData.detailDistance = distance * (quality.coarse ? 0.72 : 1);
+      im.computeBoundingSphere(); im.computeBoundingBox();
+      scene.add(im);
+    };
+
+    // heather: a low woody mat, purple where it is in flower. Drawn as crossed
+    // cards like the rest of the foliage here; a solid dome reads as origami.
+    const heatherTex = canvasTexture(256, 256, (c, W, H) => {
+      const r = E.rng(6021); c.clearRect(0, 0, W, H);
+      for (let k = 0; k < 1400; k += 1) {
+        const x = r() * W, y = H - Math.pow(r(), 0.7) * H * 0.92;
+        const t = r();
+        c.fillStyle = t < 0.34 ? `rgba(${74 + r() * 26},${52 + r() * 20},${80 + r() * 30},0.95)`
+          : t < 0.68 ? `rgba(${58 + r() * 22},${58 + r() * 20},${34 + r() * 16},0.95)`
+            : `rgba(${44 + r() * 18},${52 + r() * 18},${28 + r() * 14},0.95)`;
+        c.beginPath(); c.ellipse(x, y, 1.6 + r() * 3.4, 1.2 + r() * 2.6, r() * 3, 0, 7); c.fill();
+      }
+      // a few woody stems showing through at the base
+      c.strokeStyle = 'rgba(58,44,32,0.7)'; c.lineWidth = 1.6;
+      for (let k = 0; k < 40; k += 1) { const x = r() * W; c.beginPath(); c.moveTo(x, H); c.lineTo(x + (r() - 0.5) * 18, H - 20 - r() * 30); c.stroke(); }
+    });
+    const heatherGeo = plantGeo;
+    const heatherMat = material('heather', 0xffffff, { map: heatherTex, alphaTest: 0.38, side: THREE.DoubleSide, roughness: 1 });
+    E.addFoliageFill(heatherMat, 0.1);
+    build('heather', heatherGeo, heatherMat,
+      scatter(quality.coarse ? 7000 : 12000, 4.2, 15)
+        .concat(scatter(quality.coarse ? 11000 : 18000, 12, 55))
+        .concat(scatter(quality.coarse ? 2600 : 4200, 55, 150)), 108,
+      (p, pos, sc, col) => {
+        const w = 0.62 + rnd() * 0.7;
+        pos.set(p.g.x, p.g.y - 0.03, p.g.z); sc.set(w, w * (0.34 + rnd() * 0.16), w);
+        const flower = EVO.fbm(p.g.x / 90 + 4, p.g.z / 90 - 2, 2);
+        const purple = smoothstep(0.52, 0.74, flower) * (0.5 + rnd() * 0.5);
+        col.setRGB(0.58 + purple * 0.34, 0.58 - purple * 0.06, 0.48 + purple * 0.30);
+        return true;
+      }, false);
+
+    // rush and moor grass tussocks in the wetter hollows
+    const rushTex = canvasTexture(128, 256, (c, W, H) => {
+      const r = E.rng(6199); c.clearRect(0, 0, W, H);
+      for (let k = 0; k < 90; k += 1) {
+        const x0 = 20 + r() * (W - 40), lean = (r() - 0.5) * 54, top = 20 + r() * 130;
+        const g = c.createLinearGradient(0, H, 0, top);
+        g.addColorStop(0, '#4c4a2c'); g.addColorStop(0.6, '#77713f'); g.addColorStop(1, '#a39a63');
+        c.strokeStyle = g; c.lineWidth = 1.4 + r() * 2;
+        c.beginPath(); c.moveTo(x0, H); c.quadraticCurveTo(x0 + lean * 0.4, (H + top) * 0.5, x0 + lean, top); c.stroke();
+      }
+    });
+    const rushGeo = plantGeo;
+    const rushMat = material('rush tussocks', 0xffffff, { map: rushTex, alphaTest: 0.36, side: THREE.DoubleSide, roughness: 1 });
+    E.addFoliageFill(rushMat, 0.1);
+    build('rush tussocks', rushGeo, rushMat,
+      scatter(quality.coarse ? 3200 : 5500, 4.2, 14)
+        .concat(scatter(quality.coarse ? 4200 : 7000, 14, 46)), 88,
+      (p, pos, sc, col) => {
+        const w = 0.34 + rnd() * 0.3;
+        pos.set(p.g.x, p.g.y - 0.02, p.g.z); sc.set(w, w * (1.05 + rnd() * 0.5), w);
+        const wet = EVO.fbm(p.g.x / 70 - 6, p.g.z / 70 + 3, 2);
+        col.setRGB(0.40 + wet * 0.22, 0.38 + wet * 0.20, 0.26 + wet * 0.12);
+        return true;
+      }, false);
+
+    // gorse: bigger, darker, spiny, in flower most of the year
+    const gorseGeo = new THREE.IcosahedronGeometry(1, 0);
+    const gorseMat = material('gorse', 0xffffff, { roughness: 0.95 });
+    build('gorse', gorseGeo, gorseMat, scatter(quality.coarse ? 550 : 950, 6, 155), 215,
+      (p, pos, sc, col) => {
+        const w = 0.45 + rnd() * 0.5;
+        pos.set(p.g.x, p.g.y + w * 0.34, p.g.z); sc.set(w, w * (0.72 + rnd() * 0.3), w * (0.85 + rnd() * 0.3));
+        const bloom = rnd() * rnd();
+        col.setRGB(0.030 + bloom * 0.16, 0.045 + bloom * 0.13, 0.016);
+        return true;
+      }, true);
+
+    // gritstone: loose boulders and the odd small outcrop
+    const rockGeo = new THREE.IcosahedronGeometry(1, 0);
+    const rockMat = material('gritstone', 0xffffff, { map: mineralMap, roughness: 1 });
+    build('gritstone', rockGeo, rockMat, scatter(quality.coarse ? 1300 : 2300, 5, 165), 245,
+      (p, pos, sc, col) => {
+        const w = 0.18 + Math.pow(rnd(), 2.6) * 1.1;
+        pos.set(p.g.x, p.g.y + w * 0.34, p.g.z); sc.set(w, w * (0.5 + rnd() * 0.45), w * (0.75 + rnd() * 0.5));
+        const t = 0.13 + rnd() * 0.09;
+        col.setRGB(t, t * 0.97, t * 0.90);
+        return true;
+      }, true);
+
+    // bracken: big swathes on the sheltered slopes, as cards
+    const brackenTex = canvasTexture(256, 256, (c, W, H) => {
+      const r = E.rng(3311); c.clearRect(0, 0, W, H);
+      for (let k = 0; k < 9; k += 1) {
+        const ang = -2.9 + k * 0.31 + (r() - 0.5) * 0.2, len = 95 + r() * 120, ox = 128 + (r() - 0.5) * 40, oy = 250;
+        const dx = Math.cos(ang), dy = Math.sin(ang);
+        c.strokeStyle = '#6d6a33'; c.lineWidth = 2.4;
+        c.beginPath(); c.moveTo(ox, oy); c.lineTo(ox + dx * len, oy + dy * len); c.stroke();
+        for (let j = 2; j < 14; j += 1) {
+          const t = j / 15, cx = ox + dx * len * t, cy = oy + dy * len * (1.5 * t - 0.5 * t * t), size = (1 - t) * 20 + 3;
+          for (const side of [-1, 1]) {
+            const px = -dy * side, py = dx * side;
+            c.fillStyle = `rgb(${96 + r() * 42},${92 + r() * 34},${38 + r() * 20})`;
+            c.beginPath(); c.moveTo(cx, cy);
+            c.quadraticCurveTo(cx + px * size * 0.6 - dx * size * 0.3, cy + py * size * 0.6 - dy * size * 0.3, cx + px * size + dx * 5, cy + py * size + dy * 5);
+            c.quadraticCurveTo(cx + px * size * 0.5 + dx * size * 0.3, cy + py * size * 0.5 + dy * size * 0.3, cx, cy);
+            c.fill();
+          }
+        }
+      }
+    });
+    const brackenMat = material('bracken', 0xc6c0a4, { map: brackenTex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 });
+    E.addFoliageFill(brackenMat, 0.14);
+    brackenMat.userData.noShadow = true;
+    const brackenGeo = new THREE.PlaneGeometry(1, 0.85); brackenGeo.translate(0, 0.425, 0);
+    // bracken likes shelter, so keep it off the most exposed ground
+    build('bracken', brackenGeo, brackenMat, scatter(quality.coarse ? 1800 : 3200, 5, 105,
+      (s, d, g) => R.frame(s).y - g.y > 0.6 || rnd() < 0.3), 140,
+      (p, pos, sc) => { const w = 1.0 + rnd() * 0.9; pos.copy(p.g); sc.set(w, w * (0.85 + rnd() * 0.4), w); return false; }, false);
+  }
+
+  /* -------------------------------------------------- moorland landmarks */
+  if (S.heather) {
+    const turf = material('turf butt', 0x6b6844, { map: mineralMap, roughness: 1 });
+    // A line of grouse butts stepping up the hill, as every managed moor has.
+    for (const [t, side] of [[0.235, 1], [0.68, -1]]) {
+      const s0 = t * LEN, f = { ...R.frame(s0) };
+      const bx = f.x + f.nx * side * 60, bz = f.z + f.nz * side * 60;
+      const ang = Math.atan2(f.nx * side, f.nz * side);
+      for (let k = 0; k < 8; k += 1) {
+        const x = bx + Math.cos(ang) * k * 34 + (rnd() - 0.5) * 8, z = bz + Math.sin(ang) * k * 34 + (rnd() - 0.5) * 8;
+        const y = R.terrainHeight(x, z);
+        box(turf, x, y + 0.42, z, 2.3, 0.9, 1.7, ang + (rnd() - 0.5) * 0.3);
+        box(stone, x, y + 0.9, z, 2.1, 0.16, 1.5, ang);
+      }
+    }
+    // A sheepfold: a stone enclosure with a gap for a gate.
+    for (const [t, side] of [[0.4, -1], [0.83, 1]]) {
+      const s0 = t * LEN, f = { ...R.frame(s0) };
+      const cx = f.x + f.nx * side * 74, cz = f.z + f.nz * side * 74;
+      const yaw = rnd() * Math.PI, W = 11, D = 9;
+      for (const [ox, oz, sx, sz] of [[0, -D / 2, W, 0.6], [0, D / 2, W * 0.62, 0.6], [-W / 2, 0, 0.6, D], [W / 2, 0, 0.6, D]]) {
+        const rx = cx + Math.cos(yaw) * ox - Math.sin(yaw) * oz, rz = cz + Math.sin(yaw) * ox + Math.cos(yaw) * oz;
+        const y = R.terrainHeight(rx, rz);
+        box(stone, rx, y + 0.62, rz, sx, 1.24, sz, yaw);
+      }
+    }
+    // Field barns standing alone in the walled fields.
+    for (const [t, side, d] of [[0.12, -1, 132], [0.47, 1, 104], [0.75, -1, 148]]) {
+      const s0 = t * LEN, f = { ...R.frame(s0) };
+      const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d, y = R.terrainHeight(x, z);
+      const base = new THREE.Matrix4().compose(new THREE.Vector3(x, y - 0.1, z), new THREE.Quaternion().setFromAxisAngle(UP, rnd() * Math.PI), new THREE.Vector3(1, 1, 1));
+      box(stone, 0, 1.7, 0, 7.4, 3.4, 5.2, 0, base);
+      const rg = roofGeo(7.9, 5.7, 3.4, 5.0); batch.add(rg, slate, base); rg.dispose();
+      box(material('barn door', 0x4a4f45), 0, 1.35, 2.66, 2.1, 2.7, 0.09, 0, base);
+      box(dark, 0, 3.05, 2.64, 0.5, 0.5, 0.08, 0, base);
+    }
+    // Becks running under the road, with a stone parapet either side.
+    for (const t of [0.31, 0.585, 0.895]) {
+      const s0 = t * LEN, f = { ...R.frame(s0) };
+      for (const side of [1, -1]) {
+        const p = at(s0, side * (R.LANE_HALF + 1.1), 0.42);
+        box(stone, p.x, p.y, p.z, 0.55, 0.85, 4.6, f.heading);
+        box(material('parapet coping', 0xa8a498, { map: mineralMap, roughness: 1 }), p.x, p.y + 0.5, p.z, 0.72, 0.16, 4.8, f.heading);
+      }
+      // the water itself, a dark ribbon dropping away from the road
+      const water = material('beck', 0x394a4c, { roughness: 0.12, metalness: 0.1 });
+      for (const side of [1, -1]) for (let k = 1; k < 9; k += 1) {
+        const dd = side * (R.LANE_HALF + 1.6 + k * 3.4);
+        const g = spotBeck(s0, dd);
+        box(water, g.x, g.y + 0.04, g.z, 1.5 + rnd() * 0.8, 0.06, 3.4, f.heading + (rnd() - 0.5) * 0.5);
+      }
+    }
+    function spotBeck(s, d) {
+      const f = { ...R.frame(s) };
+      const x = f.x + f.nx * d, z = f.z + f.nz * d;
+      return { x, y: R.terrainHeight(x, z), z };
+    }
+  }
+
   // Working farm entrances align with real gaps in the boundary, not through a hedge.
   const mudMat=material('muddy gateway',0x635545,{map:patchTex,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
   const rutMat=material('wet mud rut',0x4a4033,{roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
@@ -824,7 +1039,7 @@ if (P.summit) {
       im.name=old.name||'partitioned scenery';im.castShadow=old.castShadow;im.receiveShadow=old.receiveShadow;
       im.customDepthMaterial=old.customDepthMaterial;im.frustumCulled=true;im.userData.partitioned=true;
       indices.forEach((i,j)=>{old.getMatrixAt(i,mat);im.setMatrixAt(j,mat);if(old.instanceColor){old.getColorAt(i,col);im.setColorAt(j,col);}});
-      im.computeBoundingSphere();im.computeBoundingBox();im.userData.detailDistance=isGrass?(quality.coarse?65:90):isSmall?(quality.coarse?145:190):isLeaf?(quality.coarse?430:560):470;
+      im.computeBoundingSphere();im.computeBoundingBox();im.userData.detailDistance=old.userData.detailDistance??(isGrass?(quality.coarse?65:90):isSmall?(quality.coarse?145:190):isLeaf?(quality.coarse?430:560):470);
       im.userData.originalShadow=im.castShadow;
       old.parent.add(im);cullables.push(im);
     }

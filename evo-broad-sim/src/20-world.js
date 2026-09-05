@@ -146,7 +146,14 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   /* ------------------------------------------------- verge height model */
-  const PROFILE = [[3.1, -0.06], [3.5, -0.12], [4.2, -0.30], [5.0, -0.06], [6.0, 0.16], [7.5, 0.30], [9.5, 0.36]];
+  // The verge starts at the edge of whatever carriageway this route has, so the
+  // profile and the verge mesh are both measured out from it.
+  const EDGE = RT.LANE_HALF - 3.0;
+  const PROFILE = [[3.1, -0.06], [3.5, -0.12], [4.2, -0.30], [5.0, -0.06], [6.0, 0.16], [7.5, 0.30], [9.5, 0.36]]
+    .map(([d, h]) => [d + (d < 9.5 ? EDGE : 0), h]);
+  // lateral offsets of the verge strip; shared with the detail builder so its
+  // ground lookups sample the same triangles that are actually drawn
+  const VERGE_D = [3.02, 3.5, 4.2, 5.0, 6.0, 7.5, 9.5, 12, 16, 22, 30].map((d) => (d < 9.5 ? d + EDGE : d));
   function profile(d) {
     if (d <= PROFILE[0][0]) return PROFILE[0][1];
     for (let i = 0; i < PROFILE.length - 1; i += 1) {
@@ -210,9 +217,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       const n = EVO.fbm(x / 60 + 7, z / 60, 2), h = EVO.fbm(x / 140 - 3, z / 140 + 5, 2);
       const heath = smoothstep(0.56, 0.74, h);
       return {
-        r: (0.92 + n * 0.22) * (1 + heath * 0.16),
-        g: (0.82 + n * 0.16) * (1 - heath * 0.22),
-        b: (0.62 + n * 0.14) * (1 + heath * 0.5)
+        r: (0.98 + n * 0.24) * (1 + heath * 0.18),
+        g: (0.70 + n * 0.14) * (1 - heath * 0.26),
+        b: (0.52 + n * 0.12) * (1 + heath * 0.62)
       };
     }
     : (x, z) => {
@@ -221,7 +228,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     };
   for (const side of [1, -1]) {
     const sink = new GeoSink();
-    const D = [3.02, 3.5, 4.2, 5.0, 6.0, 7.5, 9.5, 12, 16, 22, 30];
+    const D = VERGE_D;
     const rows = [];
     for (let i = 0; i < RT.R.n; i += 2) {
       const s = i * RT.SAMPLE;
@@ -630,7 +637,27 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const g=groundAt(s+(rnd()-.5)*3,side*(21+rnd()*12));
     placeTree(g.x,g.y-.10,g.z,rnd()<.6?'ash':'oak',.58+rnd()*.40);
   }
-  for (let k = 0, kn = SCENE.trees === 'sparse' ? 60 : 265; k < kn; k += 1) {
+  if (SCENE.cloughTrees) {
+    // Sheltered ground only: rowan, birch and thorn cling to the gills where the
+    // land falls away, and nothing grows on the exposed tops.
+    for (let s = 6; s < L; s += 3.2) {
+      const f = RT.frame(s);
+      for (const side of [1, -1]) {
+        if (RT.inJunctionMouth(s, side, 26) || RT.clearance(s, side)) continue;
+        for (let k = 0; k < 3; k += 1) {
+          const d = side * (9 + rnd() * 52);
+          const x = f.x + f.nx * d, z = f.z + f.nz * d;
+          // shelter: how far this ground sits below the road
+          const drop = f.y - RT.terrainHeight(x, z);
+          if (drop < 2.4 + rnd() * 3) continue;
+          const g = groundAt(s + (rnd() - 0.5) * 3, d);
+          const r = rnd();
+          placeTree(g.x, g.y - 0.18, g.z, r < 0.45 ? 'hawthorn' : r < 0.75 ? 'birch' : 'ash', 0.5 + rnd() * 0.45);
+        }
+      }
+    }
+  }
+  for (let k = 0, kn = SCENE.trees === 'sparse' ? 130 : 265; k < kn; k += 1) {
     const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d = 30 + rnd() * 190;
     const f = RT.frame(s);
     const x = f.x + f.nx * side * d, z = f.z + f.nz * side * d;
@@ -736,7 +763,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     const woolMat = new THREE.MeshStandardMaterial({ color: 0xe4dfd2, roughness: 1 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.95 });
     const flock = [];
-    for (let gI = 0; gI < 34; gI += 1) {
+    for (let gI = 0, gN = Math.round(34 * (SCENE.flock ?? 1)); gI < gN; gI += 1) {
       const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1;
       // on unfenced moor the sheep come right down to the verge
       const openHere = SCENE.heather && RT.boundaryAt(s, side).type === 'open';
@@ -763,19 +790,30 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     wool.castShadow = true; dark.castShadow = true; scene.add(wool, dark);
 
     // dry-stone field walls across the pasture
+    // Enclosure-era field walls: each cluster lays a family of parallel walls
+    // with cross walls between them, which is what makes upland England read as
+    // a patchwork rather than a set of random lines.
     const segs = [];
-    for (let k = 0; k < 24; k += 1) {
-      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d0 = 48 + rnd() * 140;
-      const f = RT.frame(s);
-      const x = f.x + f.nx * side * d0, z = f.z + f.nz * side * d0;
-      const ang = rnd() * Math.PI * 2, dx = Math.cos(ang), dz = Math.sin(ang);
-      const len = 60 + rnd() * 220;
+    const nearRoad = SCENE.heather ? 30 : 46;
+    const run = (x, z, dx, dz, len) => {
       for (let t = 0; t < len; t += 4.2) {
         const px = x + dx * t, pz = z + dz * t;
         const near = RT.nearest(px, pz);
-        if (near && near.dist < 46) break;
-        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -ang });
+        if (near && near.dist < nearRoad) { if (t < 12) return; continue; }
+        segs.push({ x: px, y: RT.terrainHeight(px, pz) - 0.25, z: pz, yaw: -Math.atan2(dz, dx) });
       }
+    };
+    for (let k = 0, kn = Math.round(9 * (SCENE.walls ?? 1)); k < kn; k += 1) {
+      const s = rnd() * L, side = rnd() < 0.5 ? 1 : -1, d0 = (SCENE.heather ? 34 : 48) + rnd() * 150;
+      const f = RT.frame(s);
+      const x0 = f.x + f.nx * side * d0, z0 = f.z + f.nz * side * d0;
+      const ang = rnd() * Math.PI * 2, dx = Math.cos(ang), dz = Math.sin(ang);
+      const px = -dz, pz = dx;                       // across the family
+      const gap = 55 + rnd() * 75, lanes = 2 + Math.floor(rnd() * 3);
+      const len = 110 + rnd() * 220;
+      for (let i = 0; i < lanes; i += 1) run(x0 + px * gap * i, z0 + pz * gap * i, dx, dz, len);
+      // cross walls closing the ends of the strips
+      for (const t of [0, len * (0.45 + rnd() * 0.3), len]) run(x0 + dx * t, z0 + dz * t, px, pz, gap * (lanes - 1));
     }
     const wallGeo = new THREE.BoxGeometry(4.4, 1.1, 0.5); wallGeo.translate(0, 0.55, 0);
     const farWallMat = stoneMat.clone(); farWallMat.vertexColors = false;
@@ -1050,5 +1088,5 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
-  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, get rain() { return rainLevel; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
+  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, vergeOffsets: VERGE_D, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, get rain() { return rainLevel; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
 };

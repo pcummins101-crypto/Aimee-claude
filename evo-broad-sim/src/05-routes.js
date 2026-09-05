@@ -83,7 +83,7 @@ const ROUTES = {
       if (wood) return { name: 'WOODED B-ROAD', note: 'Coarse surface · shaded bends' };
       return { name: 'OPEN PASTURE', note: 'Two-way road · keep left' };
     },
-    scenery: { trees: 'dense', flowers: true, blades: 1, farmsteads: true, fells: true, grass: 0xffffff, fogScale: 1 },
+    scenery: { trees: 'dense', flowers: true, blades: 1, farmsteads: true, fells: true, grass: 0xffffff, fogScale: 1, flock: 1, walls: 1 },
     traffic: { oncoming: 1, same: 1, cruise: 1, hgv: 0 }
   },
 
@@ -101,11 +101,17 @@ const ROUTES = {
     limit: 60,
     wind: 0.55,          // crosswind across the open tops, m/s of lateral drift
     bendThreshold: 1 / 260, // sweepers count as bends on a fast road
-    elevationWeight: 0.8,
-    terrainWeight: 0.7,
-    elevation: [[1, 26, 0.9], [2, 13, 2.4], [3, 6.5, 0.6], [5, 2.8, 1.9], [8, 1.3, 3.1]],
-    terrain: (x, z) => EVO.fbm(x / 640 + 5.5, z / 640 + 2.2, 3) * 46 - 23 +
-      (EVO.fbm(x / 175 - 1.1, z / 175 + 3.3, 3) - 0.5) * 9,
+    // A moor road rides the contours: most of its height comes from the land
+    // itself, with only a modest profile of its own on top. Give it a big
+    // independent profile and it ends up on an invisible embankment.
+    elevationWeight: 0.72,
+    terrainWeight: 0.85,
+    corridor: { inner: 18, outer: 320, reach: 400 },
+    elevation: [[1, 20, 0.9], [2, 10.5, 2.4], [3, 5, 0.6], [5, 2.2, 1.9], [8, 1, 3.1]],
+    // Long-wavelength relief: big swells the road can climb over without the
+    // ground falling away from it within sight of the verge.
+    terrain: (x, z) => EVO.fbm(x / 850 + 5.5, z / 850 + 2.2, 3) * 46 - 23 +
+      (EVO.fbm(x / 420 - 1.1, z / 420 + 3.3, 3) - 0.5) * 6,
     // A big irregular ring: two long straights, fast sweepers between them and
     // one hard left where the road falls off the moor edge.
     spawns: [[0.01, 'Summit straight'], [0.2, 'Eastern flank'], [0.42, 'Off the moor edge'], [0.63, 'The clough'], [0.86, 'Western climb']],
@@ -167,7 +173,7 @@ const ROUTES = {
       if (open) return { name: 'OPEN MOOR', note: 'Unfenced · sheep on the road', warn: true };
       return { name: 'MOOR ROAD', note: 'Two-way road · keep left' };
     },
-    scenery: { trees: 'sparse', flowers: false, blades: 0.55, farmsteads: false, fells: true, heather: true, grass: 0xbdb389, blade: 0x9aa07e, fogScale: 0.62 },
+    scenery: { trees: 'sparse', flowers: false, blades: 0.9, farmsteads: false, fells: true, heather: true, grass: 0xa89a66, blade: 0x8f9469, fogScale: 0.62, flock: 3.4, walls: 6, cloughTrees: true },
     traffic: { oncoming: 1.15, same: 1, cruise: 1.45, hgv: 0.34 }
   }
 };
