@@ -25,13 +25,14 @@ window.addEventListener('unhandledrejection', (e) => setStatus(`Something went w
 /* Corner-speed bar and notices. Green: under the safe speed for the road
  * ahead. Amber: between safe and the tyres' limit; the bike drifts wide and
  * needs holding. Red: over the limit; it will run off. */
-EVO.createHud = function createHud(bike) {
+EVO.createHud = function createHud(bike, score) {
   const bar = document.getElementById('corner-fill'), marker = document.getElementById('corner-marker');
   const safeZone = document.getElementById('corner-safe'), limitZone = document.getElementById('corner-limit');
   const text = document.getElementById('corner-text'), limits = document.getElementById('corner-limits');
   const notice = document.getElementById('notice');
   const mph = (v) => Math.round(v * 2.23694);
-  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '';
+  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '';
+  const scoreEl = document.getElementById('score-value'), scoreMeta = document.getElementById('score-meta'), popEl = document.getElementById('score-pop');
   return {
     update() {
       const region=document.getElementById('place-name'),surface=document.getElementById('surface-info'),limit=document.getElementById('limit-sign');
@@ -57,6 +58,24 @@ EVO.createHud = function createHud(bike) {
       if (l !== lastLimits) { limits.textContent = l; lastLimits = l; }
       const n = bike.notice ? bike.notice.text : '';
       if (n !== lastNotice) { notice.textContent = n; notice.hidden = !n; notice.dataset.tone = bike.notice?.tone || ''; lastNotice = n; }
+      if (score) {
+        const st = score.state;
+        const sc = Math.max(0, Math.round(st.score)).toLocaleString();
+        if (sc !== lastScore) { scoreEl.textContent = sc; lastScore = sc; }
+        const mm = Math.floor(st.lapTime / 60), ss = Math.floor(st.lapTime % 60);
+        const meta = `LAP ${st.lap} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
+        if (meta !== lastMeta) { scoreMeta.textContent = meta; lastMeta = meta; }
+        const p = st.pop;
+        const key = p ? `${p.text}|${p.until}` : '';
+        if (key !== lastPop) {
+          lastPop = key;
+          if (p) {
+            popEl.textContent = p.points ? `${p.points > 0 ? '+' : '−'}${Math.abs(p.points).toLocaleString()}  ${p.text}` : p.text;
+            popEl.dataset.tone = p.tone; popEl.hidden = false;
+            popEl.style.animation = 'none'; void popEl.offsetWidth; popEl.style.animation = '';
+          } else popEl.hidden = true;
+        }
+      }
     }
   };
 };
@@ -75,8 +94,11 @@ function boot() {
     app.bike.s=Number(document.getElementById('spawn').value)||180;
     app.bike.d=1.5;app.bike.v=0;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
     app.bike.motionScale=document.getElementById('comfort').checked?.45:1;
-    app.trafficEnabled=document.getElementById('traffic-toggle').checked;
-    for(const car of app.traffic.cars){car.mesh.visible=app.trafficEnabled;car.lastRel=null;}
+    const trafficMode=document.getElementById('traffic')?.value||'both';
+    app.trafficEnabled=trafficMode!=='none';
+    app.traffic.setMode(trafficMode==='none'?'both':trafficMode);
+    for(const car of app.traffic.cars){car.mesh.visible=app.trafficEnabled&&car.mesh.visible;car.lastRel=null;}
+    app.score.reset();
     const mode=document.getElementById('quality').value;
     const balanced=mode==='balanced'||(mode==='auto'&&app.quality.coarse);
     app.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,balanced?1.25:1.75));
@@ -176,10 +198,12 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, same: quality.coarse ? 2 : 3, envMap: EVO.envMap });
+  const score = EVO.createScore(bike, traffic);
+  const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);
   if(EVO.envMap&&world.materials.detail){for(const mat of Object.values(world.materials.detail)){if(mat.name.includes('reflections')){mat.envMap=EVO.envMap;mat.envMapIntensity=mat.name.includes('puddle')?1.3:.28;mat.needsUpdate=true;}}}
-  const hud = EVO.createHud(bike);
+  const hud = EVO.createHud(bike, score);
   lap('traffic');
   EVO.timings = timings;
 
@@ -235,11 +259,14 @@ function buildApp() {
     let steps = 0;
     while (acc >= STEP && steps < 32) {
       bike.step(STEP);
+      let events = null;
       if(EVO.app?.trafficEnabled){
-        const events=traffic.update(STEP);
-        if(events.collision&&bike.crashTimer<=0){bike.crash('COLLISION · ONCOMING CAR');audio.thump();}
+        events=traffic.update(STEP);
+        if(events.collision&&bike.crashTimer<=0){bike.crash(events.collision.reason);audio.thump();}
         if(events.passBy)audio.passBy(events.passBy.closing,events.passBy.gap);
+        if(events.overtake)audio.passBy(Math.max(6, events.overtake.closing * 2), events.overtake.gap + 0.6);
       }
+      score.update(STEP, events);
       acc-=STEP;steps++;
     }
     hud.update();
@@ -247,6 +274,7 @@ function buildApp() {
     bike.applyCamera(camera, portrait);
     bikePos.copy(bike.pos);
     world.update(now / 1000, bikePos, bike.forward);
+    rain.update(camera.position, bike.forward, bike.v, now / 1000, world.rain);
     audio.update(bike);
     renderer.shadowMap.needsUpdate=true;
     if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000, projectSun()); }
@@ -265,10 +293,12 @@ function buildApp() {
   function setLighting(name) {
     const P = world.setLighting(name);
     post?.setExposure(P.exposure);
+    post?.setRain(P.rain || 0);
+    audio.setRain(P.rain || 0);
     refreshEnvMap();
     return P;
   }
-  EVO.app = { running:false,paused:false,trafficEnabled:true,renderer, world, camera, bike, controls, audio, quality, traffic, post, setLighting, get cockpit() { return cockpit; } };
+  EVO.app = { running:false,paused:false,trafficEnabled:true,renderer, world, camera, bike, controls, audio, quality, traffic, score, rain, post, setLighting, get cockpit() { return cockpit; } };
   return EVO.app;
 }
 

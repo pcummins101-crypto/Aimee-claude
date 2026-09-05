@@ -165,7 +165,7 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
 
 /* ---------------------------------------------------------------- audio */
 EVO.createAudio = function createAudio() {
-  let ctx = null, nodes = null, muted=false;
+  let ctx = null, nodes = null, muted=false, rainLevel = 0;
   function start() {
     if (ctx) { ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -197,8 +197,13 @@ EVO.createAudio = function createAudio() {
     const amb = ctx.createBiquadFilter(); amb.type = 'bandpass'; amb.frequency.value = 3200; amb.Q.value = 4;
     const ambGain = ctx.createGain(); ambGain.gain.value = 0.012;
     noise.connect(amb).connect(ambGain).connect(master);
+    // rain: broadband hiss with the bass rolled off, plus spray under the tyres
+    const rain = ctx.createBiquadFilter(); rain.type = 'highpass'; rain.frequency.value = 1400;
+    const rainGain = ctx.createGain(); rainGain.gain.value = 0;
+    noise.connect(rain).connect(rainGain).connect(master);
     whine.start(); whine2.start(); noise.start();
-    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain, noiseBuffer: buf };
+    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain, rainGain, noiseBuffer: buf };
+    if (rainLevel) setRain(rainLevel);
   }
   function update(bike) {
     if (!ctx || !nodes) return;
@@ -210,11 +215,12 @@ EVO.createAudio = function createAudio() {
     nodes.whineGain.gain.setTargetAtTime(0.01 + n * 0.05 + bike.input.throttle * 0.04 * Math.min(1, v / 4 + 0.2), t, 0.06);
     nodes.wind.frequency.setTargetAtTime(380 + n * n * 1400, t, 0.1);
     nodes.windGain.gain.setTargetAtTime(n * n * 0.85, t, 0.1);
-    nodes.tyreGain.gain.setTargetAtTime(n * (0.26+bike.surfaceRoughness*.23), t, 0.08);
+    nodes.tyreGain.gain.setTargetAtTime(n * (0.26+bike.surfaceRoughness*.23 + rainLevel * 0.3), t, 0.08);
     nodes.tyre.frequency.setTargetAtTime(260+bike.surfaceRoughness*410+n*160,t,.08);
     nodes.rumbleGain.gain.setTargetAtTime(bike.rumble * 0.9, t, 0.05);
   }
   function setMuted(m) { muted=m; if (nodes) nodes.master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
+  function setRain(level) { rainLevel = level; if (nodes) nodes.rainGain.gain.setTargetAtTime(level * 0.3, ctx.currentTime, 0.4); }
   // Oncoming car pass-by: a short noise swell with a falling Doppler sweep.
   function passBy(closingSpeed = 30, gap = 2) {
     if (!ctx || !nodes) return;
@@ -236,5 +242,5 @@ EVO.createAudio = function createAudio() {
     const g = ctx.createGain(); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
     src.connect(lp).connect(g).connect(nodes.master); src.start(t); src.stop(t + 0.7);
   }
-  return { start, update, setMuted, passBy, thump };
+  return { start, update, setMuted, setRain, passBy, thump };
 };

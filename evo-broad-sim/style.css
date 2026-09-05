@@ -62,3 +62,14 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
 #pause { z-index:4; } #hud .notice { max-width:85vw;white-space:normal;text-align:center; }
 @media(max-width:600px){#road-info{top:70px;max-width:178px;}#road-info strong{font-size:9px;}#hud .corner{left:14px;top:34px;transform:none;width:calc(100vw - 28px);}#start .panel{padding:20px;}#start .controls{font-size:11px;}}
 @media(max-height:480px){#start .panel{max-height:calc(100dvh - 18px);}.ride-options{gap:6px;margin-bottom:10px;}.ride-options select{padding:5px;}#start .safety{margin-top:9px;}#road-info{top:48px;}}
+
+/* ------------------------------------------------------------- scoring */
+#hud .score { position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 45px)); right: max(14px, env(safe-area-inset-right)); text-align: right; pointer-events: none; }
+#hud .score span { display: block; font: 800 30px/1 "Barlow Condensed", "Arial Narrow", Arial, sans-serif; letter-spacing: .04em; color: #fff; text-shadow: 0 1px 6px #000; font-variant-numeric: tabular-nums; }
+#hud .score small { display: block; margin-top: 3px; font: 600 10px/1.3 Arial, sans-serif; letter-spacing: .12em; color: #b9c6c8; text-shadow: 0 1px 4px #000; }
+#hud .score-pop { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); padding: 6px 14px; font: 800 clamp(15px, 2.6vw, 24px)/1.2 "Barlow Condensed", "Arial Narrow", Arial, sans-serif; letter-spacing: .12em; color: #fff; background: rgba(6,10,14,.5); border-radius: 4px; text-shadow: 0 1px 6px #000; white-space: nowrap; pointer-events: none; animation: pop 1.8s ease-out forwards; }
+#hud .score-pop[data-tone="good"] { color: #7be3a0; }
+#hud .score-pop[data-tone="bad"] { color: #ff7c86; }
+#hud .score-pop[data-tone="best"] { color: #ffd76a; font-size: clamp(20px, 3.4vw, 32px); }
+@keyframes pop { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.04); } 70% { opacity: 1; transform: translate(-50%, -6px) scale(1); } 100% { opacity: 0; transform: translate(-50%, -18px) scale(1); } }
+@media (max-width: 600px) { #hud .score { top: 70px; } #hud .score span { font-size: 22px; } }

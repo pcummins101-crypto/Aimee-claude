@@ -22,6 +22,8 @@
       <div class="label"><span id="corner-text">OPEN ROAD</span><span id="corner-limits">SAFE 109 · MAX 109 MPH</span></div>
     </div>
     <div id="notice" class="notice" hidden></div>
+    <div id="score" class="score"><span id="score-value">0</span><small id="score-meta">LAP 1 · 0:00 · BEST 0</small></div>
+    <div id="score-pop" class="score-pop" hidden></div>
     <div class="zones" aria-hidden="true"><span class="zone brake">BRAKE</span><span class="zone throttle">THROTTLE</span></div>
   </div>
   <div id="start">
@@ -34,12 +36,13 @@
         <li><b>Throttle</b> hold the bottom-right of the screen, or ↑ / W</li>
         <li><b>Brake</b> hold the bottom-left of the screen, or ↓ / S / Space</li>
         <li><b>Road</b> slow for bends and village humps; R resets you in your lane, P pauses the ride</li>
+        <li><b>Score</b> pace while the bar is green, clean bends chain a multiplier, a clean overtake is +150; passing blind or into oncoming, speeding in the village, humps hit hard and crashes all cost. Your best lap is kept</li>
       </ul>
       <div class="ride-options">
         <label>START LOCATION<select id="spawn"><option value="180">Woodland approach</option><option value="339">Village &amp; humps</option><option value="800">Open pasture</option><option value="1030">Wooded bends</option></select></label>
-        <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option></select></label>
+        <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option><option value="rain">Rain</option></select></label>
         <label>DETAIL<select id="quality"><option value="auto">Auto</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
-        <label class="check"><input id="traffic-toggle" type="checkbox" checked> Light oncoming traffic</label>
+        <label>TRAFFIC<select id="traffic"><option value="both">Both directions</option><option value="oncoming">Oncoming only</option><option value="none">Empty road</option></select></label>
         <label class="check"><input id="comfort" type="checkbox"> Reduced camera movement</label>
       </div>
       <div class="actions">

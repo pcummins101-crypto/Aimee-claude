@@ -28,7 +28,8 @@ const LOOKAHEAD = 170, LOOK_STEP = 4;
 const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
 
 EVO.V_MAX = V_MAX;
-EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * radius)), max: Math.min(V_MAX, Math.sqrt(A_LAT_MAX * radius)) });
+EVO.grip = 1; // scaled down by the weather; 1 is dry tarmac
+EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * EVO.grip * radius)), max: Math.min(V_MAX, Math.sqrt(A_LAT_MAX * EVO.grip * radius)) });
 
 EVO.createBike = function createBike() {
   const bike = {
@@ -122,8 +123,9 @@ EVO.createBike = function createBike() {
     const latAcc = bike.v * bike.v * Math.abs(kappa);
     bike.corner.latAcc = latAcc;
     let drift = 0;
-    if (latAcc > A_LAT_SAFE) {
-      const over = (latAcc - A_LAT_SAFE) / (A_LAT_MAX - A_LAT_SAFE);
+    const gripSafe = A_LAT_SAFE * EVO.grip, gripMax = A_LAT_MAX * EVO.grip;
+    if (latAcc > gripSafe) {
+      const over = (latAcc - gripSafe) / (gripMax - gripSafe);
       drift = over < 1 ? over * over * 0.45 : 0.45 + (over - 1) * 5.5;
       bike.d -= Math.sign(kappa) * drift * dt; // outside of the bend
       if (over >= 1 && !crashed && !(bike.notice && bike.notice.tone === 'over')) bike.say('TOO FAST · RUNNING WIDE', 1.2, 'over');

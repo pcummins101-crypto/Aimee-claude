@@ -71,6 +71,17 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
 @media(max-width:600px){#road-info{top:70px;max-width:178px;}#road-info strong{font-size:9px;}#hud .corner{left:14px;top:34px;transform:none;width:calc(100vw - 28px);}#start .panel{padding:20px;}#start .controls{font-size:11px;}}
 @media(max-height:480px){#start .panel{max-height:calc(100dvh - 18px);}.ride-options{gap:6px;margin-bottom:10px;}.ride-options select{padding:5px;}#start .safety{margin-top:9px;}#road-info{top:48px;}}
 
+/* ------------------------------------------------------------- scoring */
+#hud .score { position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 45px)); right: max(14px, env(safe-area-inset-right)); text-align: right; pointer-events: none; }
+#hud .score span { display: block; font: 800 30px/1 "Barlow Condensed", "Arial Narrow", Arial, sans-serif; letter-spacing: .04em; color: #fff; text-shadow: 0 1px 6px #000; font-variant-numeric: tabular-nums; }
+#hud .score small { display: block; margin-top: 3px; font: 600 10px/1.3 Arial, sans-serif; letter-spacing: .12em; color: #b9c6c8; text-shadow: 0 1px 4px #000; }
+#hud .score-pop { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); padding: 6px 14px; font: 800 clamp(15px, 2.6vw, 24px)/1.2 "Barlow Condensed", "Arial Narrow", Arial, sans-serif; letter-spacing: .12em; color: #fff; background: rgba(6,10,14,.5); border-radius: 4px; text-shadow: 0 1px 6px #000; white-space: nowrap; pointer-events: none; animation: pop 1.8s ease-out forwards; }
+#hud .score-pop[data-tone="good"] { color: #7be3a0; }
+#hud .score-pop[data-tone="bad"] { color: #ff7c86; }
+#hud .score-pop[data-tone="best"] { color: #ffd76a; font-size: clamp(20px, 3.4vw, 32px); }
+@keyframes pop { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.04); } 70% { opacity: 1; transform: translate(-50%, -6px) scale(1); } 100% { opacity: 0; transform: translate(-50%, -18px) scale(1); } }
+@media (max-width: 600px) { #hud .score { top: 70px; } #hud .score span { font-size: 22px; } }
+
 </style>
 </head>
 <body>
@@ -87,6 +98,8 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
       <div class="label"><span id="corner-text">OPEN ROAD</span><span id="corner-limits">SAFE 109 · MAX 109 MPH</span></div>
     </div>
     <div id="notice" class="notice" hidden></div>
+    <div id="score" class="score"><span id="score-value">0</span><small id="score-meta">LAP 1 · 0:00 · BEST 0</small></div>
+    <div id="score-pop" class="score-pop" hidden></div>
     <div class="zones" aria-hidden="true"><span class="zone brake">BRAKE</span><span class="zone throttle">THROTTLE</span></div>
   </div>
   <div id="start">
@@ -99,12 +112,13 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
         <li><b>Throttle</b> hold the bottom-right of the screen, or ↑ / W</li>
         <li><b>Brake</b> hold the bottom-left of the screen, or ↓ / S / Space</li>
         <li><b>Road</b> slow for bends and village humps; R resets you in your lane, P pauses the ride</li>
+        <li><b>Score</b> pace while the bar is green, clean bends chain a multiplier, a clean overtake is +150; passing blind or into oncoming, speeding in the village, humps hit hard and crashes all cost. Your best lap is kept</li>
       </ul>
       <div class="ride-options">
         <label>START LOCATION<select id="spawn"><option value="180">Woodland approach</option><option value="339">Village &amp; humps</option><option value="800">Open pasture</option><option value="1030">Wooded bends</option></select></label>
-        <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option></select></label>
+        <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option><option value="rain">Rain</option></select></label>
         <label>DETAIL<select id="quality"><option value="auto">Auto</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
-        <label class="check"><input id="traffic-toggle" type="checkbox" checked> Light oncoming traffic</label>
+        <label>TRAFFIC<select id="traffic"><option value="both">Both directions</option><option value="oncoming">Oncoming only</option><option value="none">Empty road</option></select></label>
         <label class="check"><input id="comfort" type="checkbox"> Reduced camera movement</label>
       </div>
       <div class="actions">
@@ -2285,9 +2299,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.9, hemi: [0xb3a6be, 0x6a5641, 2.2], ambient: 0.18, fog: [0xd2b89c, 0.00075],
       zenith: [0.10, 0.16, 0.42], horizon: [0.66, 0.44, 0.28], glow: 1.0, disc: 20, cover: 0.04, cloud: [[0.44, 0.32, 0.37], [1.0, 0.80, 0.60]], wet: 0.15, radius: 2, exposure: 1.5 },
     overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.75, hemi: [0xc3cad2, 0x6b7064, 2.4], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
-      zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 }
+      zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 },
+    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 2.15], ambient: 0.14, fog: [0x8f989f, 0.0024],
+      zenith: [0.24, 0.27, 0.32], horizon: [0.40, 0.43, 0.46], glow: 0.03, disc: 0, cover: 0.5, cloud: [[0.24, 0.26, 0.29], [0.48, 0.50, 0.52]], wet: 1, radius: 9, exposure: 1.25, rain: 1 }
   };
-  let lightingName = 'noon';
+  let lightingName = 'noon', rainLevel = 0;
   function setLighting(name) {
     const P = PRESETS[name] || PRESETS.noon;
     lightingName = PRESETS[name] ? name : 'noon';
@@ -2300,8 +2316,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
     // wet tarmac: smoother, and it mirrors the sky
-    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 1.2;
+    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 0.85;
     for (const m of [grassMat, hedgeMat]) m.color.setScalar(1 - P.wet * 0.12);
+    // wet tarmac has less to offer the tyres: the corner speeds and the planner follow
+    EVO.grip = 1 - (P.rain || 0) * 0.24 - (P.wet || 0) * 0.04;
+    rainLevel = P.rain || 0;
     return P;
   }
 
@@ -2319,7 +2338,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
-  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
+  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, get rain() { return rainLevel; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
 };
 
 }
@@ -3233,6 +3252,76 @@ E.buildWorld=function(renderer,quality){
 
 }
 
+/* ---- 28-rain.js ---- */
+{
+
+/*
+ * AVENRÀ EVO · B-ROAD — rain.
+ *
+ * Streaks live entirely in the vertex shader: each drop is a seed that falls
+ * through a box wrapped around the rider, so the CPU never touches a vertex.
+ * The streak is the drop's motion relative to the moving rider, which is why
+ * the rain leans into you as you accelerate.
+ */
+const EVO = window.EVO;
+
+EVO.createRain = function createRain(scene, quality) {
+  const N = quality.coarse ? 1100 : 1700;
+  const seeds = new Float32Array(N * 2 * 3), ends = new Float32Array(N * 2), sizes = new Float32Array(N * 2);
+  const rnd = EVO.rng(4242);
+  for (let i = 0; i < N; i += 1) {
+    const sx = rnd(), sy = rnd(), sz = rnd(), sz2 = 0.6 + rnd() * 0.8;
+    for (let k = 0; k < 2; k += 1) { const j = (i * 2 + k); seeds.set([sx, sy, sz], j * 3); ends[j] = k; sizes[j] = sz2; }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 2 * 3), 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 3));
+  geo.setAttribute('aEnd', new THREE.BufferAttribute(ends, 1));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+  const uniforms = {
+    uCam: { value: new THREE.Vector3() }, uTime: { value: 0 }, uFall: { value: new THREE.Vector3(1.2, -9, 0.4) },
+    uStreak: { value: new THREE.Vector3(0, 0.3, 0) }, uBox: { value: new THREE.Vector3(26, 16, 26) }, uAlpha: { value: 0 }
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: true, depthWrite: false, blending: THREE.NormalBlending,
+    vertexShader: `attribute vec3 aSeed; attribute float aEnd; attribute float aSize;
+      uniform vec3 uCam, uFall, uStreak, uBox; uniform float uTime;
+      varying float vFade;
+      void main(){
+        vec3 world = aSeed * uBox + uFall * uTime;
+        vec3 origin = uCam - uBox * 0.5;
+        vec3 p = origin + mod(world - origin, uBox);
+        p += aEnd * uStreak * aSize;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        float d = length(mv.xyz);
+        vFade = (1.0 - smoothstep(4.0, 13.0, d)) * smoothstep(0.4, 1.2, d) * aEnd * 0.8 + (1.0 - aEnd) * 0.1;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `uniform float uAlpha; varying float vFade;
+      void main(){ gl_FragColor = vec4(0.82, 0.86, 0.9, vFade * uAlpha); }`
+  });
+  const lines = new THREE.LineSegments(geo, mat);
+  lines.frustumCulled = false; lines.visible = false; lines.renderOrder = 5; lines.name = 'rain';
+  scene.add(lines);
+  const wind = new THREE.Vector3(1.4, -8.5, 0.5);
+  const vel = new THREE.Vector3();
+  return {
+    update(camPos, forward, speed, time, level) {
+      lines.visible = level > 0.001;
+      if (!lines.visible) return;
+      uniforms.uCam.value.copy(camPos);
+      uniforms.uTime.value = time;
+      uniforms.uAlpha.value = Math.min(1, level) * 0.55;
+      uniforms.uFall.value.copy(wind);
+      // the streak is the drop's motion relative to the rider over an exposure
+      vel.copy(forward).multiplyScalar(-speed).add(wind).multiplyScalar(0.045);
+      uniforms.uStreak.value.copy(vel);
+    }
+  };
+};
+
+}
+
 /* ---- 30-bike.js ---- */
 {
 
@@ -3264,7 +3353,8 @@ const LOOKAHEAD = 170, LOOK_STEP = 4;
 const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
 
 EVO.V_MAX = V_MAX;
-EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * radius)), max: Math.min(V_MAX, Math.sqrt(A_LAT_MAX * radius)) });
+EVO.grip = 1; // scaled down by the weather; 1 is dry tarmac
+EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * EVO.grip * radius)), max: Math.min(V_MAX, Math.sqrt(A_LAT_MAX * EVO.grip * radius)) });
 
 EVO.createBike = function createBike() {
   const bike = {
@@ -3358,8 +3448,9 @@ EVO.createBike = function createBike() {
     const latAcc = bike.v * bike.v * Math.abs(kappa);
     bike.corner.latAcc = latAcc;
     let drift = 0;
-    if (latAcc > A_LAT_SAFE) {
-      const over = (latAcc - A_LAT_SAFE) / (A_LAT_MAX - A_LAT_SAFE);
+    const gripSafe = A_LAT_SAFE * EVO.grip, gripMax = A_LAT_MAX * EVO.grip;
+    if (latAcc > gripSafe) {
+      const over = (latAcc - gripSafe) / (gripMax - gripSafe);
       drift = over < 1 ? over * over * 0.45 : 0.45 + (over - 1) * 5.5;
       bike.d -= Math.sign(kappa) * drift * dt; // outside of the bend
       if (over >= 1 && !crashed && !(bike.notice && bike.notice.tone === 'over')) bike.say('TOO FAST · RUNNING WIDE', 1.2, 'over');
@@ -3506,6 +3597,170 @@ EVO.createControls = function createControls(element, bike, opts = {}) {
       inp.steer = clamp(steer, -1, 1);
     }
   };
+};
+
+}
+
+/* ---- 35-score.js ---- */
+{
+
+/*
+ * AVENRÀ EVO · B-ROAD — scoring.
+ *
+ * A lap is the unit of play. Points come from pace while the corner bar is
+ * green, from bends taken cleanly (which chain into a multiplier), and from
+ * overtakes made where a careful rider would make them. Speeding through the
+ * village, hitting humps hard, running onto the verge, passing where you
+ * cannot see or with something coming, and crashing all cost. The best lap is
+ * kept on the device.
+ */
+const EVO = window.EVO;
+const { clamp, mod } = EVO;
+
+const BEST_KEY = 'evo.bestLap';
+const CLEAN_BEND = 60, CAUTIOUS_BEND = 15, RAGGED_BEND = 10;
+const CLEAN_OVERTAKE = 150, UNSAFE_OVERTAKE = -200, CLOSE_CALL = -80, CRASH = -250;
+const HUMP_SMOOTH = 15, HUMP_HARD = -40;
+
+EVO.createScore = function createScore(bike, traffic) {
+  const RT = EVO.route;
+  const L = RT.length;
+  let best = 0;
+  try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { best = 0; }
+  const state = {
+    score: 0, lap: 1, lapTime: 0, best, lastLap: null, chain: 0,
+    get mult() { return 1 + Math.min(8, state.chain) * 0.25; },
+    pop: null, // { text, points, tone, until }
+    flags: { speeding: false, verge: false }
+  };
+  const bends = RT.BENDS.map((b) => ({ start: b.start * RT.SAMPLE, end: b.end * RT.SAMPLE, radius: b.radius, dir: b.dir }));
+  let inBend = null, bendPeak = 0, bendWide = false;
+  let lastOdo = bike.odometer, crashes = bike.crashes;
+  let offside = null; // an overtake in progress: { blind, oncoming, village, junction, since }
+  const humps = RT.detailPlan ? RT.detailPlan.humps : [];
+  let lastS = bike.s;
+
+  function pop(text, points, tone) {
+    state.score += points;
+    state.pop = { text, points, tone: tone || (points >= 0 ? 'good' : 'bad'), until: bike.elapsed + 1.8 };
+  }
+  function setBest() {
+    try { localStorage.setItem(BEST_KEY, String(Math.round(best))); } catch (e) { /* private mode */ }
+  }
+
+  function bendAt(s) {
+    s = mod(s, L);
+    for (const b of bends) {
+      if (b.start <= s && s <= b.end) return b;
+      if (b.end > L && (s + L) >= b.start && (s + L) <= b.end) return b; // the seam bend
+    }
+    return null;
+  }
+
+  function update(dt, events) {
+    if (dt <= 0) return;
+    const crashed = bike.crashTimer > 0;
+    state.lapTime += dt;
+    const mph = bike.v * 2.23694;
+    const limit = RT.speedLimitAt ? RT.speedLimitAt(bike.s) : 60;
+    const speeding = mph > limit + 4;
+    const onVerge = bike.offRoad > 0.5;
+
+    // pace: only while green, on the road and within the limit
+    if (!crashed && !speeding && !onVerge) {
+      const rate = bike.corner.status === 'safe' ? 1 : bike.corner.status === 'limit' ? 0.4 : 0;
+      state.score += dt * (mph / 6) * rate * state.mult;
+    }
+    if (speeding && !crashed) {
+      state.score -= dt * 4;
+      if (!state.flags.speeding) { state.flags.speeding = true; pop(`SPEEDING · ${limit} ZONE`, 0, 'bad'); }
+    } else state.flags.speeding = false;
+    if (onVerge && !crashed) {
+      state.score -= dt * 6;
+      if (!state.flags.verge) { state.flags.verge = true; pop('ON THE VERGE', 0, 'bad'); }
+    } else if (!onVerge) state.flags.verge = false;
+
+    // crashes: the bike already explains what happened; the score adds the cost
+    if (bike.crashes > crashes) {
+      crashes = bike.crashes;
+      state.chain = 0;
+      state.score += CRASH;
+      state.pop = { text: 'CRASH', points: CRASH, tone: 'bad', until: bike.elapsed + 2.2 };
+      offside = null;
+    }
+
+    // humps: cross one gently and it pays, hit it hard and it costs
+    for (const h of humps) {
+      const a = mod(lastS - h.s + L / 2, L) - L / 2, b = mod(bike.s - h.s + L / 2, L) - L / 2;
+      if (a < 0 && b >= 0 && !crashed) {
+        if (mph > 18) pop(h.type === 'table' ? 'RAISED TABLE · TOO FAST' : 'HUMP · TOO FAST', HUMP_HARD);
+        else if (mph <= 13) pop('SMOOTH OVER THE HUMP', Math.round(HUMP_SMOOTH * state.mult));
+      }
+    }
+
+    // bends: judged at the exit on the peak of speed against the apex speeds
+    const b = bendAt(bike.s);
+    if (b && !inBend) { inBend = b; bendPeak = 0; bendWide = false; }
+    if (inBend) {
+      const apex = EVO.cornerSpeeds(inBend.radius);
+      bendPeak = Math.max(bendPeak, bike.v / Math.max(1, apex.safe));
+      if (bike.corner.status === 'over' || bike.drift > 0.4) bendWide = true;
+      if (!b || b !== inBend) {
+        if (!crashed && bike.crashes === crashes) {
+          if (bendWide || bendPeak > 1.02) { state.chain = 0; pop('RAGGED BEND · RAN WIDE', RAGGED_BEND); }
+          else if (bendPeak >= 0.72) { state.chain += 1; pop(state.chain > 1 ? `CLEAN BEND ×${state.mult.toFixed(2).replace(/\.?0+$/, '')}` : 'CLEAN BEND', Math.round(CLEAN_BEND * state.mult)); }
+          else pop('CAUTIOUS BEND', CAUTIOUS_BEND);
+        }
+        inBend = b || null; bendPeak = 0; bendWide = false;
+      }
+    }
+
+    // overtakes: while the bike is offside with a car within reach ahead, note
+    // everything a careful rider would have looked for
+    const ahead = traffic.sameAhead ? traffic.sameAhead(45) : null;
+    if (bike.d < 0.2 && !crashed) {
+      if (!offside && ahead) offside = { blind: false, oncoming: false, village: false, junction: false, since: bike.elapsed };
+      if (offside) {
+        const c = bike.corner;
+        if (c.bendDist < 45 && c.bendRadius < 130) offside.blind = true;
+        if (c.bendDist < 8 && c.bendRadius < 200) offside.blind = true;
+        const on = traffic.oncomingAhead ? traffic.oncomingAhead(420) : null;
+        if (on && on.time < 3.2) offside.oncoming = true;
+        if (limit <= 20) offside.village = true;
+        if (RT.inJunctionMouth(bike.s, 1, 26) || RT.inJunctionMouth(bike.s, -1, 26)) offside.junction = true;
+      }
+    } else if (offside && bike.elapsed - offside.since > 1.5 && bike.d > 0.6) offside = null;
+
+    if (events && events.overtake && !crashed) {
+      const o = offside || { blind: false, oncoming: false, village: false, junction: false };
+      const why = o.oncoming ? 'ONCOMING' : o.blind ? 'BLIND BEND' : o.junction ? 'AT A JUNCTION' : o.village ? 'IN THE VILLAGE' : null;
+      if (why) { state.chain = 0; pop(`UNSAFE OVERTAKE · ${why}`, UNSAFE_OVERTAKE); }
+      else if (events.overtake.gap < 0.55) { pop('OVERTAKE · TOO CLOSE', Math.round(CLEAN_OVERTAKE * 0.3)); }
+      else { state.chain += 1; pop('CLEAN OVERTAKE', Math.round(CLEAN_OVERTAKE * state.mult)); }
+      offside = null;
+    }
+    if (events && events.passBy && events.passBy.gap < 0.6 && bike.d < 0.2 && !crashed) { state.chain = 0; pop('CLOSE CALL · ONCOMING', CLOSE_CALL); }
+
+    // lap: every loop of the road from wherever the ride began
+    const lapsBefore = Math.floor(lastOdo / L), lapsNow = Math.floor(bike.odometer / L);
+    if (lapsNow > lapsBefore) {
+      const lapScore = Math.round(state.score);
+      state.lastLap = { score: lapScore, time: state.lapTime, lap: state.lap };
+      if (lapScore > best) { best = lapScore; state.best = best; setBest(); state.pop = { text: `NEW BEST LAP · ${lapScore.toLocaleString()}`, points: 0, tone: 'best', until: bike.elapsed + 4 }; }
+      else state.pop = { text: `LAP ${state.lap} · ${lapScore.toLocaleString()} · BEST ${Math.round(best).toLocaleString()}`, points: 0, tone: 'good', until: bike.elapsed + 4 };
+      state.lap += 1; state.score = 0; state.lapTime = 0; state.chain = 0;
+    }
+    lastOdo = bike.odometer;
+    lastS = bike.s;
+    if (state.pop && bike.elapsed > state.pop.until) state.pop = null;
+  }
+
+  function reset() {
+    state.score = 0; state.lap = 1; state.lapTime = 0; state.chain = 0; state.pop = null; state.lastLap = null;
+    inBend = null; offside = null; lastOdo = bike.odometer; lastS = bike.s; crashes = bike.crashes;
+  }
+
+  return { state, update, reset };
 };
 
 }
@@ -3678,7 +3933,7 @@ EVO.createCockpit = function createCockpit(renderer, world, cockpitTexture) {
 
 /* ---------------------------------------------------------------- audio */
 EVO.createAudio = function createAudio() {
-  let ctx = null, nodes = null, muted=false;
+  let ctx = null, nodes = null, muted=false, rainLevel = 0;
   function start() {
     if (ctx) { ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -3710,8 +3965,13 @@ EVO.createAudio = function createAudio() {
     const amb = ctx.createBiquadFilter(); amb.type = 'bandpass'; amb.frequency.value = 3200; amb.Q.value = 4;
     const ambGain = ctx.createGain(); ambGain.gain.value = 0.012;
     noise.connect(amb).connect(ambGain).connect(master);
+    // rain: broadband hiss with the bass rolled off, plus spray under the tyres
+    const rain = ctx.createBiquadFilter(); rain.type = 'highpass'; rain.frequency.value = 1400;
+    const rainGain = ctx.createGain(); rainGain.gain.value = 0;
+    noise.connect(rain).connect(rainGain).connect(master);
     whine.start(); whine2.start(); noise.start();
-    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain, noiseBuffer: buf };
+    nodes = { master, whine, whine2, whineGain, whineLp, wind, windGain, tyre, tyreGain, rumbleGain, rainGain, noiseBuffer: buf };
+    if (rainLevel) setRain(rainLevel);
   }
   function update(bike) {
     if (!ctx || !nodes) return;
@@ -3723,11 +3983,12 @@ EVO.createAudio = function createAudio() {
     nodes.whineGain.gain.setTargetAtTime(0.01 + n * 0.05 + bike.input.throttle * 0.04 * Math.min(1, v / 4 + 0.2), t, 0.06);
     nodes.wind.frequency.setTargetAtTime(380 + n * n * 1400, t, 0.1);
     nodes.windGain.gain.setTargetAtTime(n * n * 0.85, t, 0.1);
-    nodes.tyreGain.gain.setTargetAtTime(n * (0.26+bike.surfaceRoughness*.23), t, 0.08);
+    nodes.tyreGain.gain.setTargetAtTime(n * (0.26+bike.surfaceRoughness*.23 + rainLevel * 0.3), t, 0.08);
     nodes.tyre.frequency.setTargetAtTime(260+bike.surfaceRoughness*410+n*160,t,.08);
     nodes.rumbleGain.gain.setTargetAtTime(bike.rumble * 0.9, t, 0.05);
   }
   function setMuted(m) { muted=m; if (nodes) nodes.master.gain.setTargetAtTime(m ? 0 : 0.7, ctx.currentTime, 0.05); }
+  function setRain(level) { rainLevel = level; if (nodes) nodes.rainGain.gain.setTargetAtTime(level * 0.3, ctx.currentTime, 0.4); }
   // Oncoming car pass-by: a short noise swell with a falling Doppler sweep.
   function passBy(closingSpeed = 30, gap = 2) {
     if (!ctx || !nodes) return;
@@ -3749,7 +4010,7 @@ EVO.createAudio = function createAudio() {
     const g = ctx.createGain(); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
     src.connect(lp).connect(g).connect(nodes.master); src.start(t); src.stop(t + 0.7);
   }
-  return { start, update, setMuted, passBy, thump };
+  return { start, update, setMuted, setRain, passBy, thump };
 };
 
 }
@@ -3810,14 +4071,43 @@ EVO.createPost = function createPost(renderer, quality) {
         for (int i = 0; i < 28; i++) { p += d; c += texture2D(tInput, p).rgb * w; wsum += w; w *= 0.93; }
         gl_FragColor = vec4(c / wsum, 1.0); }`
   });
+  // Visor droplets: a texture of drop normals, two layers creeping down the
+  // visor at different rates, refracting the frame where they sit.
+  const drops = (() => {
+    const S = 256, c = document.createElement('canvas'); c.width = S; c.height = S;
+    const g = c.getContext('2d'), img = g.createImageData(S, S), d = img.data, rnd = EVO.rng(5151);
+    const list = [];
+    for (let k = 0; k < 70; k += 1) list.push({ x: rnd() * S, y: rnd() * S, r: 2 + Math.pow(rnd(), 2.4) * 7 });
+    for (let y = 0; y < S; y += 1) for (let x = 0; x < S; x += 1) {
+      let nx = 0, ny = 0, a = 0;
+      for (const dr of list) {
+        for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) {
+          const dx = (x - dr.x - ox) / dr.r, dy = (y - dr.y - oy) / dr.r, q = dx * dx + dy * dy;
+          if (q < 1) { const h = Math.sqrt(1 - q); nx = dx / Math.max(0.2, h); ny = dy / Math.max(0.2, h); a = 1; }
+        }
+      }
+      const i = (y * S + x) * 4;
+      d[i] = 128 + EVO.clamp(nx, -1, 1) * 120; d[i + 1] = 128 + EVO.clamp(ny, -1, 1) * 120; d[i + 2] = 128; d[i + 3] = a * 255;
+    }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; return t;
+  })();
+
   const composite = new THREE.ShaderMaterial({
-    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, tShaft: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uAspect: { value: 1 } },
+    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, tShaft: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uAspect: { value: 1 }, tDrops: { value: drops }, uRain: { value: 0 } },
     vertexShader: VERT, depthTest: false, depthWrite: false,
-    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform sampler2D tShaft; uniform vec3 uSun; uniform float uAspect;
+    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform sampler2D tShaft; uniform vec3 uSun; uniform float uAspect; uniform sampler2D tDrops; uniform float uRain;
       vec3 aces(vec3 x){ const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14; return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0); }
       vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(1.0 / 2.4)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308))); }
       void main(){
         vec2 uv = vUv; vec2 d = uv - 0.5; float r = length(d) * 1.4142;
+        if (uRain > 0.001) {
+          vec2 duv = vec2(uv.x * uAspect, uv.y);
+          vec4 d1 = texture2D(tDrops, duv * 3.2 + vec2(0.0, uTime * 0.03));
+          vec4 d2 = texture2D(tDrops, duv * 2.1 + vec2(0.41, uTime * 0.013));
+          vec2 off = ((d1.xy - 0.5) * d1.a + (d2.xy - 0.5) * d2.a * 0.8) * 0.014 * uRain;
+          uv += off; d = uv - 0.5;
+        }
         // speed-scaled radial blur, strongest at the edges, none in the centre
         float blur = uSpeed * (0.0015 + r * r * 0.016);
         vec2 ca = d * r * 0.0003;
@@ -3889,6 +4179,7 @@ EVO.createPost = function createPost(renderer, quality) {
     resize,
     begin() { resize(); renderer.setRenderTarget(sceneRT); renderer.clear(); },
     setExposure(v) { composite.uniforms.uExposure.value = v; },
+    setRain(v) { composite.uniforms.uRain.value = v; },
     end(speedNorm, time, sun) {
       // bloom
       bright.uniforms.tScene.value = sceneRT.texture; pass(bright, bloomA);
@@ -3928,6 +4219,7 @@ const { clamp, lerp, mod, smoothstep } = EVO;
 const RT = EVO.route;
 
 const ONCOMING_D = -1.55;          // their lane centre, in our road coordinates
+const SAME_D = 1.55;               // our lane centre: same-direction traffic
 const CAR_HALF_WIDTH = 0.92;
 
 // Roof-line profiles: [normalised z (-1 tail … +1 nose), height in metres]
@@ -4048,6 +4340,7 @@ function makeCar(kind, paint, envMap, parked=false) {
   const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.3, envMap, envMapIntensity: 0.8 });
   const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: parked?0:1.3, roughness: 0.08, metalness: 0.2, envMap, envMapIntensity: 1 });
   const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x9c1520, emissive: 0x7a0a14, emissiveIntensity: parked?0:.7, roughness: 0.12, envMap });
+  g.userData.tail = tailMat;
   const plateFront = new THREE.MeshStandardMaterial({ color: 0xf4f2e6, roughness: 0.5 });
   const plateRear = new THREE.MeshStandardMaterial({ color: 0xf2d24a, roughness: 0.5 });
   const interiorMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.95 });
@@ -4132,6 +4425,7 @@ EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality=
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const count = opts.count ?? 5;
+  const sameCount = opts.same ?? 3;
   const L = RT.length;
   const envMap = opts.envMap || null;
   const paints = [0xc9ccd1, 0x1f3a6e, 0x8c1a1f, 0xe9e7e0, 0x26282b, 0x4c6b3c, 0x8a8f96, 0x2f4f8f];
@@ -4144,56 +4438,120 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
     scene.add(mesh);
     // spread them around the loop, none right on top of the rider at the start
     const s = mod(bike.s + L * (0.28 + i / count * 0.92) + rnd() * 50, L);
-    cars.push({ mesh, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null });
+    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null, braking: 0 });
   }
+  // Same-direction traffic: slower than the EVO wants to go, so the rider has
+  // to sit behind it or pick the moment to pass. One of them is a dawdling van.
+  const sameKinds = ['van', 'hatch', 'suv', 'hatch'];
+  for (let i = 0; i < sameCount; i += 1) {
+    const kind = sameKinds[i % sameKinds.length];
+    const mesh = makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
+    scene.add(mesh);
+    const s = mod(bike.s + 140 + i * (L / sameCount) + rnd() * 60, L);
+    const cruise = kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4; // 26-42 mph
+    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0 });
+  }
+  let mode = 'both';
 
   const _p = new THREE.Vector3();
   function place(car) {
     const f = RT.frame(car.s);
-    RT.point(car.s, ONCOMING_D, 0, _p);
+    RT.point(car.s, car.lane, 0, _p);
     car.mesh.position.copy(_p);
-    const sp=Math.atan2(RT.surfaceAt(car.s-1.3,ONCOMING_D)-RT.surfaceAt(car.s+1.3,ONCOMING_D),2.6);
-    car.mesh.rotation.set(Math.atan2(f.ty, 1)-sp, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    const sp = Math.atan2(RT.surfaceAt(car.s - 1.3, car.lane) - RT.surfaceAt(car.s + 1.3, car.lane), 2.6);
+    if (car.dir < 0) car.mesh.rotation.set(Math.atan2(f.ty, 1) - sp, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    else car.mesh.rotation.set(-Math.atan2(f.ty, 1) + sp, Math.atan2(f.tx, f.tz), 0, 'YXZ');
   }
   cars.forEach(place);
 
+  function active(car) { return mode === 'both' || (mode === 'oncoming' && car.dir < 0); }
+
   function update(dt) {
-    const events = { collision: null, passBy: null };
+    const events = { collision: null, passBy: null, overtake: null, tailgate: 0 };
     for (const car of cars) {
-      // slow for the bends ahead of the car (it travels toward decreasing s)
+      if (!active(car)) continue;
+      const dir = car.dir;
+      // slow for the bends, limits and humps ahead of the car in its direction
       let limit = car.cruise;
       for (let dist = 0; dist <= 90; dist += 6) {
-        const f = RT.frame(car.s - dist);
+        const f = RT.frame(car.s + dir * dist);
         const radius = 1 / Math.max(Math.abs(f.kappa), 1e-4);
-        const vBend = Math.min(0.82 * EVO.cornerSpeeds(radius).safe, RT.speedLimitAt(car.s-dist)/2.23694);
+        const vBend = Math.min(0.82 * EVO.cornerSpeeds(radius).safe, RT.speedLimitAt(car.s + dir * dist) / 2.23694);
         limit = Math.min(limit, Math.sqrt(vBend * vBend + 2 * 3.5 * dist));
       }
-      const hump=RT.nextHump(car.s,-1);
-      if(hump&&hump.dist<100)limit=Math.min(limit,Math.sqrt(5.3*5.3+2*2.7*Math.max(0,hump.dist-5)));
+      const hump = RT.nextHump(car.s, dir);
+      if (hump && hump.dist < 100) limit = Math.min(limit, Math.sqrt(5.3 * 5.3 + 2 * 2.7 * Math.max(0, hump.dist - 5)));
       // ease off approaching the junction mouths
       for (const j of RT.JUNCTIONS) { const dj = Math.abs(mod(car.s - j.s + L / 2, L) - L / 2); if (dj < 30) limit = Math.min(limit, 11); }
-      // keep a gap to the car ahead in their direction
+      // keep a gap to whatever is ahead in this direction: other cars, and the bike
       for (const other of cars) {
-        if (other === car) continue;
-        const gap = mod(car.s - other.s, L); // other is ahead of car (lower s) when gap is small and positive
+        if (other === car || other.dir !== dir || !active(other)) continue;
+        const gap = mod((other.s - car.s) * dir, L);
         if (gap > 0 && gap < 26) limit = Math.min(limit, other.v * (gap / 26));
       }
-      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * 0.9));
-      car.s = mod(car.s - car.v * dt, L);
+      if (dir > 0) {
+        const gap = mod(bike.s - car.s, L);
+        const inLane = Math.abs(bike.d - SAME_D) < CAR_HALF_WIDTH + 0.9;
+        if (inLane && gap > 0 && gap < 34) {
+          // follow the bike; stop short of it rather than drive through it
+          limit = Math.min(limit, gap < 7 ? 0 : bike.v * ((gap - 7) / 27));
+          if (gap < 14 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - gap / 14);
+        }
+      }
+      // cars brake harder than they accelerate
+      const rate = limit < car.v - 0.5 ? 2.6 : 0.9;
+      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * rate));
+      car.braking = lerp(car.braking, limit < car.v - 0.8 ? 1 : 0, 1 - Math.exp(-dt * 8));
+      if (car.mesh.userData.tail) car.mesh.userData.tail.emissiveIntensity = 0.7 + car.braking * 2.2;
+      car.s = mod(car.s + dir * car.v * dt, L);
       place(car);
 
       // relative position along the road from the rider (+ = ahead)
       const rel = mod(car.s - bike.s + L / 2, L) - L / 2;
+      const lateral = Math.abs(bike.d - car.lane);
       if (car.lastRel !== null && car.lastRel > 0 && rel <= 0) {
-        events.passBy = { gap: Math.abs(bike.d - ONCOMING_D) - CAR_HALF_WIDTH, closing: bike.v + car.v };
+        if (dir < 0) events.passBy = { gap: lateral - CAR_HALF_WIDTH, closing: bike.v + car.v };
+        else events.overtake = { car, gap: lateral - CAR_HALF_WIDTH, closing: bike.v - car.v };
       }
       car.lastRel = rel;
-      if (Math.abs(rel) < 2.5 && Math.abs(bike.d - ONCOMING_D) < CAR_HALF_WIDTH + 0.35) events.collision = car;
+      if (dir < 0) {
+        if (Math.abs(rel) < 2.5 && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: 'COLLISION · ONCOMING CAR' };
+      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -2.4 && rel < 2.6 && bike.v > car.v + 0.5) {
+        events.collision = { car, reason: 'RAN INTO THE CAR AHEAD' };
+      }
     }
     return events;
   }
 
-  return { cars, update };
+  /* Oncoming traffic within the next `metres` ahead of the rider, with the
+   * closing time it represents: the score's judge of a safe overtake. */
+  function oncomingAhead(metres = 400) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir > 0 || !active(car)) continue;
+      const rel = mod(car.s - bike.s, L);
+      if (rel > metres) continue;
+      const time = rel / Math.max(1, bike.v + car.v);
+      if (!best || time < best.time) best = { car, distance: rel, time };
+    }
+    return best;
+  }
+  function sameAhead(metres = 60) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      const rel = mod(car.s - bike.s, L);
+      if (rel > metres) continue;
+      if (!best || rel < best.distance) best = { car, distance: rel };
+    }
+    return best;
+  }
+  function setMode(next) {
+    mode = next;
+    for (const car of cars) { car.mesh.visible = active(car); car.lastRel = null; }
+  }
+
+  return { cars, update, setMode, oncomingAhead, sameAhead, get mode() { return mode; } };
 };
 
 }
@@ -4226,13 +4584,14 @@ window.addEventListener('unhandledrejection', (e) => setStatus(`Something went w
 /* Corner-speed bar and notices. Green: under the safe speed for the road
  * ahead. Amber: between safe and the tyres' limit; the bike drifts wide and
  * needs holding. Red: over the limit; it will run off. */
-EVO.createHud = function createHud(bike) {
+EVO.createHud = function createHud(bike, score) {
   const bar = document.getElementById('corner-fill'), marker = document.getElementById('corner-marker');
   const safeZone = document.getElementById('corner-safe'), limitZone = document.getElementById('corner-limit');
   const text = document.getElementById('corner-text'), limits = document.getElementById('corner-limits');
   const notice = document.getElementById('notice');
   const mph = (v) => Math.round(v * 2.23694);
-  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '';
+  let lastText = '', lastLimits = '', lastStatus = '', lastNotice = '', lastScore = '', lastMeta = '', lastPop = '';
+  const scoreEl = document.getElementById('score-value'), scoreMeta = document.getElementById('score-meta'), popEl = document.getElementById('score-pop');
   return {
     update() {
       const region=document.getElementById('place-name'),surface=document.getElementById('surface-info'),limit=document.getElementById('limit-sign');
@@ -4258,6 +4617,24 @@ EVO.createHud = function createHud(bike) {
       if (l !== lastLimits) { limits.textContent = l; lastLimits = l; }
       const n = bike.notice ? bike.notice.text : '';
       if (n !== lastNotice) { notice.textContent = n; notice.hidden = !n; notice.dataset.tone = bike.notice?.tone || ''; lastNotice = n; }
+      if (score) {
+        const st = score.state;
+        const sc = Math.max(0, Math.round(st.score)).toLocaleString();
+        if (sc !== lastScore) { scoreEl.textContent = sc; lastScore = sc; }
+        const mm = Math.floor(st.lapTime / 60), ss = Math.floor(st.lapTime % 60);
+        const meta = `LAP ${st.lap} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
+        if (meta !== lastMeta) { scoreMeta.textContent = meta; lastMeta = meta; }
+        const p = st.pop;
+        const key = p ? `${p.text}|${p.until}` : '';
+        if (key !== lastPop) {
+          lastPop = key;
+          if (p) {
+            popEl.textContent = p.points ? `${p.points > 0 ? '+' : '−'}${Math.abs(p.points).toLocaleString()}  ${p.text}` : p.text;
+            popEl.dataset.tone = p.tone; popEl.hidden = false;
+            popEl.style.animation = 'none'; void popEl.offsetWidth; popEl.style.animation = '';
+          } else popEl.hidden = true;
+        }
+      }
     }
   };
 };
@@ -4276,8 +4653,11 @@ function boot() {
     app.bike.s=Number(document.getElementById('spawn').value)||180;
     app.bike.d=1.5;app.bike.v=0;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
     app.bike.motionScale=document.getElementById('comfort').checked?.45:1;
-    app.trafficEnabled=document.getElementById('traffic-toggle').checked;
-    for(const car of app.traffic.cars){car.mesh.visible=app.trafficEnabled;car.lastRel=null;}
+    const trafficMode=document.getElementById('traffic')?.value||'both';
+    app.trafficEnabled=trafficMode!=='none';
+    app.traffic.setMode(trafficMode==='none'?'both':trafficMode);
+    for(const car of app.traffic.cars){car.mesh.visible=app.trafficEnabled&&car.mesh.visible;car.lastRel=null;}
+    app.score.reset();
     const mode=document.getElementById('quality').value;
     const balanced=mode==='balanced'||(mode==='auto'&&app.quality.coarse);
     app.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,balanced?1.25:1.75));
@@ -4377,10 +4757,12 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: quality.coarse ? 6 : 7, same: quality.coarse ? 2 : 3, envMap: EVO.envMap });
+  const score = EVO.createScore(bike, traffic);
+  const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);
   if(EVO.envMap&&world.materials.detail){for(const mat of Object.values(world.materials.detail)){if(mat.name.includes('reflections')){mat.envMap=EVO.envMap;mat.envMapIntensity=mat.name.includes('puddle')?1.3:.28;mat.needsUpdate=true;}}}
-  const hud = EVO.createHud(bike);
+  const hud = EVO.createHud(bike, score);
   lap('traffic');
   EVO.timings = timings;
 
@@ -4436,11 +4818,14 @@ function buildApp() {
     let steps = 0;
     while (acc >= STEP && steps < 32) {
       bike.step(STEP);
+      let events = null;
       if(EVO.app?.trafficEnabled){
-        const events=traffic.update(STEP);
-        if(events.collision&&bike.crashTimer<=0){bike.crash('COLLISION · ONCOMING CAR');audio.thump();}
+        events=traffic.update(STEP);
+        if(events.collision&&bike.crashTimer<=0){bike.crash(events.collision.reason);audio.thump();}
         if(events.passBy)audio.passBy(events.passBy.closing,events.passBy.gap);
+        if(events.overtake)audio.passBy(Math.max(6, events.overtake.closing * 2), events.overtake.gap + 0.6);
       }
+      score.update(STEP, events);
       acc-=STEP;steps++;
     }
     hud.update();
@@ -4448,6 +4833,7 @@ function buildApp() {
     bike.applyCamera(camera, portrait);
     bikePos.copy(bike.pos);
     world.update(now / 1000, bikePos, bike.forward);
+    rain.update(camera.position, bike.forward, bike.v, now / 1000, world.rain);
     audio.update(bike);
     renderer.shadowMap.needsUpdate=true;
     if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000, projectSun()); }
@@ -4466,10 +4852,12 @@ function buildApp() {
   function setLighting(name) {
     const P = world.setLighting(name);
     post?.setExposure(P.exposure);
+    post?.setRain(P.rain || 0);
+    audio.setRain(P.rain || 0);
     refreshEnvMap();
     return P;
   }
-  EVO.app = { running:false,paused:false,trafficEnabled:true,renderer, world, camera, bike, controls, audio, quality, traffic, post, setLighting, get cockpit() { return cockpit; } };
+  EVO.app = { running:false,paused:false,trafficEnabled:true,renderer, world, camera, bike, controls, audio, quality, traffic, score, rain, post, setLighting, get cockpit() { return cockpit; } };
   return EVO.app;
 }
 

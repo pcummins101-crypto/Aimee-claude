@@ -15,6 +15,7 @@ const { clamp, lerp, mod, smoothstep } = EVO;
 const RT = EVO.route;
 
 const ONCOMING_D = -1.55;          // their lane centre, in our road coordinates
+const SAME_D = 1.55;               // our lane centre: same-direction traffic
 const CAR_HALF_WIDTH = 0.92;
 
 // Roof-line profiles: [normalised z (-1 tail … +1 nose), height in metres]
@@ -135,6 +136,7 @@ function makeCar(kind, paint, envMap, parked=false) {
   const alloyMat = new THREE.MeshStandardMaterial({ map: CACHE.alloy, transparent: true, alphaTest: 0.2, metalness: 0.75, roughness: 0.3, envMap, envMapIntensity: 0.8 });
   const lampMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe6ea, emissive: 0xfff2d0, emissiveIntensity: parked?0:1.3, roughness: 0.08, metalness: 0.2, envMap, envMapIntensity: 1 });
   const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x9c1520, emissive: 0x7a0a14, emissiveIntensity: parked?0:.7, roughness: 0.12, envMap });
+  g.userData.tail = tailMat;
   const plateFront = new THREE.MeshStandardMaterial({ color: 0xf4f2e6, roughness: 0.5 });
   const plateRear = new THREE.MeshStandardMaterial({ color: 0xf2d24a, roughness: 0.5 });
   const interiorMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.95 });
@@ -219,6 +221,7 @@ EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality=
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   const count = opts.count ?? 5;
+  const sameCount = opts.same ?? 3;
   const L = RT.length;
   const envMap = opts.envMap || null;
   const paints = [0xc9ccd1, 0x1f3a6e, 0x8c1a1f, 0xe9e7e0, 0x26282b, 0x4c6b3c, 0x8a8f96, 0x2f4f8f];
@@ -231,54 +234,118 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
     scene.add(mesh);
     // spread them around the loop, none right on top of the rider at the start
     const s = mod(bike.s + L * (0.28 + i / count * 0.92) + rnd() * 50, L);
-    cars.push({ mesh, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null });
+    cars.push({ mesh, dir: -1, lane: ONCOMING_D, s, v: 16 + rnd() * 4, cruise: (kind === 'van' ? 16.5 : 18) + rnd() * 5, lastRel: null, braking: 0 });
   }
+  // Same-direction traffic: slower than the EVO wants to go, so the rider has
+  // to sit behind it or pick the moment to pass. One of them is a dawdling van.
+  const sameKinds = ['van', 'hatch', 'suv', 'hatch'];
+  for (let i = 0; i < sameCount; i += 1) {
+    const kind = sameKinds[i % sameKinds.length];
+    const mesh = makeCar(kind, [0xe4e1d8, 0x6b1f24, 0x3a4a5c, 0xb8b9bd][i % 4], envMap);
+    scene.add(mesh);
+    const s = mod(bike.s + 140 + i * (L / sameCount) + rnd() * 60, L);
+    const cruise = kind === 'van' ? 11.5 + rnd() * 1.5 : 15 + rnd() * 4; // 26-42 mph
+    cars.push({ mesh, dir: 1, lane: SAME_D, s, v: cruise, cruise, lastRel: null, braking: 0 });
+  }
+  let mode = 'both';
 
   const _p = new THREE.Vector3();
   function place(car) {
     const f = RT.frame(car.s);
-    RT.point(car.s, ONCOMING_D, 0, _p);
+    RT.point(car.s, car.lane, 0, _p);
     car.mesh.position.copy(_p);
-    const sp=Math.atan2(RT.surfaceAt(car.s-1.3,ONCOMING_D)-RT.surfaceAt(car.s+1.3,ONCOMING_D),2.6);
-    car.mesh.rotation.set(Math.atan2(f.ty, 1)-sp, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    const sp = Math.atan2(RT.surfaceAt(car.s - 1.3, car.lane) - RT.surfaceAt(car.s + 1.3, car.lane), 2.6);
+    if (car.dir < 0) car.mesh.rotation.set(Math.atan2(f.ty, 1) - sp, Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    else car.mesh.rotation.set(-Math.atan2(f.ty, 1) + sp, Math.atan2(f.tx, f.tz), 0, 'YXZ');
   }
   cars.forEach(place);
 
+  function active(car) { return mode === 'both' || (mode === 'oncoming' && car.dir < 0); }
+
   function update(dt) {
-    const events = { collision: null, passBy: null };
+    const events = { collision: null, passBy: null, overtake: null, tailgate: 0 };
     for (const car of cars) {
-      // slow for the bends ahead of the car (it travels toward decreasing s)
+      if (!active(car)) continue;
+      const dir = car.dir;
+      // slow for the bends, limits and humps ahead of the car in its direction
       let limit = car.cruise;
       for (let dist = 0; dist <= 90; dist += 6) {
-        const f = RT.frame(car.s - dist);
+        const f = RT.frame(car.s + dir * dist);
         const radius = 1 / Math.max(Math.abs(f.kappa), 1e-4);
-        const vBend = Math.min(0.82 * EVO.cornerSpeeds(radius).safe, RT.speedLimitAt(car.s-dist)/2.23694);
+        const vBend = Math.min(0.82 * EVO.cornerSpeeds(radius).safe, RT.speedLimitAt(car.s + dir * dist) / 2.23694);
         limit = Math.min(limit, Math.sqrt(vBend * vBend + 2 * 3.5 * dist));
       }
-      const hump=RT.nextHump(car.s,-1);
-      if(hump&&hump.dist<100)limit=Math.min(limit,Math.sqrt(5.3*5.3+2*2.7*Math.max(0,hump.dist-5)));
+      const hump = RT.nextHump(car.s, dir);
+      if (hump && hump.dist < 100) limit = Math.min(limit, Math.sqrt(5.3 * 5.3 + 2 * 2.7 * Math.max(0, hump.dist - 5)));
       // ease off approaching the junction mouths
       for (const j of RT.JUNCTIONS) { const dj = Math.abs(mod(car.s - j.s + L / 2, L) - L / 2); if (dj < 30) limit = Math.min(limit, 11); }
-      // keep a gap to the car ahead in their direction
+      // keep a gap to whatever is ahead in this direction: other cars, and the bike
       for (const other of cars) {
-        if (other === car) continue;
-        const gap = mod(car.s - other.s, L); // other is ahead of car (lower s) when gap is small and positive
+        if (other === car || other.dir !== dir || !active(other)) continue;
+        const gap = mod((other.s - car.s) * dir, L);
         if (gap > 0 && gap < 26) limit = Math.min(limit, other.v * (gap / 26));
       }
-      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * 0.9));
-      car.s = mod(car.s - car.v * dt, L);
+      if (dir > 0) {
+        const gap = mod(bike.s - car.s, L);
+        const inLane = Math.abs(bike.d - SAME_D) < CAR_HALF_WIDTH + 0.9;
+        if (inLane && gap > 0 && gap < 34) {
+          // follow the bike; stop short of it rather than drive through it
+          limit = Math.min(limit, gap < 7 ? 0 : bike.v * ((gap - 7) / 27));
+          if (gap < 14 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - gap / 14);
+        }
+      }
+      // cars brake harder than they accelerate
+      const rate = limit < car.v - 0.5 ? 2.6 : 0.9;
+      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * rate));
+      car.braking = lerp(car.braking, limit < car.v - 0.8 ? 1 : 0, 1 - Math.exp(-dt * 8));
+      if (car.mesh.userData.tail) car.mesh.userData.tail.emissiveIntensity = 0.7 + car.braking * 2.2;
+      car.s = mod(car.s + dir * car.v * dt, L);
       place(car);
 
       // relative position along the road from the rider (+ = ahead)
       const rel = mod(car.s - bike.s + L / 2, L) - L / 2;
+      const lateral = Math.abs(bike.d - car.lane);
       if (car.lastRel !== null && car.lastRel > 0 && rel <= 0) {
-        events.passBy = { gap: Math.abs(bike.d - ONCOMING_D) - CAR_HALF_WIDTH, closing: bike.v + car.v };
+        if (dir < 0) events.passBy = { gap: lateral - CAR_HALF_WIDTH, closing: bike.v + car.v };
+        else events.overtake = { car, gap: lateral - CAR_HALF_WIDTH, closing: bike.v - car.v };
       }
       car.lastRel = rel;
-      if (Math.abs(rel) < 2.5 && Math.abs(bike.d - ONCOMING_D) < CAR_HALF_WIDTH + 0.35) events.collision = car;
+      if (dir < 0) {
+        if (Math.abs(rel) < 2.5 && lateral < CAR_HALF_WIDTH + 0.35) events.collision = { car, reason: 'COLLISION · ONCOMING CAR' };
+      } else if (lateral < CAR_HALF_WIDTH + 0.35 && rel > -2.4 && rel < 2.6 && bike.v > car.v + 0.5) {
+        events.collision = { car, reason: 'RAN INTO THE CAR AHEAD' };
+      }
     }
     return events;
   }
 
-  return { cars, update };
+  /* Oncoming traffic within the next `metres` ahead of the rider, with the
+   * closing time it represents: the score's judge of a safe overtake. */
+  function oncomingAhead(metres = 400) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir > 0 || !active(car)) continue;
+      const rel = mod(car.s - bike.s, L);
+      if (rel > metres) continue;
+      const time = rel / Math.max(1, bike.v + car.v);
+      if (!best || time < best.time) best = { car, distance: rel, time };
+    }
+    return best;
+  }
+  function sameAhead(metres = 60) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      const rel = mod(car.s - bike.s, L);
+      if (rel > metres) continue;
+      if (!best || rel < best.distance) best = { car, distance: rel };
+    }
+    return best;
+  }
+  function setMode(next) {
+    mode = next;
+    for (const car of cars) { car.mesh.visible = active(car); car.lastRel = null; }
+  }
+
+  return { cars, update, setMode, oncomingAhead, sameAhead, get mode() { return mode; } };
 };

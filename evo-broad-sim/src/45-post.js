@@ -53,14 +53,43 @@ EVO.createPost = function createPost(renderer, quality) {
         for (int i = 0; i < 28; i++) { p += d; c += texture2D(tInput, p).rgb * w; wsum += w; w *= 0.93; }
         gl_FragColor = vec4(c / wsum, 1.0); }`
   });
+  // Visor droplets: a texture of drop normals, two layers creeping down the
+  // visor at different rates, refracting the frame where they sit.
+  const drops = (() => {
+    const S = 256, c = document.createElement('canvas'); c.width = S; c.height = S;
+    const g = c.getContext('2d'), img = g.createImageData(S, S), d = img.data, rnd = EVO.rng(5151);
+    const list = [];
+    for (let k = 0; k < 70; k += 1) list.push({ x: rnd() * S, y: rnd() * S, r: 2 + Math.pow(rnd(), 2.4) * 7 });
+    for (let y = 0; y < S; y += 1) for (let x = 0; x < S; x += 1) {
+      let nx = 0, ny = 0, a = 0;
+      for (const dr of list) {
+        for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) {
+          const dx = (x - dr.x - ox) / dr.r, dy = (y - dr.y - oy) / dr.r, q = dx * dx + dy * dy;
+          if (q < 1) { const h = Math.sqrt(1 - q); nx = dx / Math.max(0.2, h); ny = dy / Math.max(0.2, h); a = 1; }
+        }
+      }
+      const i = (y * S + x) * 4;
+      d[i] = 128 + EVO.clamp(nx, -1, 1) * 120; d[i + 1] = 128 + EVO.clamp(ny, -1, 1) * 120; d[i + 2] = 128; d[i + 3] = a * 255;
+    }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; return t;
+  })();
+
   const composite = new THREE.ShaderMaterial({
-    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, tShaft: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uAspect: { value: 1 } },
+    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, tShaft: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uAspect: { value: 1 }, tDrops: { value: drops }, uRain: { value: 0 } },
     vertexShader: VERT, depthTest: false, depthWrite: false,
-    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform sampler2D tShaft; uniform vec3 uSun; uniform float uAspect;
+    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform sampler2D tShaft; uniform vec3 uSun; uniform float uAspect; uniform sampler2D tDrops; uniform float uRain;
       vec3 aces(vec3 x){ const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14; return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0); }
       vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(1.0 / 2.4)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308))); }
       void main(){
         vec2 uv = vUv; vec2 d = uv - 0.5; float r = length(d) * 1.4142;
+        if (uRain > 0.001) {
+          vec2 duv = vec2(uv.x * uAspect, uv.y);
+          vec4 d1 = texture2D(tDrops, duv * 3.2 + vec2(0.0, uTime * 0.03));
+          vec4 d2 = texture2D(tDrops, duv * 2.1 + vec2(0.41, uTime * 0.013));
+          vec2 off = ((d1.xy - 0.5) * d1.a + (d2.xy - 0.5) * d2.a * 0.8) * 0.014 * uRain;
+          uv += off; d = uv - 0.5;
+        }
         // speed-scaled radial blur, strongest at the edges, none in the centre
         float blur = uSpeed * (0.0015 + r * r * 0.016);
         vec2 ca = d * r * 0.0003;
@@ -132,6 +161,7 @@ EVO.createPost = function createPost(renderer, quality) {
     resize,
     begin() { resize(); renderer.setRenderTarget(sceneRT); renderer.clear(); },
     setExposure(v) { composite.uniforms.uExposure.value = v; },
+    setRain(v) { composite.uniforms.uRain.value = v; },
     end(speedNorm, time, sun) {
       // bloom
       bright.uniforms.tScene.value = sceneRT.texture; pass(bright, bloomA);

@@ -990,9 +990,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.9, hemi: [0xb3a6be, 0x6a5641, 2.2], ambient: 0.18, fog: [0xd2b89c, 0.00075],
       zenith: [0.10, 0.16, 0.42], horizon: [0.66, 0.44, 0.28], glow: 1.0, disc: 20, cover: 0.04, cloud: [[0.44, 0.32, 0.37], [1.0, 0.80, 0.60]], wet: 0.15, radius: 2, exposure: 1.5 },
     overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.75, hemi: [0xc3cad2, 0x6b7064, 2.4], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
-      zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 }
+      zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 },
+    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 2.15], ambient: 0.14, fog: [0x8f989f, 0.0024],
+      zenith: [0.24, 0.27, 0.32], horizon: [0.40, 0.43, 0.46], glow: 0.03, disc: 0, cover: 0.5, cloud: [[0.24, 0.26, 0.29], [0.48, 0.50, 0.52]], wet: 1, radius: 9, exposure: 1.25, rain: 1 }
   };
-  let lightingName = 'noon';
+  let lightingName = 'noon', rainLevel = 0;
   function setLighting(name) {
     const P = PRESETS[name] || PRESETS.noon;
     lightingName = PRESETS[name] ? name : 'noon';
@@ -1005,8 +1007,11 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
     // wet tarmac: smoother, and it mirrors the sky
-    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 1.2;
+    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 0.85;
     for (const m of [grassMat, hedgeMat]) m.color.setScalar(1 - P.wet * 0.12);
+    // wet tarmac has less to offer the tyres: the corner speeds and the planner follow
+    EVO.grip = 1 - (P.rain || 0) * 0.24 - (P.wet || 0) * 0.04;
+    rainLevel = P.rain || 0;
     return P;
   }
 
@@ -1024,5 +1029,5 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
-  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
+  return { scene, sun, sunDir, sky, update, groundAt, groundMeshes, signPost, vergeSign, textures:T, setLighting, get lightingName() { return lightingName; }, get rain() { return rainLevel; }, presets: PRESETS, materials: { roadMat, grassMat, hedgeMat, stoneMat, markMat } };
 };
