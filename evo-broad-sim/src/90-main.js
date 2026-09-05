@@ -227,19 +227,6 @@ function buildApp() {
   window.addEventListener('resize', resize);
   resize();
 
-  const _sunNdc = new THREE.Vector3(), _camFwd = new THREE.Vector3(), sunScreen = { x: 0.5, y: 0.5, strength: 0 };
-  function projectSun() {
-    camera.getWorldDirection(_camFwd);
-    const facing = _camFwd.dot(world.sunDir);
-    if (facing <= 0.05) { sunScreen.strength = 0; return sunScreen; }
-    _sunNdc.copy(camera.position).addScaledVector(world.sunDir, 1000).project(camera);
-    const edge = Math.max(Math.abs(_sunNdc.x), Math.abs(_sunNdc.y));
-    sunScreen.x = _sunNdc.x * 0.5 + 0.5; sunScreen.y = _sunNdc.y * 0.5 + 0.5;
-    // beams still reach in from a sun just outside the frame
-    sunScreen.strength = (1 - EVO.smoothstep(1.05, 1.7, edge)) * EVO.smoothstep(0.05, 0.3, facing);
-    return sunScreen;
-  }
-
   const statsEl = document.getElementById('stats');
   const showStats = new URLSearchParams(location.search).has('stats');
   if (showStats) statsEl.hidden = false;
@@ -277,7 +264,7 @@ function buildApp() {
     rain.update(camera.position, bike.forward, bike.v, now / 1000, world.rain);
     audio.update(bike);
     renderer.shadowMap.needsUpdate=true;
-    if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000, projectSun()); }
+    if (post) { post.begin(); renderer.render(world.scene, camera); post.end(Math.min(1, bike.v / EVO.V_MAX), now / 1000); }
     else renderer.render(world.scene, camera);
     if (cockpit) cockpit.render(camera, bike, now / 1000);
     if (showStats) {

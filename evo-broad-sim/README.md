@@ -26,7 +26,7 @@ This version builds on the "Detailed Scenery Edition" fork of the simulator (the
 - **Overcast, wet road** – soft light from a grey sky, very soft shadows, the tarmac mirroring the sky.
 - **Rain** – a dark sky, heavy haze, standing water on the road, rain streaking past (the streaks lean into you as you accelerate, since they are the drops' motion relative to the rider), droplets creeping down the visor and refracting the view, rain hiss and tyre spray in the audio, and a quarter less grip: the safe and maximum corner speeds, the corner bar and the planner all drop accordingly.
 
-Effects that ride on top of the scene, all in the single post-process pass: HDR bloom (thresholded so only the sun, its glow and headlamps bloom), **sun shafts** that break around the foliage between you and the sun, a restrained **lens flare** gated by whether the sun disc is actually visible, drifting cloud shadows, a gentle film-style grade (contrast, saturation, warm highlights, cool lifted shadows), vignette and grain. Shaded surfaces are handled in the geometry rather than the shader: the verge darkens where it meets a hedge or wall, hedges sit on a dark foot, and the lowest courses of every wall stay damp and mossy while the coping catches the light.
+Effects that ride on top of the scene, all in the single post-process pass: HDR bloom (thresholded so only the sun disc and headlamps bloom), drifting cloud shadows, a gentle film-style grade (contrast, saturation, warm highlights, cool lifted shadows), vignette and grain. Shaded surfaces are handled in the geometry rather than the shader: the verge darkens where it meets a hedge or wall, hedges sit on a dark foot, and the lowest courses of every wall stay damp and mossy while the coping catches the light.
 
 ## Scenery
 
@@ -87,7 +87,7 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |
 | `src/35-score.js` | scoring: pace, bends and the chain multiplier, overtake judgement, village rules, laps and the saved best |
 | `src/40-overlay.js` | cockpit compositing, mirrors, dash, procedural audio |
-| `src/45-post.js` | HDR post-processing: bloom, sun shafts, lens flare, visor droplets, tone mapping, grade, vignette, grain |
+| `src/45-post.js` | HDR post-processing: bloom, visor droplets, tone mapping, grade, vignette, grain |
 | `src/50-traffic.js` | traffic in both directions: lofted bodies, PBR materials with sky reflections, bend-aware speed, following and brake lights, pass-by, overtake and collision events |
 | `src/90-main.js` | renderer setup, ride options, quality detection, corner-bar HUD, road info, pause, frame loop |
 

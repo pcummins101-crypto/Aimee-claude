@@ -26,8 +26,7 @@ EVO.createPost = function createPost(renderer, quality) {
   const sceneRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples, depthBuffer: true });
   const bloomA = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
   const bloomB = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
-  const shaftRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
-  for (const rt of [sceneRT, bloomA, bloomB, shaftRT]) { rt.texture.minFilter = THREE.LinearFilter; rt.texture.magFilter = THREE.LinearFilter; }
+  for (const rt of [sceneRT, bloomA, bloomB]) { rt.texture.minFilter = THREE.LinearFilter; rt.texture.magFilter = THREE.LinearFilter; }
 
   const bright = new THREE.ShaderMaterial({
     uniforms: { tScene: { value: null } }, vertexShader: VERT, depthTest: false, depthWrite: false,
@@ -42,16 +41,6 @@ EVO.createPost = function createPost(renderer, quality) {
         c += texture2D(tInput, vUv).rgb * w[0];
         for (int i = 1; i < 5; i++) { vec2 o = uDir * float(i) * 1.6; c += texture2D(tInput, vUv + o).rgb * w[i]; c += texture2D(tInput, vUv - o).rgb * w[i]; }
         gl_FragColor = vec4(c, 1.0); }`
-  });
-  // Sun shafts: the bright mask (sun disc, sky glow, nothing that is in
-  // front of them) smeared radially towards the sun. Foliage between the eye
-  // and the sun is dark in the mask, so the beams break naturally around it.
-  const shaft = new THREE.ShaderMaterial({
-    uniforms: { tInput: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) } }, vertexShader: VERT, depthTest: false, depthWrite: false,
-    fragmentShader: `varying vec2 vUv; uniform sampler2D tInput; uniform vec3 uSun;
-      void main(){ vec2 d = (uSun.xy - vUv) / 28.0; vec2 p = vUv; vec3 c = vec3(0.0); float w = 1.0, wsum = 0.0;
-        for (int i = 0; i < 28; i++) { p += d; c += texture2D(tInput, p).rgb * w; wsum += w; w *= 0.93; }
-        gl_FragColor = vec4(c / wsum, 1.0); }`
   });
   // Visor droplets: a texture of drop normals, two layers creeping down the
   // visor at different rates, refracting the frame where they sit.
@@ -76,9 +65,9 @@ EVO.createPost = function createPost(renderer, quality) {
   })();
 
   const composite = new THREE.ShaderMaterial({
-    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, tShaft: { value: null }, uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uAspect: { value: 1 }, tDrops: { value: drops }, uRain: { value: 0 } },
+    uniforms: { tScene: { value: null }, tBloom: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uSpeed: { value: 0 }, uTime: { value: 0 }, uExposure: { value: 1.42 }, uAspect: { value: 1 }, tDrops: { value: drops }, uRain: { value: 0 } },
     vertexShader: VERT, depthTest: false, depthWrite: false,
-    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform sampler2D tShaft; uniform vec3 uSun; uniform float uAspect; uniform sampler2D tDrops; uniform float uRain;
+    fragmentShader: `varying vec2 vUv; uniform sampler2D tScene; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uSpeed; uniform float uTime; uniform float uExposure; uniform float uAspect; uniform sampler2D tDrops; uniform float uRain;
       vec3 aces(vec3 x){ const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14; return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0); }
       vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(1.0 / 2.4)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308))); }
       void main(){
@@ -101,23 +90,6 @@ EVO.createPost = function createPost(renderer, quality) {
         col /= wsum;
         vec3 bloom = texture2D(tBloom, uv).rgb;
         col += bloom * 0.28;
-        if (uSun.z > 0.001) {
-          // beams, then a restrained lens flare gated by whether the sun disc
-          // itself is actually visible (the blurred bright mask at its position)
-          col += texture2D(tShaft, uv).rgb * uSun.z * 0.42;
-          vec3 atSun = texture2D(tBloom, uSun.xy).rgb;
-          float vis = smoothstep(0.35, 1.6, dot(atSun, vec3(0.33))) * uSun.z;
-          if (vis > 0.001) {
-            vec2 toC = vec2(0.5) - uSun.xy; vec2 ar = vec2(uAspect, 1.0);
-            float flare = 0.0;
-            flare += pow(max(0.0, 1.0 - length((uv - (uSun.xy + toC * 0.35)) * ar) / 0.05), 2.0) * 0.3;
-            flare += pow(max(0.0, 1.0 - length((uv - (uSun.xy + toC * 0.85)) * ar) / 0.10), 2.0) * 0.16;
-            flare += pow(max(0.0, 1.0 - length((uv - (uSun.xy + toC * 1.35)) * ar) / 0.045), 2.0) * 0.22;
-            // a soft veil across the frame when the sun is in it
-            float veil = (1.0 - smoothstep(0.0, 0.8, length((uv - uSun.xy) * ar))) * 0.035;
-            col += (flare * vec3(1.0, 0.82, 0.62) + veil * vec3(1.0, 0.9, 0.78)) * vis;
-          }
-        }
         col *= uExposure;
         col = aces(col);
         // grade: gentle contrast, a touch of saturation, warm highlights and
@@ -144,7 +116,6 @@ EVO.createPost = function createPost(renderer, quality) {
       sceneRT.setSize(w, h);
       bloomA.setSize(Math.max(2, w >> 2), Math.max(2, h >> 2));
       bloomB.setSize(Math.max(2, w >> 2), Math.max(2, h >> 2));
-      shaftRT.setSize(Math.max(2, w >> 2), Math.max(2, h >> 2));
     }
     composite.uniforms.uRes.value.set(w, h);
     composite.uniforms.uAspect.value = w / Math.max(1, h);
@@ -162,13 +133,9 @@ EVO.createPost = function createPost(renderer, quality) {
     begin() { resize(); renderer.setRenderTarget(sceneRT); renderer.clear(); },
     setExposure(v) { composite.uniforms.uExposure.value = v; },
     setRain(v) { composite.uniforms.uRain.value = v; },
-    end(speedNorm, time, sun) {
+    end(speedNorm, time) {
       // bloom
       bright.uniforms.tScene.value = sceneRT.texture; pass(bright, bloomA);
-      const sunOn = sun && sun.strength > 0.001;
-      if (sunOn) { shaft.uniforms.uSun.value.set(sun.x, sun.y, sun.strength); shaft.uniforms.tInput.value = bloomA.texture; pass(shaft, shaftRT); }
-      composite.uniforms.uSun.value.set(sunOn ? sun.x : 0.5, sunOn ? sun.y : 0.5, sunOn ? sun.strength : 0);
-      composite.uniforms.tShaft.value = shaftRT.texture;
       blur.uniforms.tInput.value = bloomA.texture; blur.uniforms.uDir.value.set(1 / bloomA.width, 0); pass(blur, bloomB);
       blur.uniforms.tInput.value = bloomB.texture; blur.uniforms.uDir.value.set(0, 1 / bloomA.height); pass(blur, bloomA);
       // composite to the screen
