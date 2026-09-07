@@ -1133,10 +1133,10 @@ const ROUTES = {
     id: 'motorway',
     name: 'M1 · Toddington to Newport Pagnell',
     kicker: 'SMART MOTORWAY · M1 NORTHBOUND J12–J14',
-    roadHint: 'keep left unless overtaking, obey the gantry limits, no undertaking; R resets you in lane 1, P pauses',
+    roadHint: 'keep left unless overtaking, obey the gantry limits and the 50 through the road works, no undertaking; R resets you in lane 1, P pauses',
     scoreHint: 'pace within the limit; passing on the right chains a multiplier (+80); undertaking, hogging an outer lane, tailgating, breaking a gantry limit and crashes cost; pull in at Newport Pagnell to complete the run (+300). Your best run is kept',
     trafficLabels: ['Full motorway traffic', 'Southbound only', 'Empty motorway'],
-    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13 and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
+    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13, through a mile of contraflow-free road works with lane 1 coned off, and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
     open: true,
     dual: { lanes: 4, laneW: 3.65, strip: 1.0, reserve: 3.6 },
     scale: 1,
@@ -1153,10 +1153,14 @@ const ROUTES = {
     // Greensand cutting, down into the Marston Vale and across the Ouzel.
     profile: (s) => M1.interp(M1.PROFILE, s),
     elevation: [],
+    // The land beside a motorway is described relative to the carriageway, so
+    // undo the route layer's own terrain scaling (it applies *0.85 + 0.6) and
+    // hand back exactly the height the tables ask for.
     terrain: (x, z) => {
       const s = M1.zToS(z);
-      return M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
+      const want = M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
         (EVO.fbm(x / 900 + 2.2, z / 900 - 1.1, 3) - 0.5) * 9 + (EVO.fbm(x / 240 - 4.4, z / 240 + 3.3, 3) - 0.5) * 2.6;
+      return (want - 0.6) / 0.85;
     },
     spawns: [[440, 'Toddington services', 10.55], [1400, 'Approaching J12'], [7200, 'Brogborough Hill'], [10600, 'Approaching J13'], [15600, 'Salford straight'], [18900, 'Approaching J14']],
     control: M1.CONTROL,
@@ -1178,29 +1182,54 @@ const ROUTES = {
       },
       // Portal gantries with a signal over each lane. '' is blank, a number is a
       // variable limit, 'END' clears it (national speed limit applies).
+      // '' is a blank signal, a number is a variable limit, 'END' clears it, and
+      // `x` lists the lanes showing a red X (a closed lane).
       gantries: [
         { s: 900, msg: '' }, { s: 2000, msg: 'DONT DRIVE TIRED' }, { s: 3300, msg: '' }, { s: 4600, msg: 'KEEP APART 2 CHEVRONS' },
         { s: 6000, msg: '' }, { s: 7400, msg: '' }, { s: 8800, msg: 'CHECK YOUR FUEL LEVEL' },
         { s: 10400, limit: 60, msg: 'CONGESTION AFTER J13' }, { s: 11400, limit: 50, msg: 'SLOW TRAFFIC AHEAD' },
-        { s: 12500, limit: 'END', msg: '' }, { s: 13900, msg: '' }, { s: 15300, msg: 'KEEP LEFT UNLESS OVERTAKING' },
-        { s: 16700, msg: '' }, { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE J14 ROADWORKS' }, { s: 20700, msg: '' }
+        { s: 12500, limit: 'END', msg: '' }, { s: 13000, msg: 'ROAD WORKS 2 MILES' },
+        { s: 13700, limit: 60, msg: 'ROAD WORKS 1 MILE' }, { s: 14600, limit: 50, msg: 'LANE 1 CLOSED 1000 YDS' },
+        { s: 15140, limit: 50, x: [0], msg: 'LANE 1 CLOSED MERGE RIGHT' },
+        { s: 16000, limit: 50, x: [0], msg: 'AVERAGE SPEED CHECK' },
+        { s: 16800, limit: 50, x: [0], msg: '' },
+        { s: 17250, limit: 'END', msg: 'END OF ROAD WORKS' },
+        { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE FOR J14' }, { s: 20700, msg: '' }
       ],
+      /* The lane 1 closure: a long-term smart-motorway scheme with a cone
+       * taper into a barrier-separated works, a 50 limit under average speed
+       * cameras, and a site compound on the verge. `lane` is the lane index
+       * counting from the nearside, so 0 closes lane 1. */
+      roadworks: {
+        start: 15250, end: 17050, lane: 0, limit: 50,
+        taperIn: 150, taperOut: 100, coneRun: 220, compound: 16150,
+        advance: [13650, 14450], camera: [15200, 15950, 16700]
+      },
       // overbridges other than the junction roads: minor roads, farm tracks, a footbridge
       bridges: [
         { s: 1100, kind: 'road' }, { s: 3250, kind: 'road' }, { s: 4700, kind: 'road' }, { s: 6350, kind: 'road' }, { s: 7800, kind: 'foot' },
         { s: 9200, kind: 'road' }, { s: 10650, kind: 'road' }, { s: 13400, kind: 'road' }, { s: 14900, kind: 'road' }, { s: 16350, kind: 'road' },
         { s: 17700, kind: 'road' }, { s: 18900, kind: 'foot' }, { s: 21000, kind: 'road' }
       ],
-      refuges: [1600, 3900, 6100, 8300, 10100, 13000, 15400, 17300, 19100],
-      pylons: [{ s: 5200, angle: 62 }, { s: 15800, angle: 105 }],
+      refuges: [1600, 3900, 6100, 8300, 10100, 12900, 14550, 17550, 19100],
+      pylons: [{ s: 5200, angle: 62 }, { s: 11200, angle: 84 }, { s: 15800, angle: 105 }, { s: 20200, angle: 70 }],
       woods: [[5500, 6200, -1], [7500, 10700, 1], [7900, 10300, -1], [16800, 17300, 1]],
       sheds: [{ s: 12300, side: -1 }, { s: 19000, side: -1 }],
+      // farmsteads out in the fields, balancing ponds in the motorway's own
+      // drainage land, and the Milton Keynes skyline off to the west near J14
+      farms: [{ s: 3400, side: 1 }, { s: 6900, side: -1 }, { s: 9600, side: 1 }, { s: 14100, side: -1 }, { s: 17900, side: 1 }, { s: 21100, side: -1 }],
+      ponds: [{ s: 2700, side: 1 }, { s: 8100, side: -1 }, { s: 13600, side: 1 }, { s: 18600, side: -1 }],
+      pasture: [[1200, 2600, 1], [5400, 6600, -1], [9000, 10200, 1], [13200, 14200, -1], [17800, 18900, 1]],
+      skyline: { s: 20600, side: -1, distance: 2400, spread: 1800 },
       noise: [[1450, 2050, 1], [18400, 19100, 1]],
-      lit: [[1700, 3100], [11300, 12700], [19300, 20700]]
+      lit: [[1700, 3100], [11300, 12700], [15100, 17200], [19300, 20700]]
     },
     limitAt(s) {
       let lim = 70;
       for (const g of M1.gantries()) { if (s >= g.s && g.limit) lim = g.limit === 'END' ? 70 : g.limit; }
+      // the works carry their own limit whatever the last gantry said
+      const w = ROUTES.motorway.m1.roadworks;
+      if (s >= w.start - w.taperIn - 300 && s <= w.end + 120) lim = Math.min(lim, w.limit);
       return lim;
     },
     readout(RT, s) {
@@ -1208,7 +1237,10 @@ const ROUTES = {
       const lim = M1.limitAt(s);
       const nextExit = M.exits.find((e) => e.s - s > -200);
       const toServices = L - M.services.end.nose - s;
+      const w = M.roadworks;
       if (s < 700) return { name: 'TODDINGTON SERVICES', note: 'Merge · give way to traffic on the M1', warn: true };
+      if (s >= w.start - w.taperIn && s <= w.end + 60) return { name: 'M1 ROAD WORKS', note: `Lane 1 closed · ${w.limit} average speed check`, warn: true };
+      if (s >= w.start - 1800 && s < w.start - w.taperIn) return { name: 'M1 NORTHBOUND', note: `Road works · lane 1 closed in ${Math.max(0, Math.round((w.start - s) / 100) / 10)} km`, warn: true };
       if (toServices < 1650 && toServices > -50) return { name: 'M1 NORTHBOUND', note: `Newport Pagnell services · ${Math.max(0, Math.round(toServices / 100) / 10)} km · keep left`, warn: toServices < 500 };
       if (lim !== 70) return { name: 'M1 NORTHBOUND', note: `Variable limit ${lim} · smart motorway`, warn: true };
       if (nextExit && nextExit.s - s < 1700 && nextExit.s - s > -200) return { name: 'M1 NORTHBOUND', note: `Junction ${nextExit.number} · ${nextExit.road} · ${Math.max(0, Math.round((nextExit.s - s) / 100) / 10)} km` };
@@ -1216,7 +1248,7 @@ const ROUTES = {
       return { name: 'M1 NORTHBOUND', note: `Four lanes · no hard shoulder · marker ${km}` };
     },
     scenery: { motorway: true, trees: 'belts', flowers: false, blades: 0.35, farmsteads: false, fells: false, grass: 0xf2f0e6, fogScale: 0.8, flock: 0, walls: 0 },
-    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.3 }
+    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.32, count: 42, countCoarse: 24, sbCount: 28, sbCountCoarse: 16 }
   }
 };
 
@@ -1671,7 +1703,9 @@ R.inVillage = inVillage;
 R.woodland = woodland;
 R.clearance = clearance;
 R.detailPlan = { village, gates, humps, strips, repairs, covers, potholes, lots, grids, laybys, summit };
-R.speedLimitAt = (s) => (inVillage(s) ? village.limit : ROUTE.limit); // fictional signed road, not a real surveyed route
+// A route may sign its own limit along its length (gantries, road works);
+// otherwise it is the village limit or the route's default.
+R.speedLimitAt = (s) => (ROUTE.limitAt ? ROUTE.limitAt(mod(s, L)) : inVillage(s) ? village.limit : ROUTE.limit); // fictional signed road, not a real surveyed route
 R.nextHump = (s, direction = 1) => {
   let best = null;
   for (const h of humps) { const dist = mod((h.s - s) * direction, L); if (!best || dist < best.dist) best = { ...h, dist }; }
@@ -4144,7 +4178,7 @@ const RT = EVO.route;
 
 EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L, GeoSink, stripRows, addCloudShadow, materials }) {
   const M = EVO.ROUTE.m1, D = RT.DUAL, ROAD_HALF = RT.ROAD_HALF, LANE_HALF = RT.LANE_HALF, LANE_W = D.laneW;
-  const { roadMat, grassMat, hedgeMat, markMat, leafMat, postMat, woodMat, blackMat, signBackMat, studMat } = materials;
+  const { roadMat, grassMat, hedgeMat, markMat, leafMat, postMat, woodMat, blackMat, signBackMat, studMat, coneMat, barrierMat, barrierRedMat } = materials;
   const coarse = quality.coarse;
   const CHUNK = 400;
   const UP = new THREE.Vector3(0, 1, 0);
@@ -4172,6 +4206,9 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
   const pylonMat = mat('pylon steel', 0x6f7377, { roughness: 0.6, metalness: 0.5 });
   const parapetMat = mat('bridge parapet', 0xa7a9a6, { roughness: 0.85, side: THREE.DoubleSide });
   const deckMat = mat('bridge deck', 0x8f8d88, { roughness: 0.9 });
+  const cabinLike = mat('pale render', 0xdcdad2, { roughness: 0.82 });
+  const cattleMat = mat('cattle', 0xffffff, { roughness: 0.9 });
+  const gravelMatFarm = mat('silage bale', 0xd8d6cf, { roughness: 0.7 });
   const bankMat = new THREE.MeshStandardMaterial({ name: 'earth bank', map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.2, 0.2), roughness: 1, vertexColors: true });
   // Arable fields: a neutral drilled-soil tile so the vertex colour carries the crop
   const fieldTex = (() => {
@@ -4237,23 +4274,57 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
     }
     return w;
   }
+  /* ------------------------------------------------- the lane closure */
+  // A long-term scheme with lane 1 coned off: the cones taper in from the
+  // nearside edge to the lane line, run along it for the length of the works
+  // and taper back out. Everything left of that line is site, not carriageway.
+  const RW = M.roadworks;
+  const RW_LINE = LANE_HALF - (RW.lane + 1) * LANE_W;
+  function coneLine(s) {
+    if (s < RW.start || s > RW.end) return null;
+    if (s < RW.start + RW.taperIn) return lerp(ROAD_HALF, RW_LINE, ease((s - RW.start) / RW.taperIn));
+    if (s > RW.end - RW.taperOut) return lerp(RW_LINE, ROAD_HALF, ease((s - RW.end + RW.taperOut) / RW.taperOut));
+    return RW_LINE;
+  }
+  const inWorks = (s) => s >= RW.start && s <= RW.end;
   const extent = { left: ROAD_HALF, right: D.rightEdge };
-  function roadExtent(s) { extent.left = ROAD_HALF + auxWidth(s); return extent; }
+  function roadExtent(s) {
+    const c = coneLine(s);
+    extent.left = c === null ? ROAD_HALF + auxWidth(s) : c - 0.25;
+    return extent;
+  }
   RT.roadExtent = roadExtent;
+  // Which lane traffic must be out of, and from how far back. Drivers merge
+  // well before the taper, so the closure reads as closed 500 m early.
+  RT.closedLane = (s) => (s >= RW.start - 500 && s <= RW.end ? RW.lane : -1);
+  RT.roadworks = RW;
+  // where to put the rider back after a spill: never inside the coned lane
+  RT.resetLane = (s) => { const c = coneLine(s); return c === null ? RT.homeLane : c - LANE_W / 2; };
   RT.auxWidth = auxWidth;
   RT.laneCentres = LANES;
   RT.runEnd = L - 40;
-  RT.edgeReason = (s, d) => (d < 0 ? 'INTO THE CENTRAL BARRIER' : exits.some((e) => s > e.s && s < e.s + 500) ? 'LEFT THE M1 · TOOK THE EXIT' : 'OFF THE CARRIAGEWAY · INTO THE BARRIER');
+  RT.edgeReason = (s, d) => (d < 0 ? 'INTO THE CENTRAL BARRIER'
+    : inWorks(s) ? 'INTO THE ROAD WORKS · LANE 1 IS CLOSED'
+    : exits.some((e) => s > e.s && s < e.s + 500) ? 'LEFT THE M1 · TOOK THE EXIT'
+    : 'OFF THE CARRIAGEWAY · INTO THE BARRIER');
   RT.finishNose = endDiverge.nose;
 
   /* ------------------------------------------------------ ground */
   // The services car parks are flat slabs beside the road; everything else is
   // the verge stepping down off the hard strip and blending into the land.
   const parks = [
-    { s0: 20, s1: 340, d0: 40, d1: 166, y: null, name: SV.start.name },
-    { s0: L - 120, s1: L + 250, d0: 40, d1: 166, y: null, name: SV.end.name }
+    { s0: 20, s1: 340, d0: 40, d1: 166, y: null, services: true, name: SV.start.name },
+    { s0: L - 120, s1: L + 250, d0: 40, d1: 166, y: null, services: true, name: SV.end.name },
+    // the works compound is cut into the verge as a level hardstanding
+    { s0: RW.compound - 78, s1: RW.compound + 78, d0: ROAD_HALF + 14, d1: ROAD_HALF + 48, terrain: true, blend: 26, y: null, name: 'compound' }
   ];
-  for (const p of parks) { const f = fr((p.s0 + p.s1) / 2); p.y = f.y + RT.crown(ROAD_HALF) + 0.35; }
+  for (const p of parks) {
+    const f = fr((p.s0 + p.s1) / 2);
+    // a works platform is levelled where it stands; a services car park is
+    // built up off the carriageway
+    if (p.terrain) { const c = P((p.s0 + p.s1) / 2, (p.d0 + p.d1) / 2); p.y = land(c.x, c.z) + 0.25; }
+    else p.y = f.y + RT.crown(ROAD_HALF) + 0.35;
+  }
   function parkAt(s, d, margin = 0) { for (const p of parks) if (s >= p.s0 - 12 - margin && s <= p.s1 + 12 + margin && d >= p.d0 - 8 - margin && d <= p.d1 + 8 + margin) return p; return null; }
   const gf = {};
   function groundAt(s, d) {
@@ -4270,7 +4341,8 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
       y = lerp(verge, base, smoothstep(3, 24, dd));
       const park = d > 0 ? parkAt(s, d) : null;
       if (park) {
-        const inside = smoothstep(0, 8, Math.min(s - park.s0 + 12, park.s1 + 12 - s)) * smoothstep(0, 8, Math.min(d - park.d0 + 8, park.d1 + 8 - d));
+        const b = park.blend ?? 8;
+        const inside = smoothstep(0, b, Math.min(s - park.s0 + 12, park.s1 + 12 - s)) * smoothstep(0, b, Math.min(d - park.d0 + 8, park.d1 + 8 - d));
         y = lerp(y, park.y, inside);
       }
     }
@@ -4352,6 +4424,29 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
     batch.geometry(material, s, geo, _m, range, color);
   }
 
+  /* Instanced props (cones, crops, posts, livestock) grouped into the same
+   * road chunks as everything else, so one switch culls the lot. */
+  function instanceProps(name, geo, material, items, range = 900, shadow = true) {
+    const bins = new Map();
+    for (const it of items) { const k = Math.floor(it.s / CHUNK); if (!bins.has(k)) bins.set(k, []); bins.get(k).push(it); }
+    const made = [];
+    for (const [k, list] of bins) {
+      const im = new THREE.InstancedMesh(geo, material, list.length);
+      list.forEach((it, i) => {
+        _v.set(it.x, it.y, it.z); _q.setFromAxisAngle(UP, it.yaw || 0);
+        _sc.set(it.sx ?? it.sc ?? 1, it.sy ?? it.sc ?? 1, it.sz ?? it.sc ?? 1);
+        _m.compose(_v, _q, _sc); im.setMatrixAt(i, _m);
+        if (it.color) im.setColorAt(i, it.color);
+      });
+      im.name = name; im.castShadow = shadow; im.receiveShadow = true;
+      im.userData.s = (k + 0.5) * CHUNK; im.userData.range = range;
+      im.userData.partitioned = true;   // already binned by road distance
+      im.computeBoundingSphere();
+      scene.add(im); chunked.push(im); made.push(im);
+    }
+    return made;
+  }
+
   /* A ribbon in road coordinates from sA to sB: `cols(s)` gives the lateral
    * offsets, `height(s, d, f)` the surface height, split into chunks. */
   function ribbon(batch, material, sA, sB, cols, height, opts = {}) {
@@ -4363,8 +4458,8 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
       const rows = [], n = Math.max(1, Math.ceil((b - a) / step));
       for (let i = 0; i <= n; i += 1) {
         const s = lerp(a, b, i / n), f = fr(s), ds = typeof cols === 'function' ? cols(s) : cols;
-        rows.push(ds.map((d) => {
-          const y = height(s, d, f);
+        rows.push(ds.map((d, i) => {
+          const y = height(s, d, f, i);
           const v = { x: f.x + f.nx * d, y, z: f.z + f.nz * d };
           if (uv) { const t = uv(s, d); v.u = t[0]; v.v = t[1]; } else { v.u = d / 4; v.v = s / 4; }
           if (tint) { const t = tint(s, d, v); v.r = t[0]; v.g = t[1]; v.b = t[2]; }
@@ -4405,13 +4500,17 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
   for (const side of [1, -1]) for (let s = -600; s < L + 800; s += 170 + fieldSeed() * 220) hedgeLines.push({ s, side, len: 260 + fieldSeed() * 360, skew: (fieldSeed() - 0.5) * 0.5 });
   // pasture, ripening wheat, young cereal, ploughed clay, barley stubble, grass ley, oilseed rape (on a neutral soil tile)
   const fieldPalette = [[0.62, 0.9, 0.42], [1.45, 1.2, 0.55], [0.55, 0.85, 0.4], [0.6, 0.45, 0.32], [1.3, 1.15, 0.7], [0.7, 0.95, 0.5], [1.4, 1.35, 0.3]];
-  function fieldTint(s, d) {
+  // which crop this patch of ground carries: the strip between two hedge lines
+  // and the band away from the road pick an entry out of the palette
+  function fieldIndex(s, d) {
     const side = d > 0 ? 1 : -1, ad = Math.abs(d);
-    // which strip between two hedge lines, and which band away from the road
     let k = 0;
     for (const h of hedgeLines) { if (h.side === side && h.s <= s) k += 1; }
     const band = ad < 165 ? 0 : ad < 330 ? 1 : 2;
-    const c = fieldPalette[(k * 3 + band * 2 + (side > 0 ? 0 : 4)) % fieldPalette.length];
+    return (k * 3 + band * 2 + (side > 0 ? 0 : 4)) % fieldPalette.length;
+  }
+  function fieldTint(s, d) {
+    const c = fieldPalette[fieldIndex(s, d)];
     const n = EVO.fbm(s / 90 + 3, d / 90 - 2, 2) - 0.5;
     return [c[0] + n * 0.16, c[1] + n * 0.14, c[2] + n * 0.1];
   }
@@ -4427,13 +4526,17 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
       ribbon(surfaces, grassMat, -600, L + 800, vCols, (s, d) => groundAt(s, d).y, { step: 8, range: 2400, uv, tint: (s, d) => vergeTint(s, d) });
       ribbon(surfaces, fieldMat, -600, L + 800, fCols, (s, d) => groundAt(s, d).y, { step: 10, range: 2400, uv: (s, d) => { const g = groundAt(s, d); return [g.x / 3, g.z / 3]; }, tint: (s, d) => fieldTint(s, d) });
     }
-    // a coarse plain beyond the fields so the horizon is land, not sky
-    const far = [560, 800, 1100, 1500, 2100, 3000];
+    // A coarse plain beyond the fields so the horizon is land, not sky. Its
+    // height follows the carriageway rather than the terrain function: that
+    // function maps a world point back onto the alignment, which is meaningless
+    // a kilometre out to the side and throws the plain about wildly.
+    const far = [560, 900, 1400, 2200];
     for (const side of [1, -1]) {
       const cols = far.map((o) => side * o);
       const rowsCols = side > 0 ? cols : cols.slice().reverse();
-      ribbon(surfaces, fieldMat, -1200, L + 1500, rowsCols, (s, d, f) => { const x = f.x + f.nx * d, z = f.z + f.nz * d; return land(x, z) - 1.5; },
-        { step: 120, range: 4500, uv: (s, d) => [s / 3, d / 3], tint: (s, d) => { const f = fieldTint(s, d); return [f[0] * 0.8, f[1] * 0.82, f[2] * 0.78]; } });
+      ribbon(surfaces, fieldMat, -1200, L + 1500, rowsCols,
+        (s, d, f) => f.y - 2.5 - Math.abs(d) * 0.004 + (EVO.fbm(d / 700 + 3, s / 700 - 2, 2) - 0.5) * 9,
+        { step: 100, range: 5000, uv: (s, d) => [s / 3, d / 3], tint: (s, d) => { const t = fieldTint(s, d); return [t[0] * 0.8, t[1] * 0.82, t[2] * 0.78]; } });
     }
   }
   for (const m of surfaces.finish(false)) if (m.material === grassMat || m.material === fieldMat) groundMeshes.push(m);
@@ -4642,6 +4745,7 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
     // Newport Pagnell: the slip leaves the nose and climbs gently to the car park
     slip(en.nose - 2, L + 40, endSlipD, () => 0, 4.6, { bank: false });
     for (const park of parks) {
+      if (!park.services) continue;
       const sMid = (park.s0 + park.s1) / 2, f = fr(sMid);
       const slabGeo = new THREE.BoxGeometry(park.d1 - park.d0, 0.3, park.s1 - park.s0);
       put(structures, slabMat, slabGeo, sMid, (park.d0 + park.d1) / 2, park.y - fr(sMid).y - RT.crown((park.d0 + park.d1) / 2) - 0.1, 0, 2200);
@@ -4686,10 +4790,9 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
   {
     // concrete step barrier down the reserve: a continuous extrusion
     const prof = [[-0.27, 0], [-0.27, 0.08], [-0.17, 0.25], [-0.11, 0.9], [0.11, 0.9], [0.17, 0.25], [0.27, 0.08], [0.27, 0]];
-    ribbon(furniture, concreteMat, -450, L + 750, prof.map(([w]) => RES + w), (s, d, f) => {
-      const k = prof.findIndex(([w]) => Math.abs(RES + w - d) < 1e-6);
-      return f.y + RT.crown(RES) + prof[k][1];
-    }, { step: 6, range: 1500, uv: (s, d) => [s / 2, d] });
+    ribbon(furniture, concreteMat, -450, L + 750, prof.map(([w]) => RES + w),
+      (s, d, f, i) => f.y + RT.crown(RES) + prof[i][1],
+      { step: 6, range: 1500, uv: (s, d) => [s / 2, d] });
     // steel safety barrier along the left verge: W-beam on posts, kept back from the strip
     const beamGeo = new THREE.BoxGeometry(0.08, 0.31, 4.0).translate(0, 0.62, 0);
     const postGeo = new THREE.BoxGeometry(0.1, 0.75, 0.06).translate(0, 0.375, 0);
@@ -4767,7 +4870,199 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
         treePlacements.push({ x: gx, y: RT.terrainHeight(gx, gz) - 0.2, z: gz, species: rnd() < 0.6 ? 'oak' : 'ash', scale: 0.9 + rnd() * 0.6, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
       }
     }
+    // more hedgerow and boundary trees than a bare motorway corridor needs:
+    // the M1 through Bedfordshire runs between planted belts nearly all the way
+    for (const side of [1, -1]) for (let s = -500; s < L + 700; s += 7) {
+      if (exits.some((e) => Math.abs(e.ring - s) < 150)) continue;
+      // belts thicken and thin along the road rather than marching in step
+      const density = EVO.noise2(s / 260, side * 3.1);
+      if (rnd() > 0.15 + density * 0.85) continue;
+      const edge = fenceD(s, side) + side * (3 + rnd() * 18);
+      if (side > 0 && parkAt(s, edge, 20)) continue;
+      const g = groundAt(s + (rnd() - 0.5) * 11, edge), r = rnd();
+      const species = r < 0.3 ? 'hawthorn' : r < 0.55 ? 'birch' : r < 0.78 ? 'ash' : 'oak';
+      treePlacements.push({ x: g.x, y: g.y - 0.2, z: g.z, species, scale: (species === 'hawthorn' ? 0.5 : 0.72) + rnd() * 0.55, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+    }
     EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
+    /* ------------------------------------------------ crops and cover */
+    // The fields are drilled, not bare: instanced cross-cards tinted by the
+    // crop the field ground already carries, so a wheat field grows wheat.
+    const cropTex = (() => {
+      const S = 256, c = document.createElement('canvas'); c.width = S; c.height = S;
+      const ctx = c.getContext('2d'); ctx.clearRect(0, 0, S, S);
+      const r = EVO.rng(771);
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 54; k += 1) {
+        const x = 18 + r() * (S - 36), h = S * (0.5 + r() * 0.46), lean = (r() - 0.5) * 30;
+        const v = 196 + Math.floor(r() * 52);
+        ctx.strokeStyle = `rgba(${v},${v},${v - 26},0.96)`; ctx.lineWidth = 2.2 + r() * 1.8;
+        ctx.beginPath(); ctx.moveTo(x, S); ctx.quadraticCurveTo(x + lean * 0.4, S - h * 0.55, x + lean, S - h); ctx.stroke();
+        if (r() < 0.7) { // the ear at the top of the stem
+          ctx.strokeStyle = 'rgba(255,253,238,0.96)'; ctx.lineWidth = 4.5 + r() * 3.5;
+          ctx.beginPath(); ctx.moveTo(x + lean, S - h + 4); ctx.lineTo(x + lean * 1.18, S - h - S * 0.085); ctx.stroke();
+        }
+      }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy()); return t;
+    })();
+    function crossCard(w, h) {
+      const g = new THREE.BufferGeometry(), p = [], uv = [], nn = [], ix = [];
+      for (const a of [0, Math.PI / 2]) {
+        const cx = Math.cos(a) * w / 2, cz = Math.sin(a) * w / 2, b = p.length / 3;
+        p.push(-cx, 0, -cz, cx, 0, cz, cx, h, cz, -cx, h, -cz);
+        uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+        for (let i = 0; i < 4; i += 1) nn.push(0, 1, 0);   // lit like the ground it grows out of
+        ix.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+      g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(nn, 3));
+      g.setIndex(ix); g.computeBoundingSphere();
+      return g;
+    }
+    const cropMat = new THREE.MeshStandardMaterial({ name: 'crop', map: cropTex, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.95, metalness: 0 });
+    EVO.addFoliageFill(cropMat, 0.2);
+    const cropGeo = crossCard(3.2, 1.15), tuftGeo = crossCard(0.85, 0.42);
+    const PLOUGH = 3;   // the ploughed-clay entry in the palette grows nothing yet
+    const crops = [], tufts = [], col = new THREE.Color();
+    const cropStep = coarse ? 9 : 5, cropPer = coarse ? 3 : 5;
+    for (const side of [1, -1]) for (let s = -400; s < L + 600; s += cropStep) {
+      const f = fr(s), edge = side > 0 ? ROAD_HALF + 19 : SB1 - 19;
+      for (let k = 0; k < cropPer; k += 1) {
+        // near the road only: a field 200 m out reads as colour, not as stalks
+        const d = edge + side * Math.pow(rnd(), 0.8) * 68;
+        if (side > 0 && parkAt(s, d, 25)) continue;
+        if (fieldIndex(s, d) === PLOUGH) continue;
+        if (exits.some((e) => Math.abs(e.ring - s) < 210 && Math.abs(d - RES) < 150)) continue;
+        const x = f.x + f.nx * d + (rnd() - 0.5) * 3, z = f.z + f.nz * d + (rnd() - 0.5) * 3;
+        const t = fieldTint(s, d);
+        crops.push({ x, y: land(x, z) - 0.1, z, yaw: rnd() * Math.PI, s, sc: 0.8 + rnd() * 0.55, color: col.clone().setRGB(t[0] * 0.92, t[1] * 0.92, t[2] * 0.9) });
+      }
+      // rough grass on the verge itself, right up to the hard strip
+      for (let k = 0; k < (coarse ? 2 : 4); k += 1) {
+        const d = (side > 0 ? ROAD_HALF + auxWidth(s) : SB1) + side * (1.6 + rnd() * 16);
+        if (inWorks(s) && side > 0) continue;
+        if (side > 0 && parkAt(s, d, 10)) continue;
+        const g = groundAt(s + (rnd() - 0.5) * 3, d);
+        const v = 0.62 + rnd() * 0.3;
+        tufts.push({ x: g.x, y: g.y - 0.05, z: g.z, yaw: rnd() * Math.PI, s, sc: 0.7 + rnd() * 0.7, color: col.clone().setRGB(v * 0.5, v * 0.72, v * 0.3) });
+      }
+    }
+    instanceProps('crops', cropGeo, cropMat, crops, coarse ? 420 : 620, false);
+    instanceProps('verge grass', tuftGeo, cropMat, tufts, coarse ? 150 : 230, false);
+
+    /* --------------------------------------------------- verge furniture */
+    // the little white marker posts every 100 m, reflector facing the traffic
+    const mpGeo = new THREE.BoxGeometry(0.14, 1.0, 0.06).translate(0, 0.5, 0);
+    const mpRefl = new THREE.BoxGeometry(0.1, 0.16, 0.02).translate(0, 0.8, 0.04);
+    const posts = [], refls = [];
+    for (let s = 100; s < L - 60; s += 100) {
+      const d = ROAD_HALF + auxWidth(s) + 2.0;
+      if (parkAt(s, d, 8) || M.gantries.some((g) => Math.abs(g.s - s) < 12)) continue;
+      const g = groundAt(s, d);
+      posts.push({ x: g.x, y: g.y, z: g.z, yaw: g.f.heading, s });
+      refls.push({ x: g.x, y: g.y, z: g.z, yaw: g.f.heading + Math.PI, s });
+    }
+    instanceProps('marker posts', mpGeo, cabinLike, posts, 420, false);
+    instanceProps('marker reflectors', mpRefl, barrierRedMat, refls, 380, false);
+
+    /* -------------------------------------------------------- farmsteads */
+    // a farmhouse, a big open barn, a grain store and silos round a yard
+    const brickMat = mat('farm brick', 0x9d7a63, { roughness: 0.95 });
+    const slateMat = mat('farm roof', 0x4b4e52, { roughness: 0.9 });
+    const barnMat = mat('barn cladding', 0x53584f, { roughness: 0.85, metalness: 0.2 });
+    const siloMat = mat('grain silo', 0xb9bcbb, { roughness: 0.5, metalness: 0.45 });
+    const yardMat = mat('farm yard', 0x8b8880, { roughness: 0.98 });
+    // a pitched roof as two tilted panels, sitting on the walls where they stand
+    function gableRoof(batch, material, w, dp, g0, yaw, base, s, range) {
+      const pitch = 0.42, panel = w / 2 / Math.cos(pitch);
+      for (const sx of [-1, 1]) {
+        const geo = new THREE.BoxGeometry(panel, 0.22, dp).rotateZ(sx * pitch).translate(sx * w / 4, w / 4 * Math.tan(pitch), 0);
+        putAt(batch, material, geo, g0.x, g0.y + base, g0.z, yaw, s, range);
+      }
+    }
+    for (const fm of M.farms) {
+      const side = fm.side, base = side > 0 ? ROAD_HALF + 108 : SB1 - 108;
+      const yaw = rnd() * 0.6 - 0.3;
+      const at = (ds, dd) => groundAt(fm.s + ds, base + side * dd);
+      const yard = at(0, 0);
+      ribbon(surfaces, yardMat, fm.s - 46, fm.s + 46, [base + side * -34, base, base + side * 34].sort((a, b) => (side > 0 ? a - b : b - a)),
+        (s, d) => groundAt(s, d).y + 0.04, { step: 12, range: 2600, uv: (s, d) => [s / 5, d / 5] });
+      // farmhouse
+      const h = at(-30, -14);
+      putAt(structures, brickMat, new THREE.BoxGeometry(9, 5.4, 11).translate(0, 2.7, 0), h.x, h.y, h.z, h.f.heading + yaw, fm.s, 2600);
+      gableRoof(structures, slateMat, 9.6, 11.4, h, h.f.heading + yaw, 5.4, fm.s, 2600);
+      // the big barn and a lower open-fronted shed
+      const b1 = at(6, 12);
+      putAt(structures, barnMat, new THREE.BoxGeometry(17, 7.2, 34).translate(0, 3.6, 0), b1.x, b1.y, b1.z, b1.f.heading + yaw, fm.s, 2800);
+      gableRoof(structures, barnMat, 17.6, 34.4, b1, b1.f.heading + yaw, 7.2, fm.s, 2800);
+      const b2 = at(26, -8);
+      putAt(structures, barnMat, new THREE.BoxGeometry(12, 5.2, 22).translate(0, 2.6, 0), b2.x, b2.y, b2.z, b2.f.heading + yaw, fm.s, 2600);
+      gableRoof(structures, barnMat, 12.5, 22.4, b2, b2.f.heading + yaw, 5.2, fm.s, 2600);
+      // silos, a slurry ring and a stack of bales
+      for (let k = 0; k < 3; k += 1) {
+        const sg = at(-8 + k * 6, 28);
+        putAt(structures, siloMat, new THREE.CylinderGeometry(2.1, 2.1, 11, 14).translate(0, 5.5, 0), sg.x, sg.y, sg.z, 0, fm.s, 2800);
+        putAt(structures, siloMat, new THREE.ConeGeometry(2.3, 2.2, 14).translate(0, 12, 0), sg.x, sg.y, sg.z, 0, fm.s, 2800);
+      }
+      const sl = at(34, 22);
+      putAt(structures, siloMat, new THREE.CylinderGeometry(9, 9, 3, 20).translate(0, 1.5, 0), sl.x, sl.y, sl.z, 0, fm.s, 2600);
+      for (let k = 0; k < 12; k += 1) {
+        const bg = at(-40 + (k % 6) * 2.6, 20 + Math.floor(k / 6) * 2.6);
+        putAt(structures, gravelMatFarm, new THREE.CylinderGeometry(1.2, 1.2, 2.4, 12).rotateZ(Math.PI / 2), bg.x, bg.y + 1.2, bg.z, bg.f.heading, fm.s, 2200);
+      }
+    }
+
+    /* ---------------------------------------------- balancing ponds */
+    // the motorway's own drainage: a fenced pond in a bunded bowl with reeds
+    const waterMat = mat('balancing pond', 0x33474b, { roughness: 0.1, metalness: 0.15 });
+    for (const pd of M.ponds) {
+      const side = pd.side, base = side > 0 ? ROAD_HALF + 34 : SB1 - 34;
+      const g0 = groundAt(pd.s, base);
+      const disc = new THREE.CircleGeometry(19, 28).rotateX(-Math.PI / 2);
+      putAt(structures, waterMat, disc, g0.x, g0.y - 1.0, g0.z, 0, pd.s, 2000);
+      const bund = new THREE.RingGeometry(19, 27, 30).rotateX(-Math.PI / 2);
+      putAt(structures, bankMat, bund, g0.x, g0.y - 0.55, g0.z, 0, pd.s, 2000);
+      const reeds = [];
+      for (let k = 0; k < 90; k += 1) {
+        const a = rnd() * Math.PI * 2, r = 16 + rnd() * 4;
+        const x = g0.x + Math.cos(a) * r, z = g0.z + Math.sin(a) * r;
+        reeds.push({ x, y: g0.y - 0.9, z, yaw: rnd() * Math.PI, s: pd.s, sc: 1.1 + rnd() * 0.9, color: col.clone().setRGB(0.34, 0.44, 0.2) });
+      }
+      instanceProps('pond reeds', cropGeo, cropMat, reeds, 900, false);
+    }
+
+    /* ------------------------------------------------------- livestock */
+    // sheep and cattle in the pasture fields, well back from the fence
+    const woolGeo = new THREE.SphereGeometry(0.45, 8, 6); woolGeo.scale(1.05, 0.72, 0.64); woolGeo.translate(0, 0.66, 0);
+    const cowGeo = new THREE.BoxGeometry(0.85, 0.95, 2.1).translate(0, 0.85, 0);
+    const flock = [], herd = [];
+    for (const [a, b, side] of (M.pasture || [])) {
+      const cattle = ((a / 100) | 0) % 2 === 0;
+      for (let k = 0; k < 46; k += 1) {
+        const s = a + rnd() * (b - a);
+        const d = (side > 0 ? ROAD_HALF + 40 : SB1 - 40) + side * rnd() * 110;
+        const f = fr(s), x = f.x + f.nx * d, z = f.z + f.nz * d;
+        const item = { x, y: land(x, z) - 0.05, z, yaw: rnd() * Math.PI * 2, s, sc: 0.85 + rnd() * 0.3 };
+        if (cattle) { item.color = col.clone().setRGB(rnd() < 0.5 ? 0.06 : 0.3, 0.05, 0.04); herd.push(item); } else flock.push(item);
+      }
+    }
+    instanceProps('sheep', woolGeo, cabinLike, flock, 1200);
+    instanceProps('cattle', cowGeo, cattleMat, herd, 1200);
+
+    /* ------------------------------------------------- distant skyline */
+    // Milton Keynes reads as a low block of towers across the fields at J14
+    if (M.skyline) {
+      const sk = M.skyline, town = mat('distant town', 0x8e97a2, { roughness: 0.9 });
+      for (let k = 0; k < 34; k += 1) {
+        const s = sk.s + (rnd() - 0.5) * sk.spread;
+        const d = sk.side * (sk.distance + rnd() * 900) + (sk.side < 0 ? SB1 : 0);
+        const f = fr(s), x = f.x + f.nx * d, z = f.z + f.nz * d;
+        const w = 30 + rnd() * 60, hh = 14 + Math.pow(rnd(), 2) * 46;
+        putAt(structures, town, new THREE.BoxGeometry(w, hh, w * (0.6 + rnd() * 0.8)).translate(0, hh / 2, 0), x, land(x, z), z, rnd(), sk.s, 6000);
+      }
+    }
+
     // noise fences: tall timber panels close behind the barrier
     for (const [a, b, side] of M.noise) {
       const d = side > 0 ? ROAD_HALF + 4.2 : SB1 - 4.2;
@@ -4853,6 +5148,8 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
     ctx.fillStyle = '#0a0b0c'; ctx.fillRect(0, 0, W, H);
     if (!aspect) return;
     if (aspect === 'END') { ctx.strokeStyle = '#f4f4f0'; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(W / 2, H / 2, 94, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(W / 2 + 62, H / 2 - 62); ctx.lineTo(W / 2 - 62, H / 2 + 62); ctx.stroke(); return; }
+    // a red X closes the lane below it
+    if (aspect === 'X') { ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = 26; ctx.lineCap = 'round'; for (const [x0, x1] of [[-70, 70], [70, -70]]) { ctx.beginPath(); ctx.moveTo(W / 2 + x0, H / 2 - 70); ctx.lineTo(W / 2 + x1, H / 2 + 70); ctx.stroke(); } return; }
     ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = 16; ctx.beginPath(); ctx.arc(W / 2, H / 2, 100, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = '#f7f7f2'; ctx.font = font(120); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(aspect), W / 2, H / 2 + 4);
   });
@@ -4957,14 +5254,15 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
       // walkway rails behind the beam
       for (const h of [0.55, 1.1]) { const r = new THREE.BoxGeometry(left - right + 0.8, 0.05, 0.05); _v.copy(P(s, (left + right) / 2, beamH + 0.4 + h)); _v.addScaledVector(new THREE.Vector3(f.tx, 0, f.tz), 0.7); _m.compose(_v, _q, _sc); furniture.geometry(gantryMat, s, r, _m, 1200); }
       // signals over our lanes, facing back at the rider; blank ones over the other carriageway
-      const aspect = g.limit ? String(g.limit) : '';
+      // a closed lane shows a red X; the rest show the limit, or nothing
+      const aspectFor = (i) => (g.x && g.x.includes(i) ? 'X' : g.limit ? String(g.limit) : '');
       const sigMat = (a) => signMaterial(signalTexture(a), true);
-      for (const d of LANES) {
+      LANES.forEach((d, i) => {
         const pp = P(s, d, beamH + 0.45);
         putAt(furniture, signalMat, sigGeo, pp.x, pp.y, pp.z, f.heading, s, 1500);
-        const face = new THREE.Mesh(faceGeo(1.3, 1.1), sigMat(aspect)); face.position.set(pp.x - f.tx * 0.24, pp.y + 0.62, pp.z - f.tz * 0.24); face.rotation.y = Math.atan2(-f.tx, -f.tz);
+        const face = new THREE.Mesh(faceGeo(1.3, 1.1), sigMat(aspectFor(i))); face.position.set(pp.x - f.tx * 0.24, pp.y + 0.62, pp.z - f.tz * 0.24); face.rotation.y = Math.atan2(-f.tx, -f.tz);
         face.userData.s = s; face.userData.range = 1500; scene.add(face); chunked.push(face);
-      }
+      });
       for (const d of SB_LANES) { const pp = P(s, d, beamH + 0.45); putAt(furniture, signalMat, sigGeo, pp.x, pp.y, pp.z, f.heading, s, 1500); }
       if (g.msg) {
         const pp = P(s, (LANES[1] + LANES[2]) / 2, beamH + 1.95);
@@ -4985,6 +5283,317 @@ EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L
       putAt(furniture, lampMat, col, pp.x, pp.y, pp.z, f.heading, s, 1600);
     }
   }
+  /* ---------------------------------------------------- the road works */
+  // A mile of long-term smart-motorway works with lane 1 coned off: the
+  // advance signs and gantry red X, a cone taper into steel barrier, the
+  // closed lane planed down to its base with plant standing on it, a site
+  // compound on the verge, and a 50 limit under average speed cameras.
+  {
+    const YELLOW = '#f5c518', WORKS_INK = '#141414';
+    // black-on-yellow is the language of temporary signing in the UK
+    const worksAheadTex = signTexture('rw:ahead', 512, 512, (ctx, W, H) => {
+      const m = W * 0.04;
+      ctx.lineJoin = 'round';
+      ctx.fillStyle = '#d0021b'; ctx.beginPath(); ctx.moveTo(W / 2, m); ctx.lineTo(W - m, H - m); ctx.lineTo(m, H - m); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = YELLOW; ctx.beginPath(); ctx.moveTo(W / 2, m + 44); ctx.lineTo(W - m - 38, H - m - 24); ctx.lineTo(m + 38, H - m - 24); ctx.closePath(); ctx.fill();
+      // the digging workman: a heap, a bent figure and a shovel
+      ctx.fillStyle = WORKS_INK;
+      ctx.beginPath(); ctx.moveTo(150, 390); ctx.quadraticCurveTo(215, 320, 300, 388); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(268, 205, 27, 0, Math.PI * 2); ctx.fill();
+      ctx.lineCap = 'round'; ctx.strokeStyle = WORKS_INK;
+      ctx.lineWidth = 30; ctx.beginPath(); ctx.moveTo(268, 236); ctx.lineTo(300, 330); ctx.stroke();
+      ctx.lineWidth = 17; ctx.beginPath(); ctx.moveTo(300, 330); ctx.lineTo(322, 388); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(300, 330); ctx.lineTo(255, 386); ctx.stroke();
+      ctx.lineWidth = 15; ctx.beginPath(); ctx.moveTo(285, 262); ctx.lineTo(196, 322); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(285, 262); ctx.lineTo(232, 300); ctx.stroke();
+      ctx.lineWidth = 13; ctx.beginPath(); ctx.moveTo(360, 236); ctx.lineTo(186, 336); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(172, 318); ctx.lineTo(150, 356); ctx.lineTo(200, 356); ctx.closePath(); ctx.fill();
+    });
+    const tempLimitTex = (n) => signTexture(`rw:lim${n}`, 320, 320, (ctx, W, H) => {
+      ctx.fillStyle = '#f3f3ef'; ctx.beginPath(); ctx.arc(W / 2, H / 2, 150, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#d0021b'; ctx.lineWidth = 40; ctx.beginPath(); ctx.arc(W / 2, H / 2, 130, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#141414'; ctx.font = font(146); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n), W / 2, H / 2 + 6);
+    });
+    const avgSpeedTex = signTexture('rw:avg', 640, 400, (ctx, W, H) => {
+      ctx.fillStyle = YELLOW; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = WORKS_INK; ctx.lineWidth = 8; ctx.strokeRect(10, 10, W - 20, H - 20);
+      ctx.fillStyle = WORKS_INK;
+      // a gantry-mounted camera in silhouette
+      ctx.fillRect(150, 100, 200, 76); ctx.fillRect(350, 122, 44, 34);
+      ctx.beginPath(); ctx.arc(430, 138, 40, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(236, 176, 26, 46); ctx.fillRect(196, 218, 108, 20);
+      ctx.font = font(52); ctx.textAlign = 'center';
+      ctx.fillText('AVERAGE', W / 2, 306); ctx.fillText('SPEED CHECK', W / 2, 364);
+    });
+    const platesTex = (text) => signTexture(`rw:plate${text}`, 512, 190, (ctx, W, H) => {
+      ctx.fillStyle = YELLOW; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = WORKS_INK; ctx.lineWidth = 8; ctx.strokeRect(10, 10, W - 20, H - 20);
+      ctx.fillStyle = WORKS_INK; ctx.font = font(96); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, W / 2, H / 2 + 4);
+    });
+    // the lane-closure diagram: four lanes with the nearside one struck out
+    const closureTex = signTexture('rw:closure', 512, 560, (ctx, W, H) => {
+      ctx.fillStyle = YELLOW; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = WORKS_INK; ctx.lineWidth = 8; ctx.strokeRect(10, 10, W - 20, H - 20);
+      ctx.strokeStyle = WORKS_INK; ctx.lineWidth = 20; ctx.lineCap = 'butt';
+      for (let k = 0; k < 4; k += 1) {
+        const x = 118 + k * 92;
+        ctx.beginPath(); ctx.moveTo(x, 470); ctx.lineTo(k === 3 ? x : x, 150); ctx.stroke();
+      }
+      ctx.lineWidth = 26; ctx.strokeStyle = '#d0021b';
+      ctx.beginPath(); ctx.moveTo(78, 190); ctx.lineTo(158, 300); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(158, 190); ctx.lineTo(78, 300); ctx.stroke();
+      ctx.fillStyle = WORKS_INK; ctx.font = font(58); ctx.textAlign = 'center';
+      ctx.fillText('MERGE RIGHT', W / 2, 528);
+    });
+    const chevronTex = signTexture('rw:chev', 768, 384, (ctx, W, H) => {
+      ctx.fillStyle = '#f3f3ef'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#d0021b';
+      for (let x = -H; x < W; x += 132) { ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x + 66, H); ctx.lineTo(x + 66 + H, 0); ctx.lineTo(x + H, 0); ctx.closePath(); ctx.fill(); }
+      ctx.strokeStyle = '#141414'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, W - 10, H - 10);
+    });
+    const arrowBoardTex = signTexture('rw:arrow', 640, 384, (ctx, W, H) => {
+      ctx.fillStyle = '#0a0b0c'; ctx.fillRect(0, 0, W, H);
+      // a lamp-matrix arrow telling you to keep right
+      ctx.fillStyle = '#ffb61c';
+      const dot = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill(); };
+      for (let k = 0; k < 8; k += 1) dot(120 + k * 46, H / 2);
+      for (let k = 1; k <= 4; k += 1) { dot(486 - k * 42, H / 2 - k * 34); dot(486 - k * 42, H / 2 + k * 34); }
+      dot(486, H / 2);
+    });
+    const endWorksTex = signTexture('rw:end', 512, 260, (ctx, W, H) => {
+      ctx.fillStyle = YELLOW; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = WORKS_INK; ctx.lineWidth = 8; ctx.strokeRect(10, 10, W - 20, H - 20);
+      ctx.fillStyle = WORKS_INK; ctx.font = font(74); ctx.textAlign = 'center';
+      ctx.fillText('END OF', W / 2, 110); ctx.fillText('ROAD WORKS', W / 2, 196);
+    });
+
+    /* -------------------------------------------------- works materials */
+    const plantYellow = mat('plant yellow', 0xe8a91b, { roughness: 0.62, metalness: 0.2 });
+    const plantOrange = mat('plant orange', 0xd4661d, { roughness: 0.66, metalness: 0.15 });
+    const plantDark = mat('plant chassis', 0x2b2e31, { roughness: 0.8 });
+    const cabinMat = mat('site cabin', 0xe4e6e3, { roughness: 0.78 });
+    const cabinTrim = mat('cabin trim', 0x2f5d3f, { roughness: 0.72 });
+    const gravelMat = mat('aggregate', 0x8d8579, { roughness: 1 });
+    const meshMat = mat('site fencing', 0x9aa0a4, { roughness: 0.6, metalness: 0.5, transparent: true, opacity: 0.62 });
+    const cameraMat = mat('speed camera', 0xd8b21c, { roughness: 0.5, metalness: 0.25 });
+    // the closed lane is planed back to a ridged black base
+    const planedTex = (() => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const ctx = c.getContext('2d'), img = ctx.createImageData(256, 256), d = img.data;
+      for (let y = 0; y < 256; y += 1) for (let x = 0; x < 256; x += 1) {
+        const groove = 0.5 + 0.5 * Math.sin(x * 0.78 + EVO.noise2(x / 30, y / 90) * 1.4);
+        const n = EVO.fbm(x / 22 + 5, y / 22 - 3, 3);
+        const v = 0.2 + groove * 0.1 + (n - 0.5) * 0.12;
+        const i = (y * 256 + x) * 4; d[i] = v * 255; d[i + 1] = v * 248; d[i + 2] = v * 240; d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return t;
+    })();
+    const planedMat = mat('planed surface', 0x9a968f, { map: planedTex, roughness: 0.99 });
+    addCloudShadow(planedMat);
+
+    /* ------------------------------------------------- the coned line */
+    const coneGeo = new THREE.LatheGeometry([new THREE.Vector2(0.065, 0.92), new THREE.Vector2(0.125, 0.48), new THREE.Vector2(0.23, 0.06), new THREE.Vector2(0.255, 0)], 12);
+    const coneFoot = new THREE.BoxGeometry(0.55, 0.05, 0.55).translate(0, 0.025, 0);
+    const coneList = [], footList = [];
+    const barrierFrom = RW.start + RW.taperIn + RW.coneRun, barrierTo = RW.end - RW.taperOut - RW.coneRun;
+    for (let s = RW.start; s <= RW.end;) {
+      const tapering = s < RW.start + RW.taperIn || s > RW.end - RW.taperOut;
+      const c = coneLine(s);
+      if (c !== null && !(s > barrierFrom && s < barrierTo)) {
+        const p = P(s, c, 0), f = fr(s);
+        coneList.push({ x: p.x, y: p.y, z: p.z, yaw: f.heading, s });
+        footList.push({ x: p.x, y: p.y, z: p.z, yaw: f.heading, s });
+      }
+      s += tapering ? 5 : 9;                              // closer through the taper
+    }
+    instanceProps('works cones', coneGeo, coneMat, coneList, 700);
+    instanceProps('cone feet', coneFoot, plantDark, footList, 500, false);
+    // steel barrier down the middle of the works, with a reflector every few metres
+    {
+      const prof = [[-0.24, 0], [-0.24, 0.1], [-0.13, 0.34], [-0.09, 0.95], [0.09, 0.95], [0.13, 0.34], [0.24, 0.1], [0.24, 0]];
+      ribbon(furniture, steelMat, barrierFrom, barrierTo, prof.map(([w]) => RW_LINE + w),
+        (s, d, f, i) => f.y + RT.crown(RW_LINE) + prof[i][1],
+        { step: 5, range: 1200, uv: (s, d) => [s / 2, d] });
+      const reflector = new THREE.BoxGeometry(0.06, 0.12, 0.1).translate(0, 0.06, 0);
+      const refl = [];
+      for (let s = barrierFrom; s < barrierTo; s += 9) { const p = P(s, RW_LINE - 0.1, 0.86), f = fr(s); refl.push({ x: p.x, y: p.y, z: p.z, yaw: f.heading, s }); }
+      instanceProps('barrier reflectors', reflector, barrierRedMat, refl, 500, false);
+    }
+    /* ------------------------------------------- the closed lane itself */
+    // planed surface from the taper's end to the run out, with the old
+    // carriageway showing through where the works have not reached
+    ribbon(surfaces, planedMat, RW.start + RW.taperIn * 0.6, RW.end - RW.taperOut * 0.6,
+      () => [RW_LINE + 0.12, (RW_LINE + ROAD_HALF) / 2, ROAD_HALF],
+      (s, d, f) => f.y + RT.crown(d) - 0.045,
+      { step: 6, range: 1400, uv: (s, d) => [(d - RW_LINE) / 2.2, s / 2.2], tint: (s) => { const t = 0.86 + (EVO.fbm(s / 23, 7, 2) - 0.5) * 0.3; return [t, t, t]; } });
+
+    /* ----------------------------------------------------- plant on site */
+    const box = (w, h, dp) => new THREE.BoxGeometry(w, h, dp).translate(0, h / 2, 0);
+    const worksRnd = EVO.rng(4820);
+    // one tracked excavator, drawn once and dropped along the works
+    function excavator(s, d, yaw) {
+      for (const sx of [-1, 1]) put(structures, plantDark, box(0.8, 0.78, 4.4), s, d + sx * 1.05, 0, yaw, 900);
+      put(structures, plantDark, box(2.7, 0.34, 3.4), s, d, 0.78, yaw, 900);
+      put(structures, plantYellow, box(2.5, 1.5, 3.1), s, d, 1.1, yaw, 900);
+      put(structures, plantDark, box(2.4, 0.95, 0.8), s - Math.cos(yaw) * 0, d, 1.35, yaw, 900);
+      put(structures, plantYellow, box(1.15, 1.65, 1.35), s, d + 0.6, 2.55, yaw, 900);
+      put(structures, blackMat, box(1.0, 1.0, 0.12), s, d + 0.6, 3.0, yaw, 700);
+      const boom = box(0.46, 4.6, 0.5); boom.rotateX(-1.05); boom.translate(0, 2.2, 1.4);
+      put(structures, plantYellow, boom, s, d - 0.55, 1.5, yaw, 900);
+      const dipper = box(0.4, 3.2, 0.42); dipper.rotateX(0.75); dipper.translate(0, 1.1, 4.1);
+      put(structures, plantYellow, dipper, s, d - 0.55, 3.0, yaw, 900);
+      put(structures, plantDark, box(0.9, 0.8, 1.1), s, d - 0.55, 0.15, yaw, 700);
+    }
+    function dumper(s, d, yaw) {
+      for (const sx of [-1, 1]) for (const dz of [-1.5, 1.5]) put(structures, plantDark, new THREE.CylinderGeometry(0.55, 0.55, 0.42, 12).rotateZ(Math.PI / 2).translate(0, 0.55, dz), s, d + sx * 1.1, 0, yaw, 800);
+      put(structures, plantDark, box(2.1, 0.5, 4.4), s, d, 0.5, yaw, 800);
+      put(structures, plantOrange, box(2.3, 1.0, 2.4), s, d, 1.0, yaw, 800);
+      put(structures, plantDark, box(1.5, 1.1, 1.2), s, d, 1.0, yaw, 800);
+      put(structures, gravelMat, box(2.0, 0.5, 2.0), s, d, 1.9, yaw, 800);
+    }
+    function roller(s, d, yaw) {
+      for (const dz of [-1.5, 1.5]) put(structures, plantDark, new THREE.CylinderGeometry(0.72, 0.72, 1.9, 16).rotateZ(Math.PI / 2).translate(0, 0.72, dz), s, d, 0, yaw, 800);
+      put(structures, plantYellow, box(1.7, 0.9, 3.2), s, d, 0.75, yaw, 800);
+      put(structures, plantDark, box(1.2, 1.3, 1.2), s, d, 1.65, yaw, 800);
+      put(structures, plantYellow, box(1.6, 0.12, 1.6), s, d, 2.95, yaw, 800);
+      for (const sx of [-1, 1]) for (const dz of [-0.6, 0.6]) put(structures, plantDark, box(0.09, 1.05, 0.09), s + dz, d + sx * 0.7, 1.9, yaw, 700);
+    }
+    function tipper(s, d, yaw) {
+      for (const sx of [-1, 1]) for (const dz of [-2.6, 1.3, 2.2]) put(structures, plantDark, new THREE.CylinderGeometry(0.52, 0.52, 0.34, 12).rotateZ(Math.PI / 2).translate(0, 0.52, dz), s, d + sx * 1.1, 0, yaw, 900);
+      put(structures, plantDark, box(2.4, 0.45, 7.4), s, d, 0.7, yaw, 900);
+      put(structures, plantOrange, box(2.45, 1.9, 2.5), s + 2.2, d, 1.05, yaw, 900);
+      put(structures, blackMat, box(2.2, 0.85, 0.12), s + 3.4, d, 2.05, yaw, 700);
+      put(structures, plantYellow, box(2.45, 1.5, 4.4), s - 1.4, d, 1.1, yaw, 900);
+    }
+    // the works run: plant, materials and a compound, all standing in lane 1
+    const plantAt = [
+      [RW.start + RW.taperIn + 90, 'chevron'], [RW.start + RW.taperIn + 260, 'tipper'],
+      [RW.start + RW.taperIn + 430, 'excavator'], [RW.start + RW.taperIn + 620, 'roller'],
+      [RW.compound - 120, 'dumper'], [RW.compound + 210, 'excavator'],
+      [RW.compound + 430, 'tipper'], [RW.end - RW.taperOut - 300, 'dumper'],
+      [RW.end - RW.taperOut - 140, 'roller']
+    ];
+    const laneD = (RW_LINE + ROAD_HALF) / 2;
+    for (const [s, kind] of plantAt) {
+      const f = fr(s), yaw = (worksRnd() - 0.5) * 0.16;
+      if (kind === 'excavator') excavator(s, laneD + (worksRnd() - 0.5) * 0.8, yaw);
+      else if (kind === 'dumper') dumper(s, laneD + (worksRnd() - 0.5) * 0.8, yaw);
+      else if (kind === 'roller') roller(s, laneD + (worksRnd() - 0.5) * 0.8, yaw);
+      else if (kind === 'tipper') tipper(s, laneD, yaw);
+      else if (kind === 'chevron') {
+        // the impact protection vehicle at the head of the taper, chevrons out
+        tipper(s, laneD, 0);
+        const board = new THREE.Mesh(faceGeo(2.4, 1.2), signMaterial(chevronTex));
+        const pb = P(s - 3.6, laneD, 2.6); board.position.set(pb.x, pb.y, pb.z); board.rotation.y = Math.atan2(-f.tx, -f.tz);
+        board.userData.s = s; board.userData.range = 900; scene.add(board); chunked.push(board);
+        const arrow = new THREE.Mesh(faceGeo(2.0, 1.2), signMaterial(arrowBoardTex, true));
+        const pa = P(s - 3.7, laneD, 4.0); arrow.position.set(pa.x, pa.y, pa.z); arrow.rotation.y = Math.atan2(-f.tx, -f.tz);
+        arrow.userData.s = s; arrow.userData.range = 1100; scene.add(arrow); chunked.push(arrow);
+        put(structures, plantDark, box(2.3, 1.7, 0.14), s - 3.5, laneD, 1.6, 0, 900);
+      }
+    }
+    // stacked cones, barrier sections and aggregate down the closed lane
+    const stackCone = new THREE.ConeGeometry(0.3, 1.6, 10).translate(0, 0.8, 0);
+    const pileGeo = new THREE.ConeGeometry(2.4, 1.7, 12).translate(0, 0.85, 0);
+    const stacks = [], piles = [];
+    for (let s = RW.start + RW.taperIn + 40; s < RW.end - RW.taperOut - 40; s += 47) {
+      const r = worksRnd();
+      const d = laneD + (worksRnd() - 0.5) * 1.6;
+      if (r < 0.32) { const p = P(s, d, 0), f = fr(s); stacks.push({ x: p.x, y: p.y, z: p.z, yaw: f.heading, s }); }
+      else if (r < 0.5) { const p = P(s, d, 0); piles.push({ x: p.x, y: p.y, z: p.z, yaw: worksRnd() * 3, s, sc: 0.6 + worksRnd() * 0.6 }); }
+      else if (r < 0.68) put(structures, steelMat, box(0.8, 0.9, 3.6), s, d, 0, 0, 800);
+      else if (r < 0.8) put(structures, plantOrange, box(1.2, 1.1, 1.2), s, d, 0, worksRnd(), 700);
+    }
+    instanceProps('cone stacks', stackCone, coneMat, stacks, 700);
+    instanceProps('aggregate piles', pileGeo, gravelMat, piles, 900);
+
+    /* ------------------------------------------------- the site compound */
+    {
+      const cs = RW.compound, cd = ROAD_HALF + 24;
+      // a hardstanding of crushed stone with cabins, plant and a fenced edge
+      const pad = [15, 20, 26, 33, 40, 47].map((o) => ROAD_HALF + o);
+      ribbon(surfaces, gravelMat, cs - 74, cs + 74, pad, (s, d) => groundAt(s, d).y + 0.05,
+        { step: 6, range: 1600, uv: (s, d) => [s / 4, d / 4] });
+      const cabinAt = (s, d, w, h, dp, trim) => {
+        const gg = groundAt(s, d);
+        putAt(structures, cabinMat, box(w, h, dp), gg.x, gg.y + 0.08, gg.z, gg.f.heading, s, 1400);
+        putAt(structures, trim ? cabinTrim : blackMat, box(w + 0.06, 0.7, dp * 0.92), gg.x, gg.y + 0.08 + h * 0.5, gg.z, gg.f.heading, s, 1200);
+        putAt(structures, cabinTrim, box(w + 0.3, 0.22, dp + 0.3), gg.x, gg.y + 0.08 + h, gg.z, gg.f.heading, s, 1400);
+      };
+      cabinAt(cs - 34, cd - 5, 3.0, 2.9, 7.2, true);
+      cabinAt(cs - 34, cd + 3, 3.0, 2.9, 7.2, false);
+      cabinAt(cs - 18, cd - 5, 3.0, 2.9, 9.6, false);
+      cabinAt(cs + 2, cd + 2, 3.0, 2.9, 6.0, true);
+      // welfare unit, fuel bowser, a generator and a stack of pipes
+      const gg = groundAt(cs + 22, cd - 4);
+      putAt(structures, plantYellow, box(2.2, 2.0, 3.2), gg.x, gg.y + 0.06, gg.z, gg.f.heading, cs, 1200);
+      const bw = groundAt(cs + 30, cd + 3);
+      putAt(structures, plantDark, box(1.6, 1.4, 2.4), bw.x, bw.y + 0.06, bw.z, bw.f.heading, cs, 1000);
+      for (let k = 0; k < 8; k += 1) {
+        const pg = groundAt(cs + 40 + (k % 4) * 1.1, cd + 8 + Math.floor(k / 4) * 1.1);
+        putAt(structures, plantDark, new THREE.CylinderGeometry(0.5, 0.5, 6, 12).rotateZ(Math.PI / 2), pg.x, pg.y + 0.6, pg.z, pg.f.heading, cs, 1000);
+      }
+      // spoil heaps and aggregate bays
+      for (let k = 0; k < 5; k += 1) {
+        const pg = groundAt(cs - 58 + k * 13, cd + 9 + (k % 2) * 7);
+        putAt(structures, gravelMat, pileGeo, pg.x, pg.y + 0.05, pg.z, worksRnd() * 3, cs, 1400, 1.3 + worksRnd() * 0.7);
+      }
+      // Heras fencing round the compound, and a lighting tower on each corner
+      const panel = new THREE.BoxGeometry(0.06, 2.0, 3.4).translate(0, 1.0, 0);
+      const fencePts = [], backD = cd + 20;
+      for (let t = -74; t <= 74; t += 3.5) fencePts.push([cs + t, backD, true]);
+      for (let o = 0; o <= 32; o += 3.5) { fencePts.push([cs - 74, backD - o, false]); fencePts.push([cs + 74, backD - o, false]); }
+      const panels = [];
+      for (const [ps, pd, along] of fencePts) {
+        const pg = groundAt(ps, pd);
+        panels.push({ x: pg.x, y: pg.y + 0.04, z: pg.z, yaw: pg.f.heading + (along ? Math.PI / 2 : 0), s: ps });
+      }
+      instanceProps('site fencing', panel, meshMat, panels, 1100, false);
+      for (const [ls, ld] of [[cs - 64, cd - 8], [cs + 62, cd - 8], [cs - 24, cd + 16], [cs + 34, cd + 16]]) {
+        const lg = groundAt(ls, ld);
+        putAt(structures, plantYellow, box(1.6, 0.5, 2.2), lg.x, lg.y + 0.06, lg.z, lg.f.heading, cs, 1400);
+        putAt(structures, steelMat, new THREE.CylinderGeometry(0.11, 0.16, 8.5, 8).translate(0, 4.25, 0), lg.x, lg.y + 0.5, lg.z, lg.f.heading, cs, 1600);
+        putAt(structures, blackMat, box(1.9, 0.34, 0.5), lg.x, lg.y + 8.6, lg.z, lg.f.heading, cs, 1600);
+      }
+    }
+
+    /* --------------------------------------------------------- signing */
+    // advance warning, the limit stepping down, average speed cameras
+    RW.advance.forEach((s, k) => {
+      vergeSign(s, 1, worksAheadTex, 1.5, 1.5, 1.9, false, 4.2);
+      vergeSign(s + 26, 1, platesTex(k === 0 ? '1 mile' : '800 yds'), 1.6, 0.6, 1.5, false, 4.2);
+    });
+    vergeSign(RW.start - 340, 1, closureTex, 1.9, 2.1, 1.7, false, 4.4);
+    for (const s of RW.camera) vergeSign(s, 1, avgSpeedTex, 1.7, 1.06, 2.0, false, 4.0);
+    // temporary limit repeaters through the works, on both the verge and the reserve
+    for (let s = RW.start - 260; s < RW.end - 40; s += 320) {
+      vergeSign(s, 1, tempLimitTex(RW.limit), 0.86, 0.86, 1.5, false, 3.4);
+      const f = fr(s), pr = P(s, RES + 0.5, 0);
+      const g = signPost(pr.x, pr.y, pr.z, Math.atan2(-f.tx, -f.tz), tempLimitTex(RW.limit), 0.86, 0.86, 1.2, false);
+      g.userData.s = s; g.userData.range = 900; chunked.push(g);
+    }
+    vergeSign(RW.end + 70, 1, endWorksTex, 1.6, 0.82, 1.7, false, 3.6);
+    vergeSign(RW.end + 96, 1, nslTexture(), 0.86, 0.86, 1.7, false, 3.6);
+    // the cameras themselves, on their own gantry-height poles over the works
+    for (const s of RW.camera) {
+      const f = fr(s), left = ROAD_HALF + 2.2;
+      const gp = groundAt(s, left);
+      putAt(furniture, gantryMat, new THREE.CylinderGeometry(0.16, 0.2, 8.2, 10).translate(0, 4.1, 0), gp.x, gp.y, gp.z, f.heading, s, 1500);
+      const armGeo = new THREE.BoxGeometry(6.4, 0.22, 0.22);
+      const pa = P(s, left - 3.2, 8.0);
+      putAt(furniture, gantryMat, armGeo, pa.x, pa.y, pa.z, f.heading, s, 1500);
+      for (const d of [LANES[1], LANES[3]]) {
+        const pc = P(s, d, 7.6);
+        putAt(furniture, cameraMat, box(0.45, 0.4, 0.95), pc.x, pc.y, pc.z, f.heading, s, 1500);
+        putAt(furniture, blackMat, box(0.3, 0.3, 0.12), pc.x, pc.y + 0.2, pc.z, f.heading, s, 1200);
+      }
+    }
+  }
+
   /* --------------------------------------------------- overbridges */
   // Minor roads and a footbridge or two cross on two-span decks: a pier in
   // the reserve, abutments on the verges, banks carrying the road up to them.
@@ -5255,7 +5864,7 @@ EVO.createBike = function createBike() {
     else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
     if ((bike.d >= crashL || bike.d <= EDGE.crashR) && !crashed) bike.crash(RT.edgeReason ? RT.edgeReason(bike.s, bike.d) : bike.d > 0 ? EDGE.reasonL : EDGE.reasonR);
     bike.d = clamp(bike.d, EDGE.crashR, crashL);
-    if (crashed && bike.crashTimer <= 0) { bike.d = RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
+    if (crashed && bike.crashTimer <= 0) { bike.d = RT.resetLane ? RT.resetLane(bike.s) : RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
     bike.rumble = clamp(bike.offRoad * Math.min(1, bike.v / 8), 0, 1);
 
     // Lean: corner physics from the road curvature plus a steering lean.
@@ -5606,7 +6215,8 @@ function createRunScore(bike, traffic) {
     }
     // lane discipline: an outer lane with the inside lane clear is hogging after a few seconds
     const lane = laneIndex(bike.d);
-    const insideClear = lane > 0 && Math.abs(bike.d - LANES[lane]) < 1.0 && traffic.laneClear && traffic.laneClear(LANES[lane - 1], 85, 30);
+    const insideClosed = RT.closedLane && RT.closedLane(bike.s) >= lane - 1;
+    const insideClear = lane > 0 && !insideClosed && Math.abs(bike.d - LANES[lane]) < 1.0 && traffic.laneClear && traffic.laneClear(LANES[lane - 1], 85, 30);
     if (insideClear && bike.v > 15 && !crashed) hogTime += dt; else hogTime = Math.max(0, hogTime - dt * 2);
     if (hogTime > 6) {
       state.score -= dt * 3;
@@ -6083,7 +6693,9 @@ const VARIANTS = {
   suv: { L: 4.65, W: 1.9, floor: 0.42, waist: 1.08, wheelR: 0.37, wheelZ: 1.42, sideGlass: [-0.9, 0.42], screen: [0.2, 0.5], rear: [-0.94, -0.78], rails: true,
     top: [[-1, 1.28], [-0.94, 1.62], [-0.78, 1.74], [0.2, 1.74], [0.5, 1.5], [0.56, 1.12], [0.62, 1.06], [0.92, 1.0], [1, 0.84]] },
   van: { L: 5.1, W: 1.98, floor: 0.4, waist: 1.14, wheelR: 0.35, wheelZ: 1.58, sideGlass: [0.36, 0.62], screen: [0.62, 0.76], rear: null, van: true,
-    top: [[-1, 1.75], [-0.97, 2.02], [0.5, 2.06], [0.62, 1.95], [0.76, 1.36], [0.82, 1.2], [0.95, 1.1], [1, 0.94]] }
+    top: [[-1, 1.75], [-0.97, 2.02], [0.5, 2.06], [0.62, 1.95], [0.76, 1.36], [0.82, 1.2], [0.95, 1.1], [1, 0.94]] },
+  coach: { L: 12.0, W: 2.55, floor: 0.66, waist: 1.62, wheelR: 0.5, wheelZ: 4.2, sideGlass: [-0.84, 0.7], screen: [0.7, 0.9], rear: [-0.99, -0.92], van: true,
+    top: [[-1, 2.3], [-0.95, 3.36], [0.86, 3.42], [0.94, 3.2], [1, 2.5]] }
 };
 
 function profileHeight(v, z) {
@@ -6495,31 +7107,43 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
       : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
     mergeGroup(mesh);
     scene.add(mesh);
-    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'van' ? 2.55 : 2.35 };
+    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'coach' ? 6.4 : kind === 'van' ? 2.55 : 2.35 };
   }
   // cruise speeds by type and lane: lorries on the limiter, cars a little over the limit in the outer lanes
   function cruiseFor(kind, lane) {
     if (kind === 'lorry') return 24.4 + rnd() * 0.9;
+    if (kind === 'coach') return 26.5 + rnd() * 1.2;
     if (kind === 'van') return 27 + rnd() * 3;
     return [27.5 + rnd() * 3, 29.5 + rnd() * 3, 31.5 + rnd() * 3, 33 + rnd() * 3.5][lane];
   }
   function laneFor(kind) {
     const r = rnd();
-    if (kind === 'lorry') return r < 0.85 ? 0 : 1;
+    if (kind === 'lorry' || kind === 'coach') return r < 0.85 ? 0 : 1;
     if (kind === 'van') return r < 0.6 ? 0 : 1;
     return r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.93 ? 2 : 3;
   }
-  const count = EVO.ROUTE.traffic?.count ?? (coarse ? 15 : 24), sbCount = coarse ? 9 : 14;
+  // never drop a vehicle into a lane that is coned off where it lands
+  function pickLane(kind, dir, s) {
+    let lane = laneFor(kind);
+    if (dir > 0) { const c = closedAt(s); if (c >= 0 && lane <= c) lane = Math.min(3, c + 1); }
+    return lane;
+  }
+  const T = EVO.ROUTE.traffic || {};
+  const count = (coarse ? T.countCoarse : T.count) ?? (coarse ? 15 : 24);
+  const sbCount = (coarse ? T.sbCountCoarse : T.sbCount) ?? (coarse ? 9 : 14);
+  // A closed lane is out of service from well before the taper: drivers merge
+  // early, and anything still in it has to find a gap or wait for one.
+  const closedAt = (s) => (RT.closedLane ? RT.closedLane(s) : -1);
   for (let i = 0; i < count; i += 1) {
     const r = rnd();
-    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.14 ? 'van' : r < hgvShare + 0.5 ? 'hatch' : 'suv';
+    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.06 ? 'coach' : r < hgvShare + 0.2 ? 'van' : r < hgvShare + 0.56 ? 'hatch' : 'suv';
     const c = build(kind, i);
     const lane = laneFor(kind);
     cars.push({ ...c, dir: 1, lane, d: LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
   }
   for (let i = 0; i < sbCount; i += 1) {
     const r = rnd();
-    const kind = r < 0.25 ? 'lorry' : r < 0.36 ? 'van' : r < 0.7 ? 'hatch' : 'suv';
+    const kind = r < 0.25 ? 'lorry' : r < 0.31 ? 'coach' : r < 0.42 ? 'van' : r < 0.72 ? 'hatch' : 'suv';
     const c = build(kind, i + 40);
     const lane = laneFor(kind);
     cars.push({ ...c, dir: -1, lane, d: SB_LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
@@ -6540,7 +7164,7 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
       if (clearAt(car, car.s)) break;
       car.s += 60 * (ahead ? 1 : -1);
     }
-    car.lane = laneFor(car.kind); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+    car.lane = pickLane(car.kind, car.dir, car.s); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
     car.cruise = cruiseFor(car.kind, car.lane); car.v = car.cruise; car.lastRel = null; car.inLaneSince = 0;
   }
   function seed() {
@@ -6552,6 +7176,9 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
         if (clearAt(car, car.s)) break;
         k += 0.3;
       }
+      car.lane = pickLane(car.kind, car.dir, car.s);
+      car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+      car.cruise = cruiseFor(car.kind, car.lane);
       car.v = car.cruise; k += 1;
       place(car);
     }
@@ -6599,7 +7226,13 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
     }
     return best;
   }
-  const maxLane = (car) => (car.lorry ? 1 : 3);
+  // lorries and coaches keep to the inside lanes, but a closure pushes
+  // everything at least one lane out
+  const maxLane = (car, s) => {
+    const base = car.lorry || car.kind === 'coach' ? 1 : 3;
+    const c = closedAt(s);
+    return c >= 0 ? Math.max(base, c + 1) : base;
+  };
 
   function update(dt) {
     const events = { collision: null, passBy: null, overtake: null, passedBy: null, tailgate: 0 };
@@ -6619,18 +7252,28 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
         if (lead.gap < need) limit = Math.min(limit, lead.gap < lead.half + car.half + 3 ? 0 : lead.v * ((lead.gap - lead.half - car.half - 3) / (need - lead.half - car.half - 3)));
         if (lead.bike && lead.gap < 16 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - lead.gap / 16);
       }
-      // lane discipline: move out to pass something slower, move back in when the inside lane is clear
-      if (dir > 0 && car.changeCooldown <= 0 && Math.abs(car.d - car.dTarget) < 0.05) {
-        const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
-        if (blocked && car.lane < maxLane(car)) {
+      // lane discipline: get out of a closed lane, move out to pass something
+      // slower, and move back in when the inside lane is clear
+      if (dir > 0 && Math.abs(car.d - car.dTarget) < 0.05) {
+        const mustLeave = closedAt(car.s + 220) === car.lane;
+        if (mustLeave && car.lane < 3) {
           const target = lanes[car.lane + 1];
-          const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
-          const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
-          if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
-        } else if (!blocked && car.lane > 0 && car.inLaneSince > 5) {
-          const target = lanes[car.lane - 1];
-          const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
-          if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+          const ahead = leaderIn(car, target, car.v * 2.2 + 16), behind = followerIn(car, target, 70);
+          const room = (!ahead || ahead.gap > 22 + car.half) && (!behind || behind.gap > 20 + car.half);
+          if (room) { car.lane += 1; car.dTarget = target; car.changeCooldown = 3; car.inLaneSince = 0; }
+          else limit = Math.min(limit, closedAt(car.s) === car.lane ? 5 : 14);  // hold back for a gap
+        } else if (car.changeCooldown <= 0) {
+          const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
+          if (blocked && car.lane < maxLane(car, car.s)) {
+            const target = lanes[car.lane + 1];
+            const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
+            const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
+            if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
+          } else if (!blocked && car.lane > 0 && car.inLaneSince > 5 && closedAt(car.s + 300) !== car.lane - 1) {
+            const target = lanes[car.lane - 1];
+            const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
+            if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+          }
         }
       }
       // cars brake harder than they accelerate
@@ -6855,7 +7498,7 @@ function boot() {
   document.getElementById('pause').addEventListener('click',togglePause);
   window.addEventListener('keydown',e=>{
     if(e.code==='KeyP'&&!e.repeat)togglePause();
-    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
+    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.resetLane?EVO.route.resetLane(b.s):EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
   });
   setStatus('Building detailed cottages, hedgerows and road surfaces…');
   setTimeout(() => {

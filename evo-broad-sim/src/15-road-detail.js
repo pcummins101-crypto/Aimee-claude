@@ -109,7 +109,9 @@ R.inVillage = inVillage;
 R.woodland = woodland;
 R.clearance = clearance;
 R.detailPlan = { village, gates, humps, strips, repairs, covers, potholes, lots, grids, laybys, summit };
-R.speedLimitAt = (s) => (inVillage(s) ? village.limit : ROUTE.limit); // fictional signed road, not a real surveyed route
+// A route may sign its own limit along its length (gantries, road works);
+// otherwise it is the village limit or the route's default.
+R.speedLimitAt = (s) => (ROUTE.limitAt ? ROUTE.limitAt(mod(s, L)) : inVillage(s) ? village.limit : ROUTE.limit); // fictional signed road, not a real surveyed route
 R.nextHump = (s, direction = 1) => {
   let best = null;
   for (const h of humps) { const dist = mod((h.s - s) * direction, L); if (!best || dist < best.dist) best = { ...h, dist }; }

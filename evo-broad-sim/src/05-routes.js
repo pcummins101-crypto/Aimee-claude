@@ -214,10 +214,10 @@ const ROUTES = {
     id: 'motorway',
     name: 'M1 · Toddington to Newport Pagnell',
     kicker: 'SMART MOTORWAY · M1 NORTHBOUND J12–J14',
-    roadHint: 'keep left unless overtaking, obey the gantry limits, no undertaking; R resets you in lane 1, P pauses',
+    roadHint: 'keep left unless overtaking, obey the gantry limits and the 50 through the road works, no undertaking; R resets you in lane 1, P pauses',
     scoreHint: 'pace within the limit; passing on the right chains a multiplier (+80); undertaking, hogging an outer lane, tailgating, breaking a gantry limit and crashes cost; pull in at Newport Pagnell to complete the run (+300). Your best run is kept',
     trafficLabels: ['Full motorway traffic', 'Southbound only', 'Empty motorway'],
-    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13 and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
+    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13, through a mile of contraflow-free road works with lane 1 coned off, and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
     open: true,
     dual: { lanes: 4, laneW: 3.65, strip: 1.0, reserve: 3.6 },
     scale: 1,
@@ -234,10 +234,14 @@ const ROUTES = {
     // Greensand cutting, down into the Marston Vale and across the Ouzel.
     profile: (s) => M1.interp(M1.PROFILE, s),
     elevation: [],
+    // The land beside a motorway is described relative to the carriageway, so
+    // undo the route layer's own terrain scaling (it applies *0.85 + 0.6) and
+    // hand back exactly the height the tables ask for.
     terrain: (x, z) => {
       const s = M1.zToS(z);
-      return M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
+      const want = M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
         (EVO.fbm(x / 900 + 2.2, z / 900 - 1.1, 3) - 0.5) * 9 + (EVO.fbm(x / 240 - 4.4, z / 240 + 3.3, 3) - 0.5) * 2.6;
+      return (want - 0.6) / 0.85;
     },
     spawns: [[440, 'Toddington services', 10.55], [1400, 'Approaching J12'], [7200, 'Brogborough Hill'], [10600, 'Approaching J13'], [15600, 'Salford straight'], [18900, 'Approaching J14']],
     control: M1.CONTROL,
@@ -259,29 +263,54 @@ const ROUTES = {
       },
       // Portal gantries with a signal over each lane. '' is blank, a number is a
       // variable limit, 'END' clears it (national speed limit applies).
+      // '' is a blank signal, a number is a variable limit, 'END' clears it, and
+      // `x` lists the lanes showing a red X (a closed lane).
       gantries: [
         { s: 900, msg: '' }, { s: 2000, msg: 'DONT DRIVE TIRED' }, { s: 3300, msg: '' }, { s: 4600, msg: 'KEEP APART 2 CHEVRONS' },
         { s: 6000, msg: '' }, { s: 7400, msg: '' }, { s: 8800, msg: 'CHECK YOUR FUEL LEVEL' },
         { s: 10400, limit: 60, msg: 'CONGESTION AFTER J13' }, { s: 11400, limit: 50, msg: 'SLOW TRAFFIC AHEAD' },
-        { s: 12500, limit: 'END', msg: '' }, { s: 13900, msg: '' }, { s: 15300, msg: 'KEEP LEFT UNLESS OVERTAKING' },
-        { s: 16700, msg: '' }, { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE J14 ROADWORKS' }, { s: 20700, msg: '' }
+        { s: 12500, limit: 'END', msg: '' }, { s: 13000, msg: 'ROAD WORKS 2 MILES' },
+        { s: 13700, limit: 60, msg: 'ROAD WORKS 1 MILE' }, { s: 14600, limit: 50, msg: 'LANE 1 CLOSED 1000 YDS' },
+        { s: 15140, limit: 50, x: [0], msg: 'LANE 1 CLOSED MERGE RIGHT' },
+        { s: 16000, limit: 50, x: [0], msg: 'AVERAGE SPEED CHECK' },
+        { s: 16800, limit: 50, x: [0], msg: '' },
+        { s: 17250, limit: 'END', msg: 'END OF ROAD WORKS' },
+        { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE FOR J14' }, { s: 20700, msg: '' }
       ],
+      /* The lane 1 closure: a long-term smart-motorway scheme with a cone
+       * taper into a barrier-separated works, a 50 limit under average speed
+       * cameras, and a site compound on the verge. `lane` is the lane index
+       * counting from the nearside, so 0 closes lane 1. */
+      roadworks: {
+        start: 15250, end: 17050, lane: 0, limit: 50,
+        taperIn: 150, taperOut: 100, coneRun: 220, compound: 16150,
+        advance: [13650, 14450], camera: [15200, 15950, 16700]
+      },
       // overbridges other than the junction roads: minor roads, farm tracks, a footbridge
       bridges: [
         { s: 1100, kind: 'road' }, { s: 3250, kind: 'road' }, { s: 4700, kind: 'road' }, { s: 6350, kind: 'road' }, { s: 7800, kind: 'foot' },
         { s: 9200, kind: 'road' }, { s: 10650, kind: 'road' }, { s: 13400, kind: 'road' }, { s: 14900, kind: 'road' }, { s: 16350, kind: 'road' },
         { s: 17700, kind: 'road' }, { s: 18900, kind: 'foot' }, { s: 21000, kind: 'road' }
       ],
-      refuges: [1600, 3900, 6100, 8300, 10100, 13000, 15400, 17300, 19100],
-      pylons: [{ s: 5200, angle: 62 }, { s: 15800, angle: 105 }],
+      refuges: [1600, 3900, 6100, 8300, 10100, 12900, 14550, 17550, 19100],
+      pylons: [{ s: 5200, angle: 62 }, { s: 11200, angle: 84 }, { s: 15800, angle: 105 }, { s: 20200, angle: 70 }],
       woods: [[5500, 6200, -1], [7500, 10700, 1], [7900, 10300, -1], [16800, 17300, 1]],
       sheds: [{ s: 12300, side: -1 }, { s: 19000, side: -1 }],
+      // farmsteads out in the fields, balancing ponds in the motorway's own
+      // drainage land, and the Milton Keynes skyline off to the west near J14
+      farms: [{ s: 3400, side: 1 }, { s: 6900, side: -1 }, { s: 9600, side: 1 }, { s: 14100, side: -1 }, { s: 17900, side: 1 }, { s: 21100, side: -1 }],
+      ponds: [{ s: 2700, side: 1 }, { s: 8100, side: -1 }, { s: 13600, side: 1 }, { s: 18600, side: -1 }],
+      pasture: [[1200, 2600, 1], [5400, 6600, -1], [9000, 10200, 1], [13200, 14200, -1], [17800, 18900, 1]],
+      skyline: { s: 20600, side: -1, distance: 2400, spread: 1800 },
       noise: [[1450, 2050, 1], [18400, 19100, 1]],
-      lit: [[1700, 3100], [11300, 12700], [19300, 20700]]
+      lit: [[1700, 3100], [11300, 12700], [15100, 17200], [19300, 20700]]
     },
     limitAt(s) {
       let lim = 70;
       for (const g of M1.gantries()) { if (s >= g.s && g.limit) lim = g.limit === 'END' ? 70 : g.limit; }
+      // the works carry their own limit whatever the last gantry said
+      const w = ROUTES.motorway.m1.roadworks;
+      if (s >= w.start - w.taperIn - 300 && s <= w.end + 120) lim = Math.min(lim, w.limit);
       return lim;
     },
     readout(RT, s) {
@@ -289,7 +318,10 @@ const ROUTES = {
       const lim = M1.limitAt(s);
       const nextExit = M.exits.find((e) => e.s - s > -200);
       const toServices = L - M.services.end.nose - s;
+      const w = M.roadworks;
       if (s < 700) return { name: 'TODDINGTON SERVICES', note: 'Merge · give way to traffic on the M1', warn: true };
+      if (s >= w.start - w.taperIn && s <= w.end + 60) return { name: 'M1 ROAD WORKS', note: `Lane 1 closed · ${w.limit} average speed check`, warn: true };
+      if (s >= w.start - 1800 && s < w.start - w.taperIn) return { name: 'M1 NORTHBOUND', note: `Road works · lane 1 closed in ${Math.max(0, Math.round((w.start - s) / 100) / 10)} km`, warn: true };
       if (toServices < 1650 && toServices > -50) return { name: 'M1 NORTHBOUND', note: `Newport Pagnell services · ${Math.max(0, Math.round(toServices / 100) / 10)} km · keep left`, warn: toServices < 500 };
       if (lim !== 70) return { name: 'M1 NORTHBOUND', note: `Variable limit ${lim} · smart motorway`, warn: true };
       if (nextExit && nextExit.s - s < 1700 && nextExit.s - s > -200) return { name: 'M1 NORTHBOUND', note: `Junction ${nextExit.number} · ${nextExit.road} · ${Math.max(0, Math.round((nextExit.s - s) / 100) / 10)} km` };
@@ -297,7 +329,7 @@ const ROUTES = {
       return { name: 'M1 NORTHBOUND', note: `Four lanes · no hard shoulder · marker ${km}` };
     },
     scenery: { motorway: true, trees: 'belts', flowers: false, blades: 0.35, farmsteads: false, fells: false, grass: 0xf2f0e6, fogScale: 0.8, flock: 0, walls: 0 },
-    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.3 }
+    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.32, count: 42, countCoarse: 24, sbCount: 28, sbCountCoarse: 16 }
   }
 };
 

@@ -156,7 +156,7 @@ function boot() {
   document.getElementById('pause').addEventListener('click',togglePause);
   window.addEventListener('keydown',e=>{
     if(e.code==='KeyP'&&!e.repeat)togglePause();
-    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
+    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.resetLane?EVO.route.resetLane(b.s):EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
   });
   setStatus('Building detailed cottages, hedgerows and road surfaces…');
   setTimeout(() => {

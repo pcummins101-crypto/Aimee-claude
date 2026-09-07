@@ -166,7 +166,7 @@ EVO.createBike = function createBike() {
     else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
     if ((bike.d >= crashL || bike.d <= EDGE.crashR) && !crashed) bike.crash(RT.edgeReason ? RT.edgeReason(bike.s, bike.d) : bike.d > 0 ? EDGE.reasonL : EDGE.reasonR);
     bike.d = clamp(bike.d, EDGE.crashR, crashL);
-    if (crashed && bike.crashTimer <= 0) { bike.d = RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
+    if (crashed && bike.crashTimer <= 0) { bike.d = RT.resetLane ? RT.resetLane(bike.s) : RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
     bike.rumble = clamp(bike.offRoad * Math.min(1, bike.v / 8), 0, 1);
 
     // Lean: corner physics from the road curvature plus a steering lean.

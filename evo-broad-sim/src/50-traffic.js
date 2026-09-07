@@ -25,7 +25,9 @@ const VARIANTS = {
   suv: { L: 4.65, W: 1.9, floor: 0.42, waist: 1.08, wheelR: 0.37, wheelZ: 1.42, sideGlass: [-0.9, 0.42], screen: [0.2, 0.5], rear: [-0.94, -0.78], rails: true,
     top: [[-1, 1.28], [-0.94, 1.62], [-0.78, 1.74], [0.2, 1.74], [0.5, 1.5], [0.56, 1.12], [0.62, 1.06], [0.92, 1.0], [1, 0.84]] },
   van: { L: 5.1, W: 1.98, floor: 0.4, waist: 1.14, wheelR: 0.35, wheelZ: 1.58, sideGlass: [0.36, 0.62], screen: [0.62, 0.76], rear: null, van: true,
-    top: [[-1, 1.75], [-0.97, 2.02], [0.5, 2.06], [0.62, 1.95], [0.76, 1.36], [0.82, 1.2], [0.95, 1.1], [1, 0.94]] }
+    top: [[-1, 1.75], [-0.97, 2.02], [0.5, 2.06], [0.62, 1.95], [0.76, 1.36], [0.82, 1.2], [0.95, 1.1], [1, 0.94]] },
+  coach: { L: 12.0, W: 2.55, floor: 0.66, waist: 1.62, wheelR: 0.5, wheelZ: 4.2, sideGlass: [-0.84, 0.7], screen: [0.7, 0.9], rear: [-0.99, -0.92], van: true,
+    top: [[-1, 2.3], [-0.95, 3.36], [0.86, 3.42], [0.94, 3.2], [1, 2.5]] }
 };
 
 function profileHeight(v, z) {
@@ -437,31 +439,43 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
       : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
     mergeGroup(mesh);
     scene.add(mesh);
-    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'van' ? 2.55 : 2.35 };
+    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'coach' ? 6.4 : kind === 'van' ? 2.55 : 2.35 };
   }
   // cruise speeds by type and lane: lorries on the limiter, cars a little over the limit in the outer lanes
   function cruiseFor(kind, lane) {
     if (kind === 'lorry') return 24.4 + rnd() * 0.9;
+    if (kind === 'coach') return 26.5 + rnd() * 1.2;
     if (kind === 'van') return 27 + rnd() * 3;
     return [27.5 + rnd() * 3, 29.5 + rnd() * 3, 31.5 + rnd() * 3, 33 + rnd() * 3.5][lane];
   }
   function laneFor(kind) {
     const r = rnd();
-    if (kind === 'lorry') return r < 0.85 ? 0 : 1;
+    if (kind === 'lorry' || kind === 'coach') return r < 0.85 ? 0 : 1;
     if (kind === 'van') return r < 0.6 ? 0 : 1;
     return r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.93 ? 2 : 3;
   }
-  const count = EVO.ROUTE.traffic?.count ?? (coarse ? 15 : 24), sbCount = coarse ? 9 : 14;
+  // never drop a vehicle into a lane that is coned off where it lands
+  function pickLane(kind, dir, s) {
+    let lane = laneFor(kind);
+    if (dir > 0) { const c = closedAt(s); if (c >= 0 && lane <= c) lane = Math.min(3, c + 1); }
+    return lane;
+  }
+  const T = EVO.ROUTE.traffic || {};
+  const count = (coarse ? T.countCoarse : T.count) ?? (coarse ? 15 : 24);
+  const sbCount = (coarse ? T.sbCountCoarse : T.sbCount) ?? (coarse ? 9 : 14);
+  // A closed lane is out of service from well before the taper: drivers merge
+  // early, and anything still in it has to find a gap or wait for one.
+  const closedAt = (s) => (RT.closedLane ? RT.closedLane(s) : -1);
   for (let i = 0; i < count; i += 1) {
     const r = rnd();
-    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.14 ? 'van' : r < hgvShare + 0.5 ? 'hatch' : 'suv';
+    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.06 ? 'coach' : r < hgvShare + 0.2 ? 'van' : r < hgvShare + 0.56 ? 'hatch' : 'suv';
     const c = build(kind, i);
     const lane = laneFor(kind);
     cars.push({ ...c, dir: 1, lane, d: LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
   }
   for (let i = 0; i < sbCount; i += 1) {
     const r = rnd();
-    const kind = r < 0.25 ? 'lorry' : r < 0.36 ? 'van' : r < 0.7 ? 'hatch' : 'suv';
+    const kind = r < 0.25 ? 'lorry' : r < 0.31 ? 'coach' : r < 0.42 ? 'van' : r < 0.72 ? 'hatch' : 'suv';
     const c = build(kind, i + 40);
     const lane = laneFor(kind);
     cars.push({ ...c, dir: -1, lane, d: SB_LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
@@ -482,7 +496,7 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
       if (clearAt(car, car.s)) break;
       car.s += 60 * (ahead ? 1 : -1);
     }
-    car.lane = laneFor(car.kind); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+    car.lane = pickLane(car.kind, car.dir, car.s); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
     car.cruise = cruiseFor(car.kind, car.lane); car.v = car.cruise; car.lastRel = null; car.inLaneSince = 0;
   }
   function seed() {
@@ -494,6 +508,9 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
         if (clearAt(car, car.s)) break;
         k += 0.3;
       }
+      car.lane = pickLane(car.kind, car.dir, car.s);
+      car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+      car.cruise = cruiseFor(car.kind, car.lane);
       car.v = car.cruise; k += 1;
       place(car);
     }
@@ -541,7 +558,13 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
     }
     return best;
   }
-  const maxLane = (car) => (car.lorry ? 1 : 3);
+  // lorries and coaches keep to the inside lanes, but a closure pushes
+  // everything at least one lane out
+  const maxLane = (car, s) => {
+    const base = car.lorry || car.kind === 'coach' ? 1 : 3;
+    const c = closedAt(s);
+    return c >= 0 ? Math.max(base, c + 1) : base;
+  };
 
   function update(dt) {
     const events = { collision: null, passBy: null, overtake: null, passedBy: null, tailgate: 0 };
@@ -561,18 +584,28 @@ EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, pa
         if (lead.gap < need) limit = Math.min(limit, lead.gap < lead.half + car.half + 3 ? 0 : lead.v * ((lead.gap - lead.half - car.half - 3) / (need - lead.half - car.half - 3)));
         if (lead.bike && lead.gap < 16 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - lead.gap / 16);
       }
-      // lane discipline: move out to pass something slower, move back in when the inside lane is clear
-      if (dir > 0 && car.changeCooldown <= 0 && Math.abs(car.d - car.dTarget) < 0.05) {
-        const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
-        if (blocked && car.lane < maxLane(car)) {
+      // lane discipline: get out of a closed lane, move out to pass something
+      // slower, and move back in when the inside lane is clear
+      if (dir > 0 && Math.abs(car.d - car.dTarget) < 0.05) {
+        const mustLeave = closedAt(car.s + 220) === car.lane;
+        if (mustLeave && car.lane < 3) {
           const target = lanes[car.lane + 1];
-          const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
-          const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
-          if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
-        } else if (!blocked && car.lane > 0 && car.inLaneSince > 5) {
-          const target = lanes[car.lane - 1];
-          const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
-          if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+          const ahead = leaderIn(car, target, car.v * 2.2 + 16), behind = followerIn(car, target, 70);
+          const room = (!ahead || ahead.gap > 22 + car.half) && (!behind || behind.gap > 20 + car.half);
+          if (room) { car.lane += 1; car.dTarget = target; car.changeCooldown = 3; car.inLaneSince = 0; }
+          else limit = Math.min(limit, closedAt(car.s) === car.lane ? 5 : 14);  // hold back for a gap
+        } else if (car.changeCooldown <= 0) {
+          const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
+          if (blocked && car.lane < maxLane(car, car.s)) {
+            const target = lanes[car.lane + 1];
+            const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
+            const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
+            if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
+          } else if (!blocked && car.lane > 0 && car.inLaneSince > 5 && closedAt(car.s + 300) !== car.lane - 1) {
+            const target = lanes[car.lane - 1];
+            const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
+            if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+          }
         }
       }
       // cars brake harder than they accelerate

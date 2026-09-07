@@ -206,7 +206,8 @@ function createRunScore(bike, traffic) {
     }
     // lane discipline: an outer lane with the inside lane clear is hogging after a few seconds
     const lane = laneIndex(bike.d);
-    const insideClear = lane > 0 && Math.abs(bike.d - LANES[lane]) < 1.0 && traffic.laneClear && traffic.laneClear(LANES[lane - 1], 85, 30);
+    const insideClosed = RT.closedLane && RT.closedLane(bike.s) >= lane - 1;
+    const insideClear = lane > 0 && !insideClosed && Math.abs(bike.d - LANES[lane]) < 1.0 && traffic.laneClear && traffic.laneClear(LANES[lane - 1], 85, 30);
     if (insideClear && bike.v > 15 && !crashed) hogTime += dt; else hogTime = Math.max(0, hogTime - dt * 2);
     if (hogTime > 6) {
       state.score -= dt * 3;
