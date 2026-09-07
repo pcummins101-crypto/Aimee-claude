@@ -186,25 +186,28 @@ function makeCar(kind, paint, envMap, parked=false) {
   return g;
 }
 
+/* Merge the static parts of a vehicle by material: one draw call per material
+ * instead of dozens of small meshes. Brake lights keep their own material. */
+// Merge the static parts of each car by material. This avoids dozens of draw calls per parked vehicle.
+function mergeGroup(group){
+  group.updateMatrixWorld(true);const bins=new Map(),remove=[];
+  group.traverse(o=>{if(!o.isMesh||(o.material.transparent&&!o.material.alphaTest))return;const key=o.material.uuid;
+    if(!bins.has(key))bins.set(key,{mat:o.material,parts:[],shadow:false});const b=bins.get(key);const g=o.geometry.clone().applyMatrix4(o.matrixWorld);b.parts.push(g);b.shadow=b.shadow||o.castShadow;remove.push(o);
+  });
+  remove.forEach(o=>o.removeFromParent());
+  for(const b of bins.values()){
+    const p=[],n=[],uv=[],ix=[];let offset=0;
+    for(const g of b.parts){const pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;
+      for(let i=0;i<pa.count;i++){p.push(pa.getX(i),pa.getY(i),pa.getZ(i));n.push(na.getX(i),na.getY(i),na.getZ(i));uv.push(ua?ua.getX(i):0,ua?ua.getY(i):0);}
+      const ind=g.index;if(ind)for(let i=0;i<ind.count;i++)ix.push(ind.getX(i)+offset);else for(let i=0;i<pa.count;i++)ix.push(i+offset);offset+=pa.count;g.dispose();
+    }
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(ix);geo.computeBoundingSphere();
+    const m=new THREE.Mesh(geo,b.mat);m.castShadow=b.shadow;m.receiveShadow=true;group.add(m);
+  }
+}
+
 EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality={}) {
   const parked=[],UP=new THREE.Vector3(0,1,0);
-  // Merge the static parts of each car by material. This avoids dozens of draw calls per parked vehicle.
-  function mergeGroup(group){
-    group.updateMatrixWorld(true);const bins=new Map(),remove=[];
-    group.traverse(o=>{if(!o.isMesh||o.material.transparent)return;const key=o.material.uuid;
-      if(!bins.has(key))bins.set(key,{mat:o.material,parts:[],shadow:false});const b=bins.get(key);const g=o.geometry.clone().applyMatrix4(o.matrixWorld);b.parts.push(g);b.shadow=b.shadow||o.castShadow;remove.push(o);
-    });
-    remove.forEach(o=>o.removeFromParent());
-    for(const b of bins.values()){
-      const p=[],n=[],uv=[],ix=[];let offset=0;
-      for(const g of b.parts){const pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;
-        for(let i=0;i<pa.count;i++){p.push(pa.getX(i),pa.getY(i),pa.getZ(i));n.push(na.getX(i),na.getY(i),na.getZ(i));uv.push(ua?ua.getX(i):0,ua?ua.getY(i):0);}
-        const ind=g.index;if(ind)for(let i=0;i<ind.count;i++)ix.push(ind.getX(i)+offset);else for(let i=0;i<pa.count;i++)ix.push(i+offset);offset+=pa.count;g.dispose();
-      }
-      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(ix);geo.computeBoundingSphere();
-      const m=new THREE.Mesh(geo,b.mat);m.castShadow=b.shadow;m.receiveShadow=true;group.add(m);
-    }
-  }
   RT.detailPlan.lots.forEach((pc,i)=>{
     const mesh=makeCar(pc.kind,pc.paint,envMap,true);mergeGroup(mesh);
     const f={...RT.frame(pc.s)},p=world.groundAt(pc.s,pc.side*pc.d);
@@ -275,6 +278,7 @@ function makeLorry(paint, envMap) {
 }
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
+  if (EVO.ROUTE.traffic?.motorway && EVO.createMotorwayTraffic) return EVO.createMotorwayTraffic(scene, bike, opts, { makeCar, makeLorry, LORRY, CAR_HALF_WIDTH });
   const count = opts.count ?? 5;
   const sameCount = opts.same ?? 3;
   const L = RT.length;
@@ -411,4 +415,223 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   }
 
   return { cars, update, setMode, oncomingAhead, sameAhead, get mode() { return mode; } };
+};
+
+/* Motorway traffic: four lanes of same-direction vehicles with UK lane
+ * discipline (keep left, move out to pass, move back when clear, lorries in
+ * the inside lanes at 56 mph) and a cosmetic flow on the other carriageway.
+ * The road is open-ended, so vehicles are recycled around the rider. */
+EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, parts) {
+  const { makeCar, makeLorry, LORRY, CAR_HALF_WIDTH } = parts;
+  const L = RT.length, LANES = RT.laneCentres, LW = RT.DUAL.laneW, envMap = opts.envMap || null;
+  const SB_LANES = [0, 1, 2, 3].map((k) => RT.DUAL.reserveFar - LW * (3.5 - k)); // their lane 1 first, nearest their verge
+  const coarse = !!opts.coarse;
+  const rnd = EVO.rng(9091);
+  const cars = [];
+  const paints = [0xc9ccd1, 0x1f3a6e, 0x8c1a1f, 0xe9e7e0, 0x26282b, 0x4c6b3c, 0x8a8f96, 0x2f4f8f, 0xd8d5cc, 0x5b1d24];
+  const lorryPaints = [0x35507a, 0x8d8f93, 0x9d2a2f, 0x2c4a7a, 0xe6e3da, 0x2d6b3a];
+  const hgvShare = opts.hgv ?? 0.3;
+  function build(kind, i) {
+    const lorry = kind === 'lorry';
+    const mesh = lorry ? makeLorry(lorryPaints[i % lorryPaints.length], envMap)
+      : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
+    mergeGroup(mesh);
+    scene.add(mesh);
+    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'van' ? 2.55 : 2.35 };
+  }
+  // cruise speeds by type and lane: lorries on the limiter, cars a little over the limit in the outer lanes
+  function cruiseFor(kind, lane) {
+    if (kind === 'lorry') return 24.4 + rnd() * 0.9;
+    if (kind === 'van') return 27 + rnd() * 3;
+    return [27.5 + rnd() * 3, 29.5 + rnd() * 3, 31.5 + rnd() * 3, 33 + rnd() * 3.5][lane];
+  }
+  function laneFor(kind) {
+    const r = rnd();
+    if (kind === 'lorry') return r < 0.85 ? 0 : 1;
+    if (kind === 'van') return r < 0.6 ? 0 : 1;
+    return r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.93 ? 2 : 3;
+  }
+  const count = EVO.ROUTE.traffic?.count ?? (coarse ? 15 : 24), sbCount = coarse ? 9 : 14;
+  for (let i = 0; i < count; i += 1) {
+    const r = rnd();
+    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.14 ? 'van' : r < hgvShare + 0.5 ? 'hatch' : 'suv';
+    const c = build(kind, i);
+    const lane = laneFor(kind);
+    cars.push({ ...c, dir: 1, lane, d: LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
+  }
+  for (let i = 0; i < sbCount; i += 1) {
+    const r = rnd();
+    const kind = r < 0.25 ? 'lorry' : r < 0.36 ? 'van' : r < 0.7 ? 'hatch' : 'suv';
+    const c = build(kind, i + 40);
+    const lane = laneFor(kind);
+    cars.push({ ...c, dir: -1, lane, d: SB_LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
+  }
+  let mode = 'both';
+  function active(car) { return mode === 'both' || (mode === 'oncoming' && car.dir < 0); }
+
+  // Seed positions in a window around the rider, spaced out per lane.
+  function clearAt(car, s) {
+    for (const o of cars) { if (o === car || o.dir !== car.dir || o.lane !== car.lane) continue; if (Math.abs(o.s - s) < 45 + o.half + car.half) return false; }
+    return Math.abs(s - bike.s) > 30 || Math.abs(car.d - bike.d) > 2.2;
+  }
+  function respawn(car, ahead) {
+    for (let tries = 0; tries < 12; tries += 1) {
+      const s = ahead ? bike.s + 650 + rnd() * 450 : bike.s - 320 - rnd() * 160;
+      if (s < 40 || s > L - 60) { if (ahead && s > L - 60) car.s = L - 60 - rnd() * 40; else car.s = Math.max(40, s); }
+      else car.s = s;
+      if (clearAt(car, car.s)) break;
+      car.s += 60 * (ahead ? 1 : -1);
+    }
+    car.lane = laneFor(car.kind); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+    car.cruise = cruiseFor(car.kind, car.lane); car.v = car.cruise; car.lastRel = null; car.inLaneSince = 0;
+  }
+  function seed() {
+    let k = 0;
+    for (const car of cars) {
+      for (let tries = 0; tries < 20; tries += 1) {
+        const s = car.dir > 0 ? bike.s - 300 + (k / cars.length) * 1400 + rnd() * 60 : bike.s - 250 + rnd() * 1300;
+        car.s = clamp(s, 40, L - 60);
+        if (clearAt(car, car.s)) break;
+        k += 0.3;
+      }
+      car.v = car.cruise; k += 1;
+      place(car);
+    }
+  }
+
+  const _p = new THREE.Vector3();
+  function place(car) {
+    const f = RT.frame(car.s);
+    RT.point(car.s, car.d, 0, _p);
+    car.mesh.position.copy(_p);
+    if (car.dir < 0) car.mesh.rotation.set(Math.atan2(f.ty, 1), Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    else car.mesh.rotation.set(-Math.atan2(f.ty, 1), Math.atan2(f.tx, f.tz), 0, 'YXZ');
+    // a lane change leans the car into its move a touch
+    car.mesh.rotation.y += (car.dTarget - car.d) * (car.dir > 0 ? -0.04 : 0.04);
+  }
+  for (const car of cars) car.dTarget = car.d;
+  seed();
+
+  // Nearest vehicle ahead of `car` in a lane (by lateral overlap), including the rider.
+  function leaderIn(car, laneD, maxGap) {
+    let best = null;
+    for (const o of cars) {
+      if (o === car || o.dir !== car.dir || !active(o)) continue;
+      if (Math.abs(o.d - laneD) > LW * 0.6) continue;
+      const gap = (o.s - car.s) * car.dir;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { s: o.s, v: o.v, half: o.half, gap };
+    }
+    if (car.dir > 0 && Math.abs(bike.d - laneD) < LW * 0.6) {
+      const gap = bike.s - car.s;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { s: bike.s, v: bike.v, half: 1.1, gap, bike: true };
+    }
+    return best;
+  }
+  function followerIn(car, laneD, maxGap) {
+    let best = null;
+    for (const o of cars) {
+      if (o === car || o.dir !== car.dir || !active(o)) continue;
+      if (Math.abs(o.d - laneD) > LW * 0.6) continue;
+      const gap = (car.s - o.s) * car.dir;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { v: o.v, gap };
+    }
+    if (car.dir > 0 && Math.abs(bike.d - laneD) < LW * 0.6) {
+      const gap = car.s - bike.s;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { v: bike.v, gap, bike: true };
+    }
+    return best;
+  }
+  const maxLane = (car) => (car.lorry ? 1 : 3);
+
+  function update(dt) {
+    const events = { collision: null, passBy: null, overtake: null, passedBy: null, tailgate: 0 };
+    for (const car of cars) {
+      if (!active(car)) continue;
+      const dir = car.dir, lanes = dir > 0 ? LANES : SB_LANES;
+      car.inLaneSince += dt; car.changeCooldown = Math.max(0, car.changeCooldown - dt);
+      // the gantry limit applies to everyone on our side
+      let limit = car.cruise;
+      if (dir > 0) limit = Math.min(limit, RT.speedLimitAt(car.s) / 2.23694 + (car.lorry ? 0 : 1.5));
+      // ease off before the finish so nothing piles into the end of the road
+      if (dir > 0 && car.s > L - 120) limit = Math.min(limit, 8);
+      // two-second gap to the leader in the lane we are in (or moving into)
+      const lead = leaderIn(car, car.dTarget, 160);
+      if (lead) {
+        const need = car.v * 1.9 + lead.half + car.half + 5;
+        if (lead.gap < need) limit = Math.min(limit, lead.gap < lead.half + car.half + 3 ? 0 : lead.v * ((lead.gap - lead.half - car.half - 3) / (need - lead.half - car.half - 3)));
+        if (lead.bike && lead.gap < 16 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - lead.gap / 16);
+      }
+      // lane discipline: move out to pass something slower, move back in when the inside lane is clear
+      if (dir > 0 && car.changeCooldown <= 0 && Math.abs(car.d - car.dTarget) < 0.05) {
+        const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
+        if (blocked && car.lane < maxLane(car)) {
+          const target = lanes[car.lane + 1];
+          const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
+          const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
+          if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
+        } else if (!blocked && car.lane > 0 && car.inLaneSince > 5) {
+          const target = lanes[car.lane - 1];
+          const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
+          if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+        }
+      }
+      // cars brake harder than they accelerate
+      const rate = limit < car.v - 0.5 ? 2.4 : 0.55;
+      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * rate));
+      car.braking = lerp(car.braking, limit < car.v - 0.8 ? 1 : 0, 1 - Math.exp(-dt * 8));
+      if (car.mesh.userData.tail) car.mesh.userData.tail.emissiveIntensity = 0.7 + car.braking * 2.2;
+      car.d = lerp(car.d, car.dTarget, 1 - Math.exp(-dt * 0.9));
+      if (Math.abs(car.d - car.dTarget) < 0.03) car.d = car.dTarget;
+      car.s += dir * car.v * dt;
+      // recycle around the rider on an open road
+      const rel = car.s - bike.s;
+      if (dir > 0 && (rel < -480 || rel > 1250)) respawn(car, rel < 0 && car.cruise < bike.v + 2 ? true : rel > 0 ? false : true);
+      if (dir < 0 && (rel < -380 || rel > 1300)) { car.s = bike.s + 900 + rnd() * 380; car.lastRel = null; }
+      if (car.s < 20) car.s = 20;
+      place(car);
+      car.mesh.visible = Math.abs(car.s - bike.s) < (coarse ? 650 : 900);
+      if (dir < 0) { car.lastRel = rel; continue; }
+
+      // passes, both ways, and contact
+      const lateral = Math.abs(bike.d - car.d);
+      const relNow = car.s - bike.s;
+      if (car.lastRel !== null) {
+        if (car.lastRel > 0 && relNow <= 0) events.overtake = { car, gap: lateral - CAR_HALF_WIDTH, closing: bike.v - car.v, side: bike.d < car.d ? 'right' : 'left' };
+        if (car.lastRel < 0 && relNow >= 0) events.passedBy = { car, gap: lateral - CAR_HALF_WIDTH, side: car.d < bike.d ? 'right' : 'left' };
+      }
+      car.lastRel = relNow;
+      if (lateral < CAR_HALF_WIDTH + 0.4 && relNow > -car.half - 0.4 && relNow < car.half + 0.3) {
+        events.collision = { car, reason: relNow > 0 ? (car.lorry ? 'RAN INTO THE LORRY AHEAD' : 'RAN INTO THE CAR AHEAD') : 'CLIPPED BY TRAFFIC' };
+      }
+    }
+    return events;
+  }
+
+  function sameAhead(metres = 60) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      if (Math.abs(car.d - bike.d) > LW * 0.62) continue;
+      const rel = car.s - bike.s;
+      if (rel <= 0 || rel > metres) continue;
+      if (!best || rel < best.distance) best = { car, distance: rel };
+    }
+    return best;
+  }
+  /* Is the lane at lateral `d` free of traffic within `ahead` metres in front
+   * and `behind` metres back? Used by the score to judge lane hogging. */
+  function laneClear(d, ahead = 70, behind = 25) {
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      if (Math.abs(car.d - d) > LW * 0.62) continue;
+      const rel = car.s - bike.s;
+      if (rel > -behind && rel < ahead) return false;
+    }
+    return true;
+  }
+  function setMode(next) {
+    mode = next;
+    for (const car of cars) { car.mesh.visible = active(car); car.lastRel = null; }
+  }
+  return { cars, update, setMode, oncomingAhead() { return null; }, sameAhead, laneClear, get mode() { return mode; } };
 };

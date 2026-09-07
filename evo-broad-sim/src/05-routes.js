@@ -12,6 +12,35 @@ import * as THREE from 'three';
  */
 const EVO = window.EVO;
 
+/* M1 helpers: the long profile, the land beside it and a way from world z to
+ * distance along the road (the alignment runs steadily north, so z is enough). */
+const M1 = {
+  CONTROL: [[0,0], [-85.5,-234.9], [-171.0,-469.8], [-256.5,-704.8], [-342.0,-939.7], [-427.5,-1174.6], [-513.0,-1409.5], [-595.7,-1671.8], [-666.9,-1937.4], [-726.4,-2205.9], [-774.2,-2476.7], [-816.6,-2717.5], [-859.1,-2958.2], [-901.5,-3198.9], [-944.0,-3439.7], [-986.4,-3680.4], [-1028.9,-3921.1], [-1071.3,-4161.9], [-1113.8,-4402.6], [-1156.2,-4643.3], [-1213.2,-4879.4], [-1284.8,-5111.5], [-1370.7,-5338.6], [-1470.6,-5560.0], [-1584.0,-5774.7], [-1710.7,-5981.9], [-1850.0,-6180.9], [-1993.4,-6385.7], [-2136.8,-6590.4], [-2280.1,-6795.2], [-2423.5,-7000.0], [-2566.9,-7204.8], [-2710.3,-7409.6], [-2853.7,-7614.4], [-2997.1,-7819.2], [-3140.5,-8024.0], [-3283.9,-8228.7], [-3427.3,-8433.5], [-3570.7,-8638.3], [-3710.2,-8854.3], [-3841.5,-9075.4], [-3964.5,-9301.2], [-4079.0,-9531.5], [-4184.7,-9765.9], [-4281.7,-10004.1], [-4369.6,-10245.7], [-4453.6,-10476.4], [-4537.5,-10707.0], [-4621.5,-10937.7], [-4705.4,-11168.3], [-4789.4,-11399.0], [-4873.3,-11629.6], [-4957.3,-11860.3], [-5041.2,-12090.9], [-5125.2,-12321.6], [-5209.1,-12552.2], [-5293.1,-12782.9], [-5388.7,-13013.8], [-5494.4,-13240.4], [-5609.8,-13462.2], [-5734.8,-13678.7], [-5869.1,-13889.5], [-6012.5,-14094.3], [-6164.7,-14292.6], [-6325.4,-14484.2], [-6486.1,-14675.7], [-6646.8,-14867.2], [-6807.5,-15058.7], [-6968.2,-15250.2], [-7128.9,-15441.7], [-7289.6,-15633.2], [-7450.3,-15824.7], [-7611.0,-16016.2], [-7758.5,-16226.9], [-7887.1,-16449.6], [-7995.7,-16682.6], [-8083.7,-16924.3], [-8150.2,-17172.6], [-8194.9,-17425.9], [-8217.3,-17682.0], [-8240.0,-17941.1], [-8262.6,-18200.1], [-8285.3,-18459.1], [-8307.9,-18718.1], [-8330.6,-18977.1], [-8353.3,-19236.1], [-8375.9,-19495.1], [-8398.6,-19754.1], [-8421.2,-20013.1], [-8443.9,-20272.2]],
+  PROFILE: [[0, 0], [2400, -13], [4500, -33], [6000, -30], [8000, -10], [9900, 12], [12000, -8], [14500, -48], [16000, -50], [17800, -60], [19000, -48], [20000, -46], [21700, -56], [22400, -58]],
+  // land relative to the road: cuttings through the ridge, embankments over the valleys
+  LAND: [[0, -1.5], [3600, -1.5], [4200, -4.5], [5000, -4.5], [5600, -1], [8200, -1], [8800, 6], [10700, 6], [11300, -1], [13200, -1], [13800, -3.5], [15000, -3.5], [15600, -1], [17000, -1], [17300, -6.5], [18300, -6.5], [18700, -1], [22400, -1.5]],
+  interp(table, s) {
+    if (s <= table[0][0]) return table[0][1];
+    for (let i = 0; i < table.length - 1; i += 1) {
+      const [s0, h0] = table[i], [s1, h1] = table[i + 1];
+      if (s <= s1) { const t = (s - s0) / (s1 - s0); return h0 + (h1 - h0) * (t * t * (3 - 2 * t)); }
+    }
+    return table[table.length - 1][1];
+  },
+  zToS(z) {
+    // the control points are 250 m apart along the road; z falls monotonically
+    const C = M1.CONTROL, step = 22400 / (C.length - 1);
+    if (z >= 0) return z * -1;
+    for (let i = 0; i < C.length - 1; i += 1) {
+      if (z <= C[i][1] && z >= C[i + 1][1]) { const t = (C[i][1] - z) / (C[i][1] - C[i + 1][1]); return (i + t) * step; }
+    }
+    return 22400 + (C[C.length - 1][1] - z);
+  },
+  plan() { return ROUTES.motorway.m1; },
+  gantries() { return ROUTES.motorway.m1.gantries; },
+  limitAt(s) { return ROUTES.motorway.limitAt(s); }
+};
+
 const ROUTES = {
   /* ------------------------------------------------------------ Dales B road */
   dales: {
@@ -175,6 +204,100 @@ const ROUTES = {
     },
     scenery: { trees: 'sparse', flowers: false, blades: 0.9, farmsteads: false, fells: true, heather: true, grass: 0xa89a66, blade: 0x8f9469, fogScale: 0.62, flock: 3.4, walls: 6, cloughTrees: true },
     traffic: { oncoming: 1.15, same: 1, cruise: 1.45, hgv: 0.34 }
+  },
+
+  /* ------------------------------------------------- M1 smart motorway */
+  // Northbound from Toddington services to Newport Pagnell services: the
+  // four-lane all-lane-running section through junctions 12, 13 and 14. An
+  // open road, so the run has a start and a finish rather than laps.
+  motorway: {
+    id: 'motorway',
+    name: 'M1 · Toddington to Newport Pagnell',
+    kicker: 'SMART MOTORWAY · M1 NORTHBOUND J12–J14',
+    roadHint: 'keep left unless overtaking, obey the gantry limits, no undertaking; R resets you in lane 1, P pauses',
+    scoreHint: 'pace within the limit; passing on the right chains a multiplier (+80); undertaking, hogging an outer lane, tailgating, breaking a gantry limit and crashes cost; pull in at Newport Pagnell to complete the run (+300). Your best run is kept',
+    trafficLabels: ['Full motorway traffic', 'Southbound only', 'Empty motorway'],
+    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13 and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
+    open: true,
+    dual: { lanes: 4, laneW: 3.65, strip: 1.0, reserve: 3.6 },
+    scale: 1,
+    laneHalf: 7.3,          // four 3.65 m lanes
+    roadHalf: 8.3,          // plus the 1 m hard strip
+    hedgeOffset: 14.5,      // boundary fence from the centre of our carriageway
+    limit: 70,
+    bendThreshold: 1 / 1400, // a motorway curve is a sweep, not a bend
+    elevationWeight: 1,
+    terrainWeight: 0,
+    corridor: { inner: 2.5, outer: 24, reach: 60 },
+    // The long profile in metres relative to Toddington services (about 118 m
+    // AOD): down through the Flit gap, up Brogborough Hill to a crest in the
+    // Greensand cutting, down into the Marston Vale and across the Ouzel.
+    profile: (s) => M1.interp(M1.PROFILE, s),
+    elevation: [],
+    terrain: (x, z) => {
+      const s = M1.zToS(z);
+      return M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
+        (EVO.fbm(x / 900 + 2.2, z / 900 - 1.1, 3) - 0.5) * 9 + (EVO.fbm(x / 240 - 4.4, z / 240 + 3.3, 3) - 0.5) * 2.6;
+    },
+    spawns: [[440, 'Toddington services', 10.55], [1400, 'Approaching J12'], [7200, 'Brogborough Hill'], [10600, 'Approaching J13'], [15600, 'Salford straight'], [18900, 'Approaching J14']],
+    control: M1.CONTROL,
+    junctions: [],
+    boundaries: { seed: 7001, min: 900, span: 1200, mix: [['fence', 1]] },
+    places: { village: null, woodland: [], gates: [], humps: [], stripAt: [], covers: [], potholes: [], grids: [], laybys: [], lots: [], repairs: { count: 0, seed: 1, step: 100, from: 0 } },
+    /* Motorway plan: everything is placed by distance from Toddington services. */
+    m1: {
+      kmAtStart: 63.0, // driver location signs: M1 carriageway A, km from the M25 end
+      exits: [
+        { s: 2400, number: 12, road: 'A5120', places: ['Flitwick', 'Toddington', 'Harlington'], after: [['Milton Keynes', 11], ['Northampton', 32], ['The NORTH', null]] },
+        { s: 12000, number: 13, road: 'A421', places: ['Milton Keynes (S)', 'Bedford', 'Ampthill'], extraRoad: 'A507', after: [['Northampton', 27], ['Leicester', 58], ['The NORTH', null]] },
+        { s: 20000, number: 14, road: 'A509', places: ['Milton Keynes', 'Newport Pagnell', 'Olney'], after: [['Northampton', 22], ['Leicester', 52], ['The NORTH', null]] }
+      ],
+      services: {
+        start: { name: 'Toddington', operator: 'moto', merge: [0, 380] },
+        end: { name: 'Newport Pagnell', operator: 'Welcome Break', diverge: 650, nose: 300 },
+        next: [['Newport Pagnell', 14]]
+      },
+      // Portal gantries with a signal over each lane. '' is blank, a number is a
+      // variable limit, 'END' clears it (national speed limit applies).
+      gantries: [
+        { s: 900, msg: '' }, { s: 2000, msg: 'DONT DRIVE TIRED' }, { s: 3300, msg: '' }, { s: 4600, msg: 'KEEP APART 2 CHEVRONS' },
+        { s: 6000, msg: '' }, { s: 7400, msg: '' }, { s: 8800, msg: 'CHECK YOUR FUEL LEVEL' },
+        { s: 10400, limit: 60, msg: 'CONGESTION AFTER J13' }, { s: 11400, limit: 50, msg: 'SLOW TRAFFIC AHEAD' },
+        { s: 12500, limit: 'END', msg: '' }, { s: 13900, msg: '' }, { s: 15300, msg: 'KEEP LEFT UNLESS OVERTAKING' },
+        { s: 16700, msg: '' }, { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE J14 ROADWORKS' }, { s: 20700, msg: '' }
+      ],
+      // overbridges other than the junction roads: minor roads, farm tracks, a footbridge
+      bridges: [
+        { s: 1100, kind: 'road' }, { s: 3250, kind: 'road' }, { s: 4700, kind: 'road' }, { s: 6350, kind: 'road' }, { s: 7800, kind: 'foot' },
+        { s: 9200, kind: 'road' }, { s: 10650, kind: 'road' }, { s: 13400, kind: 'road' }, { s: 14900, kind: 'road' }, { s: 16350, kind: 'road' },
+        { s: 17700, kind: 'road' }, { s: 18900, kind: 'foot' }, { s: 21000, kind: 'road' }
+      ],
+      refuges: [1600, 3900, 6100, 8300, 10100, 13000, 15400, 17300, 19100],
+      pylons: [{ s: 5200, angle: 62 }, { s: 15800, angle: 105 }],
+      woods: [[5500, 6200, -1], [7500, 10700, 1], [7900, 10300, -1], [16800, 17300, 1]],
+      sheds: [{ s: 12300, side: -1 }, { s: 19000, side: -1 }],
+      noise: [[1450, 2050, 1], [18400, 19100, 1]],
+      lit: [[1700, 3100], [11300, 12700], [19300, 20700]]
+    },
+    limitAt(s) {
+      let lim = 70;
+      for (const g of M1.gantries()) { if (s >= g.s && g.limit) lim = g.limit === 'END' ? 70 : g.limit; }
+      return lim;
+    },
+    readout(RT, s) {
+      const M = M1.plan(), L = RT.length;
+      const lim = M1.limitAt(s);
+      const nextExit = M.exits.find((e) => e.s - s > -200);
+      const toServices = L - M.services.end.nose - s;
+      if (s < 700) return { name: 'TODDINGTON SERVICES', note: 'Merge · give way to traffic on the M1', warn: true };
+      if (toServices < 1650 && toServices > -50) return { name: 'M1 NORTHBOUND', note: `Newport Pagnell services · ${Math.max(0, Math.round(toServices / 100) / 10)} km · keep left`, warn: toServices < 500 };
+      if (lim !== 70) return { name: 'M1 NORTHBOUND', note: `Variable limit ${lim} · smart motorway`, warn: true };
+      if (nextExit && nextExit.s - s < 1700 && nextExit.s - s > -200) return { name: 'M1 NORTHBOUND', note: `Junction ${nextExit.number} · ${nextExit.road} · ${Math.max(0, Math.round((nextExit.s - s) / 100) / 10)} km` };
+      const km = (M.kmAtStart + s / 1000).toFixed(1);
+      return { name: 'M1 NORTHBOUND', note: `Four lanes · no hard shoulder · marker ${km}` };
+    },
+    scenery: { motorway: true, trees: 'belts', flowers: false, blades: 0.35, farmsteads: false, fells: false, grass: 0xf2f0e6, fogScale: 0.8, flock: 0, walls: 0 },
+    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.3 }
   }
 };
 

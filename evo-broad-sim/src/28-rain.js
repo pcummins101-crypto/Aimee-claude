@@ -58,7 +58,8 @@ EVO.createRain = function createRain(scene, quality) {
       uniforms.uAlpha.value = Math.min(1, level) * 0.55;
       uniforms.uFall.value.copy(wind);
       // the streak is the drop's motion relative to the rider over an exposure
-      vel.copy(forward).multiplyScalar(-speed).add(wind).multiplyScalar(0.045);
+      vel.copy(forward).multiplyScalar(-speed).add(wind).multiplyScalar(0.022);
+      if (vel.length() > 0.7) vel.setLength(0.7);
       uniforms.uStreak.value.copy(vel);
     }
   };

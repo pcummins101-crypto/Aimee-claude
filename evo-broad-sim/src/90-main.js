@@ -61,7 +61,7 @@ EVO.createHud = function createHud(bike, score) {
         const sc = Math.max(0, Math.round(st.score)).toLocaleString();
         if (sc !== lastScore) { scoreEl.textContent = sc; lastScore = sc; }
         const mm = Math.floor(st.lapTime / 60), ss = Math.floor(st.lapTime % 60);
-        const meta = `LAP ${st.lap} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
+        const meta = `${st.label || `LAP ${st.lap}`} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
         if (meta !== lastMeta) { scoreMeta.textContent = meta; lastMeta = meta; }
         const p = st.pop;
         const key = p ? `${p.text}|${p.until}` : '';
@@ -91,15 +91,19 @@ function boot() {
     routeSel.value = EVO.activeRoute;
     const L = EVO.route.length;
     spawnSel.innerHTML = '';
-    for (const [at, label] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
+    for (const [at, label, lane] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
       const o = document.createElement('option');
-      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label;
+      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label; if (lane !== undefined) o.dataset.lane = String(lane);
       spawnSel.appendChild(o);
     }
     document.querySelector('#start .kicker').textContent = EVO.ROUTE.kicker;
     document.querySelector('#start .copy').textContent = EVO.ROUTE.blurb;
     const hint = document.querySelector('#start .controls li:nth-child(4)');
     if (hint && EVO.ROUTE.roadHint) hint.innerHTML = `<b>Road</b> ${EVO.ROUTE.roadHint}`;
+    const scoreHint = document.querySelector('#start .controls li:nth-child(5)');
+    if (scoreHint && EVO.ROUTE.scoreHint) scoreHint.innerHTML = `<b>Score</b> ${EVO.ROUTE.scoreHint}`;
+    const trafficSel = document.getElementById('traffic');
+    if (trafficSel && EVO.ROUTE.trafficLabels) EVO.ROUTE.trafficLabels.forEach((label, k) => { if (trafficSel.options[k]) trafficSel.options[k].textContent = label; });
     routeSel.addEventListener('change', () => {
       try { localStorage.setItem('evo.route', routeSel.value); } catch (e) { /* private mode */ }
       const q = new URLSearchParams(location.search);
@@ -112,8 +116,9 @@ function boot() {
     if (!app) { ridePending = true; return; }
     const wanted = new URLSearchParams(location.search).get('light') || document.getElementById('light')?.value || 'noon';
     if (wanted !== app.world.lightingName) app.setLighting(wanted);
-    app.bike.s=Number(document.getElementById('spawn').value)||180;
-    app.bike.d=1.5;app.bike.v=0;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
+    const spawnEl=document.getElementById('spawn'), spawnOpt=spawnEl.options[spawnEl.selectedIndex];
+    app.bike.s=Number(spawnEl.value)||180;
+    app.bike.d=spawnOpt&&spawnOpt.dataset.lane!==undefined?Number(spawnOpt.dataset.lane):EVO.route.homeLane;app.bike.v=0;app.bike.finished=false;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
     app.bike.motionScale=document.getElementById('comfort').checked?.45:1;
     const trafficMode=document.getElementById('traffic')?.value||'both';
     app.trafficEnabled=trafficMode!=='none';
@@ -151,7 +156,7 @@ function boot() {
   document.getElementById('pause').addEventListener('click',togglePause);
   window.addEventListener('keydown',e=>{
     if(e.code==='KeyP'&&!e.repeat)togglePause();
-    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=1.5;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
+    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
   });
   setStatus('Building detailed cottages, hedgerows and road surfaces…');
   setTimeout(() => {
@@ -219,7 +224,7 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap, coarse: quality.coarse });
   const score = EVO.createScore(bike, traffic);
   const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);
@@ -253,6 +258,17 @@ function buildApp() {
   if (showStats) statsEl.hidden = false;
 
   const STEP = 1 / 120;
+  // On an open road the run ends at the far services: coast to a stop, show
+  // the result, then hand back to the start screen for another go.
+  let finishTimer = null;
+  function endRun() {
+    finishTimer = null;
+    const st = score.state, last = st.lastLap;
+    EVO.app.running = false;
+    const start = document.getElementById('start');
+    start.hidden = false; start.classList.remove('is-hidden');
+    if (last) { const mm = Math.floor(last.time / 60), ss = Math.floor(last.time % 60); setStatus(`Run complete: ${last.score.toLocaleString()} points in ${mm}:${String(ss).padStart(2, '0')}${last.pulledIn ? '' : ' (missed the services)'} · best ${Math.round(st.best).toLocaleString()}`); }
+  }
   let last = performance.now(), acc = 0, frames = 0, fpsTime = 0;
   const bikePos = new THREE.Vector3();
   function loop(now) {
@@ -277,6 +293,7 @@ function buildApp() {
       score.update(STEP, events);
       acc-=STEP;steps++;
     }
+    if (bike.finished && !finishTimer) finishTimer = setTimeout(endRun, 6500);
     hud.update();
     const portrait = window.innerHeight > window.innerWidth;
     bike.applyCamera(camera, portrait);

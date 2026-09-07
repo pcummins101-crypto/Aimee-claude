@@ -6,20 +6,26 @@ A first-person WebGL simulation of riding an Avenrà EVO around quiet British ro
 
 **ROUTE** on the start screen picks the road. Everything that makes one road different from another — geometry, carriageway width, elevation character, terrain, boundary mix, junctions, authored places, traffic mix and scenery rules — is a record in `src/05-routes.js`, so adding a road means adding a record rather than editing builders. The world is built once, so changing route reloads the page; the choice and the best lap are remembered per road.
 
-| | Dales B-road | Moorland A-road |
-| --- | --- | --- |
-| Length | 2.4 km | 5.4 km |
-| Carriageway | 6.0 m | 7.3 m |
-| Bends | 10, tightest 54 m | 10, tightest 70 m |
-| Longest straight | 35 m | 932 m |
-| Climb | 11 m | 70 m, to a 486 ft summit |
-| Character | hedgerows, walls, woods, the village of Dalebeck with humps and a 20 limit | open moor, dry-stone walls, long unfenced runs, cattle grids, laybys, a snow gate |
-| Ground | pasture, verge flowers, dense hedgerow trees | heather, rush, bracken, gorse and gritstone over peat, with trees only in the sheltered gills |
-| Traffic | cars and vans | cars, vans and 16 m articulated lorries at 50 mph |
+| | Dales B-road | Moorland A-road | M1 motorway |
+| --- | --- | --- | --- |
+| Length | 2.4 km loop | 5.4 km loop | 22 km, Toddington services to Newport Pagnell services |
+| Carriageway | 6.0 m two-way | 7.3 m two-way | two carriageways of four 3.65 m lanes, no hard shoulder |
+| Bends | 10, tightest 54 m | 10, tightest 70 m | sweeps only |
+| Longest straight | 35 m | 932 m | 3 km |
+| Climb | 11 m | 70 m, to a 486 ft summit | 70 m of fall and rise: the Flit gap, Brogborough Hill, the Marston Vale, the Ouzel |
+| Character | hedgerows, walls, woods, the village of Dalebeck with humps and a 20 limit | open moor, dry-stone walls, long unfenced runs, cattle grids, laybys, a snow gate | smart motorway: gantries with variable limits, refuge areas, three roundabout interchanges, two service areas |
+| Ground | pasture, verge flowers, dense hedgerow trees | heather, rush, bracken, gorse and gritstone over peat, with trees only in the sheltered gills | arable patchwork of wheat, rape, plough and pasture divided by hedges, tree belts, pylons, distribution sheds |
+| Traffic | cars and vans | cars, vans and 16 m articulated lorries at 50 mph | four lanes of cars, vans and lorries with UK lane discipline, and a southbound flow |
 
 The moor carries a deep layer of ground cover: heather in flower where the fbm says it should be, rush tussocks in the wetter hollows, bracken on the sheltered slopes, gorse and loose gritstone, all instanced and distance-culled so the count runs to tens of thousands. Above it sit grouse butts stepping up the hill, sheepfolds, isolated field barns, becks running under stone parapets, and a network of enclosure-era field walls in parallel families with cross walls between them, which is what makes upland England read as a patchwork rather than a set of random lines. Trees appear only where the ground falls away into a gill, because that is the only place they survive.
 
 The **moorland A-road** is the fast one. Two long straights let the EVO reach its 109 mph terminal speed, and the tightest bend is a 44 mph corner at the end of the longest of them, so it needs 137 m of braking from flat out. The corner planner's horizon is not fixed: it looks as far ahead as the bike could need to brake from its current speed plus about three seconds of reaction, because a horizon that suits a B road is far too short on a road where you cover it in under a second. Long unfenced stretches mean sheep graze up to the verge and a crosswind pushes the bike across its lane on the exposed tops. Overtaking is the main event: a lorry takes real commitment to pass, and the sightlines are long enough that the decision is about closing speed rather than blind faith.
+
+### The M1
+
+The **motorway** is one run rather than a lap: out of Toddington services onto the four-lane M1 northbound, past J12 (A5120 Flitwick and Toddington), up Brogborough Hill through the Greensand cutting to J13 (A421 Milton Keynes and Bedford, with the Marston Gate sheds beside it), down across the Marston Vale and the Ouzel to J14 (A509 Milton Keynes and Newport Pagnell), and off at Newport Pagnell services. Every junction is a roundabout interchange carried over the motorway on two decks, with diverge and merge tapers, hatched noses and the slips climbing to it; the junction is signed at a mile, half a mile and the nose, with countdown markers and a confirmatory sign after it. The road is a smart motorway: lane lines and red, amber, white and green studs; a concrete step barrier down the reserve and steel barrier along the verge; portal gantries every mile or so with a signal over each lane and a message sign (a 60 and then a 50 come up on the approach to J13, and the score judges you against them); driver location signs every 500 m; emergency refuge areas with SOS cabinets; lighting through the junctions; overbridges and a footbridge in between. Both service areas are built, with car parks (and parked cars), fuel canopies, amenity buildings, lorry parks and totems.
+
+The road is open-ended, so the route system runs it as a start-to-finish alignment with an authored long profile, and the world is built in 400 m chunks that switch on by distance, which is why 22 km costs no more per frame than the 2.4 km loop. Traffic is recycled around the rider: lorries sit in the inside lanes on the limiter, cars run a little over the limit in the outer lanes, everything moves out to pass what is slower and moves back when the inside lane is clear, and whatever you are sitting behind or holding up reacts to you. Scoring is by the Highway Code rather than the apex: pace within the limit, passes on the right chain a multiplier, and undertaking, hogging an outer lane with the inside lane clear, tailgating, breaking a gantry limit and leaving the carriageway all cost. Pulling in at Newport Pagnell completes the run and pays a bonus; the best run is kept.
 
 ## What is in the world
 
@@ -100,6 +106,7 @@ writes `dist/index.html` (Three.js embedded, all modules inlined, cockpit photog
 | `src/15-road-detail.js` | the selected route's places: village, gates, humps, cattle grids, laybys, potholes, repairs, surface height and roughness |
 | `src/20-world.js` | mesh builders for road, verges, pasture, boundaries, junctions, markings, signs, sky, sun; lighting presets |
 | `src/25-vegetation.js` | volumetric tree geometry (five species, two variants each) and instancing with per-tree tint |
+| `src/29-motorway.js` | the M1: chunked dual carriageway, markings and studs, slips and roundabout interchanges, gantries, signs, refuges, services, fields, hedges, pylons and sheds |
 | `src/27-realism-world.js` | cottages, village furniture, farm gates, barns, parked cars, puddles, phone box, farmsteads, cattle grids, laybys, summit board and snow gate, batching and distance culling |
 | `src/28-rain.js` | rain streaks, computed entirely in the vertex shader around the rider |
 | `src/30-bike.js` | rider dynamics, camera rig, touch / keyboard / tilt input |

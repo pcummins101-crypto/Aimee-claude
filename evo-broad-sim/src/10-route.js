@@ -18,6 +18,20 @@ const LANE_HALF = ROUTE.laneHalf;   // carriageway half width
 const ROAD_HALF = ROUTE.roadHalf;   // asphalt mesh half width incl. broken edge
 const HEDGE_OFFSET = ROUTE.hedgeOffset; // boundary line from centre
 let SAMPLE = 1.0;            // metres between samples
+// An open route runs from a start to an end instead of closing on itself: the
+// curve is not closed, neighbours are clamped rather than wrapped, and the
+// frame clamps to the ends so nothing ahead of the finish reads back to the start.
+const OPEN = !!ROUTE.open;
+// A dual carriageway describes the second carriageway and the reserve between,
+// so the cross-section height and the ground plan can cover both.
+const DUAL = ROUTE.dual ? {
+  lanes: ROUTE.dual.lanes, laneW: ROUTE.dual.laneW, strip: ROUTE.dual.strip, reserve: ROUTE.dual.reserve,
+  // right-hand edge of our carriageway, the reserve, and the far edge of the other one (all as +d = left)
+  rightEdge: -(ROUTE.laneHalf + ROUTE.dual.strip),
+  reserveFar: -(ROUTE.laneHalf + ROUTE.dual.strip + ROUTE.dual.reserve),
+  farEdge: -(ROUTE.laneHalf + ROUTE.dual.strip + ROUTE.dual.reserve + ROUTE.laneHalf * 2 + ROUTE.dual.strip * 2),
+  crossfall: 0.025
+} : null;
 
 const CONTROL = ROUTE.control;
 const terrainBase = ROUTE.terrain;
@@ -25,33 +39,40 @@ const terrainBase = ROUTE.terrain;
 function buildRoute() {
   const SCALE = ROUTE.scale;
   const pts = CONTROL.map(([x, z]) => new THREE.Vector3(x * SCALE, 0, z * SCALE));
-  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.5);
-  curve.arcLengthDivisions = 4000;
+  const curve = new THREE.CatmullRomCurve3(pts, !OPEN, 'centripetal', 0.5);
+  curve.arcLengthDivisions = OPEN ? 12000 : 4000;
   const length = curve.getLength();
   const n = Math.round(length / SAMPLE);
   const px = new Float32Array(n), pz = new Float32Array(n), py = new Float32Array(n);
   for (let i = 0; i < n; i += 1) {
-    const p = curve.getPointAt(i / n);
+    const p = curve.getPointAt(OPEN ? i / (n - 1) : i / n);
     px[i] = p.x; pz[i] = p.z;
   }
+  // neighbour index: wrapped on a loop, clamped on an open road
+  const nb = OPEN ? (i) => clamp(i, 0, n - 1) : (i) => mod(i, n);
   // Elevation: periodic harmonics of the loop length so the loop closes, plus a
   // touch of the terrain itself. Amplitudes are per route: a B road stays gentle,
   // a moor road climbs to a summit and falls off the edge.
+  // An open road can carry an explicit long profile instead (a motorway's
+  // climb over a ridge is authored, not periodic).
   for (let i = 0; i < n; i += 1) {
     const s = i * SAMPLE, w = Math.PI * 2 / length;
     let h = 0;
-    for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
+    if (ROUTE.profile) h = ROUTE.profile(s, length);
+    else for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
     py[i] = h;
   }
   // Smooth terrain sample blended in so fields and road agree broadly.
   const tBlend = new Float32Array(n);
-  for (let i = 0; i < n; i += 1) tBlend[i] = terrainBase(px[i], pz[i]);
-  for (let pass = 0; pass < 3; pass += 1) {
-    const copy = Float32Array.from(tBlend);
-    for (let i = 0; i < n; i += 1) {
-      let acc = 0, cnt = 0;
-      for (let k = -40; k <= 40; k += 4) { acc += copy[mod(i + k, n)]; cnt += 1; }
-      tBlend[i] = acc / cnt;
+  if (ROUTE.terrainWeight > 0) {
+    for (let i = 0; i < n; i += 1) tBlend[i] = terrainBase(px[i], pz[i]);
+    for (let pass = 0; pass < 3; pass += 1) {
+      const copy = Float32Array.from(tBlend);
+      for (let i = 0; i < n; i += 1) {
+        let acc = 0, cnt = 0;
+        for (let k = -40; k <= 40; k += 4) { acc += copy[nb(i + k)]; cnt += 1; }
+        tBlend[i] = acc / cnt;
+      }
     }
   }
   for (let i = 0; i < n; i += 1) py[i] = py[i] * ROUTE.elevationWeight + tBlend[i] * ROUTE.terrainWeight;
@@ -60,7 +81,7 @@ function buildRoute() {
   const nx = new Float32Array(n), nz = new Float32Array(n);
   const kappa = new Float32Array(n), heading = new Float32Array(n);
   for (let i = 0; i < n; i += 1) {
-    const a = mod(i - 1, n), b = mod(i + 1, n);
+    const a = nb(i - 1), b = nb(i + 1);
     let dx = px[b] - px[a], dz = pz[b] - pz[a], dy = py[b] - py[a];
     const hl = Math.hypot(dx, dz); dx /= hl; dz /= hl; dy /= hl;
     tx[i] = dx; tz[i] = dz; ty[i] = dy;
@@ -70,16 +91,16 @@ function buildRoute() {
   }
   // Verify normal is to the left: cross(up, t) = ( -tz? ) up=(0,1,0), t=(tx,0,tz): up×t = (1*tz - 0*0, 0*tx - 0*tz, 0*0 - 1*tx) = (tz, 0, -tx). Left-hand side of travel is up×t. Good.
   for (let i = 0; i < n; i += 1) {
-    const a = mod(i - 3, n), b = mod(i + 3, n);
+    const a = nb(i - 3), b = nb(i + 3);
     let dh = heading[b] - heading[a];
     while (dh > Math.PI) dh -= Math.PI * 2;
     while (dh < -Math.PI) dh += Math.PI * 2;
-    kappa[i] = dh / (6 * SAMPLE); // >0 = turning left (heading = atan2(x, z) increases anticlockwise seen from above... define left as +)
+    kappa[i] = dh / ((b - a) * SAMPLE); // >0 = turning left (heading = atan2(x, z) increases anticlockwise seen from above... define left as +)
   }
   // Heading defined as atan2(tx, tz): turning left (towards +normal = (tz,-tx)) — check sign numerically later; consumers use the sign consistently.
   // Smooth curvature a little.
   const ks = Float32Array.from(kappa);
-  for (let i = 0; i < n; i += 1) { let acc = 0; for (let k = -4; k <= 4; k += 1) acc += ks[mod(i + k, n)]; kappa[i] = acc / 9; }
+  for (let i = 0; i < n; i += 1) { let acc = 0; for (let k = -4; k <= 4; k += 1) acc += ks[nb(i + k)]; kappa[i] = acc / 9; }
 
   return { curve, length, n, px, py, pz, tx, ty, tz, nx, nz, kappa, heading };
 }
@@ -90,9 +111,9 @@ SAMPLE = R.length / R.n;
 /* Frame at arbitrary distance s (metres, wraps). */
 const _frame = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, nx: 0, nz: 0, kappa: 0, heading: 0, s: 0, i: 0 };
 function frame(s, out = _frame) {
-  const f = mod(s / SAMPLE, R.n);
-  const i = Math.floor(f), j = (i + 1) % R.n, t = f - i;
-  out.s = mod(s, R.length); out.i = i;
+  const f = OPEN ? clamp(s / SAMPLE, 0, R.n - 1.0001) : mod(s / SAMPLE, R.n);
+  const i = Math.floor(f), j = OPEN ? Math.min(i + 1, R.n - 1) : (i + 1) % R.n, t = f - i;
+  out.s = OPEN ? clamp(s, 0, R.length) : mod(s, R.length); out.i = i;
   out.x = lerp(R.px[i], R.px[j], t); out.y = lerp(R.py[i], R.py[j], t); out.z = lerp(R.pz[i], R.pz[j], t);
   out.tx = lerp(R.tx[i], R.tx[j], t); out.ty = lerp(R.ty[i], R.ty[j], t); out.tz = lerp(R.tz[i], R.tz[j], t);
   const hl = Math.hypot(out.tx, out.tz); out.tx /= hl; out.tz /= hl;
@@ -110,7 +131,18 @@ function point(s, d, up = 0, out = new THREE.Vector3()) {
   out.set(f.x + f.nx * d, f.y + crown(d) + up, f.z + f.nz * d);
   return out;
 }
-function crown(d) { return -0.025 * Math.abs(d); }
+// Cross-section height. A two-way road is crowned at the centre; a dual
+// carriageway has a single crossfall away from the central reserve, and the
+// same function carries on across the reserve and the other carriageway so
+// anything placed on either side sits on the surface that is drawn.
+function crown(d) {
+  if (!DUAL) return -0.025 * Math.abs(d);
+  // beyond the hard strip the verge, slips and car parks stay level with the edge
+  if (d >= DUAL.rightEdge) return -DUAL.crossfall * Math.min(d, ROAD_HALF);
+  const top = -DUAL.crossfall * DUAL.rightEdge;
+  if (d >= DUAL.reserveFar) return top;
+  return top - DUAL.crossfall * (DUAL.reserveFar - d);
+}
 
 /* ------------------------------------------------------------ side roads */
 const JUNCTIONS = ROUTE.junctions.map((j) => {
@@ -197,9 +229,12 @@ function terrainHeight(x, z) {
   const base = terrainBase(x, z) * 0.85 + 0.6;
   const near = nearest(x, z);
   let h = base;
-  if (near && near.dist < CORRIDOR.reach) {
-    const w = smoothstep(CORRIDOR.inner, CORRIDOR.outer, near.dist);
-    h = lerp(near.y - 0.9, base, w);
+  if (near && near.dist < CORRIDOR.reach + (DUAL ? -DUAL.farEdge : 0)) {
+    // on a dual carriageway the corridor is measured from the nearer outer edge
+    const edge = DUAL ? Math.max(0, near.d >= 0 ? near.d - ROAD_HALF : DUAL.farEdge - near.d) : near.dist;
+    const w = smoothstep(CORRIDOR.inner, CORRIDOR.outer, edge);
+    const shoulder = DUAL ? near.y + crown(near.d >= 0 ? ROAD_HALF : DUAL.farEdge) - 0.55 : near.y - 0.9;
+    h = lerp(shoulder, base, w);
   }
   const side = sideInfluence(x, z);
   if (side && side.dist < 16) {
@@ -224,7 +259,7 @@ function findBends() {
     } else i += 1;
   }
   // A bend that straddles the loop seam appears twice: merge it into one.
-  if (bends.length > 1 && bends[0].start === 0 && bends[bends.length - 1].end === R.n) {
+  if (!OPEN && bends.length > 1 && bends[0].start === 0 && bends[bends.length - 1].end === R.n) {
     const first = bends.shift(), last = bends.pop();
     const apex = Math.abs(R.kappa[first.apex]) > Math.abs(R.kappa[last.apex]) ? first.apex + R.n : last.apex;
     bends.push({ start: last.start, end: R.n + first.end, apex, dir: Math.sign(R.kappa[apex % R.n]), radius: 1 / Math.abs(R.kappa[apex % R.n]) });
@@ -237,7 +272,7 @@ const BENDS = findBends();
 function planBoundaries() {
   const plan = ROUTE.boundaries;
   const rnd = EVO.rng(plan.seed);
-  const first = plan.mix[0][0], second = plan.mix[1][0];
+  const first = plan.mix[0][0], second = (plan.mix[1] || plan.mix[0])[0];
   const sides = {};
   for (const side of [1, -1]) {
     const list = [];
@@ -277,7 +312,9 @@ function inJunctionMouth(s, side, margin = 9) {
 }
 
 EVO.route = {
-  route: ROUTE, id: ROUTE.id,
+  route: ROUTE, id: ROUTE.id, OPEN, DUAL,
+  // where the rider sits when the ride starts or is reset: the left lane
+  homeLane: DUAL ? DUAL.laneW * (DUAL.lanes / 2 - 0.5) : 1.5,
   R, LANE_HALF, ROAD_HALF, HEDGE_OFFSET, SAMPLE,
   length: R.length, frame, point, crown, terrainBase, terrainHeight, nearest,
   JUNCTIONS, sidePoint, sideInfluence, BENDS, BOUNDARIES, boundaryAt, inJunctionMouth

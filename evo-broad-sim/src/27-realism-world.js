@@ -4,6 +4,9 @@ const originalBuild=E.buildWorld;
 E.buildWorld=function(renderer,quality){
   const w=originalBuild(renderer,quality), scene=w.scene, P=R.detailPlan, rnd=E.rng(61123);
   const ROUTE=E.ROUTE, S=ROUTE.scenery, LEN=R.length, frac=(t)=>t*LEN;
+  // The motorway module places its own furniture; it only needs the spatial
+  // partitioning and distance culling of instanced scenery from here.
+  if(S.motorway){E.partitionScenery(w,quality,[]);w.materials.detail={};return w;}
   const UP=new THREE.Vector3(0,1,0), temp=new THREE.Matrix4(), quat=new THREE.Quaternion();
   const materials={}, textures=[];
   const material=(name,color,extra={})=>materials[name]||(materials[name]=new THREE.MeshStandardMaterial({name,color,roughness:0.88,...extra}));
@@ -244,11 +247,11 @@ E.buildWorld=function(renderer,quality){
   // Tar-sealed repairs: irregular contours, aggregate speckle and feathered edges.
   const patchTex=canvasTexture(512,512,(c,W,H)=>{
     const r=E.rng(54);c.clearRect(0,0,W,H);
-    c.beginPath();c.moveTo(32,23);c.lineTo(472,34);c.lineTo(485,472);c.lineTo(22,487);c.closePath();c.fillStyle='#282a29';c.fill();c.strokeStyle='#171b19';c.lineWidth=13;c.stroke();
-    for(let i=0;i<15500;i++){let x=28+r()*450,y=30+r()*448,v=48+Math.floor(r()*42);c.fillStyle=`rgba(${v},${v+1},${v},${.15+r()*.4})`;c.fillRect(x,y,1+r()*2,1+r()*2);}
+    c.beginPath();c.moveTo(32,23);c.lineTo(472,34);c.lineTo(485,472);c.lineTo(22,487);c.closePath();c.fillStyle='#4a4c4a';c.fill();c.strokeStyle='#33362f';c.lineWidth=13;c.stroke();
+    for(let i=0;i<15500;i++){let x=28+r()*450,y=30+r()*448,v=70+Math.floor(r()*48);c.fillStyle=`rgba(${v},${v+1},${v},${.15+r()*.4})`;c.fillRect(x,y,1+r()*2,1+r()*2);}
     c.strokeStyle='rgba(119,115,99,.3)';c.lineWidth=2;c.strokeRect(36,36,433,440);
   });
-  const patchMat=material('surface repairs',0xb1b0a6,{map:patchTex,alphaTest:.2,transparent:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  const patchMat=material('surface repairs',0xb1b0a6,{map:patchTex,roughness:.97,alphaTest:.2,transparent:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   for(const p of P.repairs)surfaceRibbon(p.s-p.length/2,p.s+p.length/2,p.d-p.width/2,p.d+p.width/2,patchMat,.45,.010);
   // Manhole castings are flush/sunken, with short tyre inputs rather than huge obstacles.
   const coverTex=canvasTexture(256,256,(c,W,H)=>{
@@ -1020,8 +1023,25 @@ if (P.summit) {
   }
 
   const added=batch.finish();
-  // Dense roadside objects are spatially instanced, not rendered as a whole-loop
-  // batch. Use the same geometry/material/depth shader, preserving wind and shadows.
+  const cullables=E.partitionScenery(w,quality,added);
+  // Tiny, infrequent distant birds give the landscape some life without heavy models.
+  const birdGeo=new THREE.BufferGeometry();birdGeo.setAttribute('position',new THREE.Float32BufferAttribute([-.6,0,0,-.13,.09,.05,0,0,0,0,0,0,.13,.09,.05,.6,0,0],3));birdGeo.computeVertexNormals();
+  const birds=[];const birdMat=new THREE.MeshBasicMaterial({color:0x30362f,side:THREE.DoubleSide,fog:true});
+  for(let k=0;k<7;k++){const b=new THREE.Mesh(birdGeo,birdMat);scene.add(b);birds.push(b);}
+  const oldUpdate=w.update;
+  w.update=function(time,pos,forward){
+    oldUpdate(time,pos,forward);
+    birds.forEach((b,k)=>{const ss=1050+k*9+Math.sin(time*.025)*45,f={...R.frame(ss)};b.position.set(f.x+f.nx*(60+k*2)+Math.sin(time*.14+k)*12,f.y+25+k*.9+Math.sin(time*.6+k)*.6,f.z+f.nz*(60+k*2)+Math.cos(time*.14+k)*12);b.rotation.set(0,time*.14+k*.18,Math.sin(time*2.4+k)*.16);});
+  };
+  w.detailStats={buildings:buildings.length,humps:P.humps.length,rumbleStrips:P.strips.length,repairs:P.repairs.length,covers:P.covers.length,gates:P.gates.length,batchedParts:batch.parts,detailMeshes:added.length,spatialBatches:cullables.length,chevrons:chevronCount,fenceRuns:3,dampZones:5};
+  w.materials.detail=materials;w.sceneDetails={potholes:P.potholes.length,parkingBays:P.lots.length,plants:plantCount,wallCaps:capCount,fieldMaterials:3};return w;
+};
+
+/* Dense roadside objects are spatially instanced, not rendered as a whole-loop
+ * batch. Use the same geometry/material/depth shader, preserving wind and
+ * shadows, and cull each batch by distance from the rider. */
+E.partitionScenery=function(w,quality,added){
+  const scene=w.scene;
   const candidates=[];
   scene.traverse(o=>{if(o.isInstancedMesh&&o.count>=64&&!o.userData.partitioned)candidates.push(o);});
   const cullables=[];
@@ -1046,10 +1066,6 @@ if (P.summit) {
     old.parent.remove(old);old.dispose();
   }
   for(const m of added){m.userData.originalShadow=m.castShadow;cullables.push(m);}
-  // Tiny, infrequent distant birds give the landscape some life without heavy models.
-  const birdGeo=new THREE.BufferGeometry();birdGeo.setAttribute('position',new THREE.Float32BufferAttribute([-.6,0,0,-.13,.09,.05,0,0,0,0,0,0,.13,.09,.05,.6,0,0],3));birdGeo.computeVertexNormals();
-  const birds=[];const birdMat=new THREE.MeshBasicMaterial({color:0x30362f,side:THREE.DoubleSide,fog:true});
-  for(let k=0;k<7;k++){const b=new THREE.Mesh(birdGeo,birdMat);scene.add(b);birds.push(b);}
   let lastCull=-1;
   const oldUpdate=w.update;
   w.update=function(time,pos,forward){
@@ -1063,8 +1079,6 @@ if (P.summit) {
       }
       lastCull=time;
     }
-    birds.forEach((b,k)=>{const ss=1050+k*9+Math.sin(time*.025)*45,f={...R.frame(ss)};b.position.set(f.x+f.nx*(60+k*2)+Math.sin(time*.14+k)*12,f.y+25+k*.9+Math.sin(time*.6+k)*.6,f.z+f.nz*(60+k*2)+Math.cos(time*.14+k)*12);b.rotation.set(0,time*.14+k*.18,Math.sin(time*2.4+k)*.16);});
   };
-  w.detailStats={buildings:buildings.length,humps:P.humps.length,rumbleStrips:P.strips.length,repairs:P.repairs.length,covers:P.covers.length,gates:P.gates.length,batchedParts:batch.parts,detailMeshes:added.length,spatialBatches:cullables.length,chevrons:chevronCount,fenceRuns:3,dampZones:5};
-  w.materials.detail=materials;w.sceneDetails={potholes:P.potholes.length,parkingBays:P.lots.length,plants:plantCount,wallCaps:capCount,fieldMaterials:3};return w;
+  return cullables;
 };

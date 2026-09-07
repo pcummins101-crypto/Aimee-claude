@@ -30,7 +30,15 @@ const LOOK_STEP = 4;
 // far too short on a fast road, where you arrive at a bend having covered it in
 // well under a second.
 const lookAhead = (v) => clamp(v * v / (2 * DECEL_PLAN) + v * 3, 70, 340);
-const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
+// Road edges in lateral metres. A two-way road is symmetric about its centre
+// line; a dual carriageway has the verge on the left and the central reserve
+// barrier on the right, and the left edge moves out along slip roads and
+// refuge areas.
+const EDGE = RT.DUAL
+  ? { laneL: RT.ROAD_HALF - 0.2, vergeL: RT.ROAD_HALF + 0.6, crashL: RT.ROAD_HALF + 1.6, laneR: -(RT.ROAD_HALF - 0.25), vergeR: -(RT.ROAD_HALF + 0.05), crashR: -(RT.ROAD_HALF + 0.42),
+      reasonL: 'OFF THE CARRIAGEWAY · INTO THE BARRIER', reasonR: 'INTO THE CENTRAL BARRIER' }
+  : { laneL: RT.LANE_HALF - 0.3, vergeL: RT.LANE_HALF + 0.6, crashL: RT.LANE_HALF + 1.5, laneR: -(RT.LANE_HALF - 0.3), vergeR: -(RT.LANE_HALF + 0.6), crashR: -(RT.LANE_HALF + 1.5),
+      reasonL: 'OFF THE ROAD · INTO THE HEDGE', reasonR: 'OFF THE ROAD · WRONG SIDE' };
 
 EVO.V_MAX = V_MAX;
 EVO.grip = 1; // scaled down by the weather; 1 is dry tarmac
@@ -38,7 +46,7 @@ EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * E
 
 EVO.createBike = function createBike() {
   const bike = {
-    s: RT.length * 0.075, d: 1.5, v: 0, a: 0,
+    s: RT.length * 0.075, d: RT.homeLane, v: 0, a: 0, finished: false,
     lean: 0, leanTarget: 0, steer: 0, steerSmoothed: 0,
     pitch: 0, pitchVel: 0, heave: 0, heaveVel: 0,
     offRoad: 0, rumble: 0, odometer: 0, drift: 0, surfaceRoughness:0.2, surfaceImpact:0, motionScale:1,
@@ -99,8 +107,8 @@ EVO.createBike = function createBike() {
     const inp = bike.input;
     const crashed = bike.crashTimer > 0;
     if (crashed) bike.crashTimer -= dt;
-    const throttle = crashed ? 0 : inp.throttle;
-    const brake = crashed ? 1 : inp.brake;
+    const throttle = crashed || bike.finished ? 0 : inp.throttle;
+    const brake = crashed ? 1 : bike.finished ? Math.max(inp.brake, 0.35) : inp.brake;
 
     // Powertrain: EV torque is strongest from a standstill and tails off so the
     // terminal speed lands on V_MAX.
@@ -148,14 +156,17 @@ EVO.createBike = function createBike() {
     }
     bike.drift = lerp(bike.drift, drift, 1 - Math.exp(-dt * 6));
 
-    // Road edge, verge and the hedge line.
-    const ad = Math.abs(bike.d);
-    if (ad > LANE_EDGE) {
-      bike.offRoad = lerp(bike.offRoad, ad > VERGE_EDGE ? 1.6 : 1, 1 - Math.exp(-dt * 6));
-    } else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
-    if (ad >= CRASH_EDGE && !crashed) bike.crash(bike.d > 0 ? 'OFF THE ROAD · INTO THE HEDGE' : 'OFF THE ROAD · WRONG SIDE');
-    bike.d = clamp(bike.d, -CRASH_EDGE, CRASH_EDGE);
-    if (crashed && bike.crashTimer <= 0) { bike.d = 1.5; bike.offRoad = 0; bike.drift = 0; }
+    // Road edge, verge and whatever lies beyond it. On the motorway the left
+    // edge follows the slip roads and refuges out and back.
+    const ext = RT.roadExtent ? RT.roadExtent(bike.s).left - RT.ROAD_HALF : 0;
+    const laneL = EDGE.laneL + ext, vergeL = EDGE.vergeL + ext, crashL = EDGE.crashL + ext;
+    const over = bike.d > laneL || bike.d < EDGE.laneR;
+    const onVerge = bike.d > vergeL || bike.d < EDGE.vergeR;
+    if (over) bike.offRoad = lerp(bike.offRoad, onVerge ? 1.6 : 1, 1 - Math.exp(-dt * 6));
+    else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
+    if ((bike.d >= crashL || bike.d <= EDGE.crashR) && !crashed) bike.crash(RT.edgeReason ? RT.edgeReason(bike.s, bike.d) : bike.d > 0 ? EDGE.reasonL : EDGE.reasonR);
+    bike.d = clamp(bike.d, EDGE.crashR, crashL);
+    if (crashed && bike.crashTimer <= 0) { bike.d = RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
     bike.rumble = clamp(bike.offRoad * Math.min(1, bike.v / 8), 0, 1);
 
     // Lean: corner physics from the road curvature plus a steering lean.
@@ -180,7 +191,10 @@ EVO.createBike = function createBike() {
     bike.heaveVel += ((roadHeave + buzz - bike.heave) * 180 - bike.heaveVel * 19) * dt;
     bike.heave += bike.heaveVel * dt;
 
-    bike.s = mod(bike.s + bike.v * dt, RT.length);
+    if (RT.OPEN) {
+      bike.s = Math.min(bike.s + bike.v * dt, RT.length - 1);
+      if (RT.runEnd && bike.s >= RT.runEnd && !bike.finished) bike.finished = true;
+    } else bike.s = mod(bike.s + bike.v * dt, RT.length);
     bike.odometer += bike.v * dt;
     if (bike.notice && bike.elapsed > bike.notice.until) bike.notice = null;
   };
@@ -190,9 +204,10 @@ EVO.createBike = function createBike() {
     // Eye moves to the inside of the corner as the rider leans.
     const eyeD = bike.d + Math.sin(bike.lean) * 0.42;
     const eyeH = EYE_HEIGHT * Math.cos(bike.lean * 0.9) + bike.heave - Math.max(0, -bike.pitch) * 0.8;
-    const ad = Math.abs(eyeD);
-    const groundDrop = ad > RT.LANE_HALF ? -0.1 - (ad - RT.LANE_HALF) * 0.12 : 0; // verge and ditch
-    bike.pos.set(f.x + f.nx * eyeD, f.y + RT.crown(Math.min(ad, RT.LANE_HALF)) + groundDrop + eyeH, f.z + f.nz * eyeD);
+    const edgeL = RT.roadExtent ? RT.roadExtent(bike.s).left : RT.LANE_HALF, edgeR = RT.DUAL ? RT.DUAL.rightEdge : -RT.LANE_HALF;
+    const beyond = eyeD > edgeL ? eyeD - edgeL : eyeD < edgeR ? edgeR - eyeD : 0;
+    const groundDrop = beyond > 0 ? -0.1 - beyond * 0.12 : 0; // verge and ditch
+    bike.pos.set(f.x + f.nx * eyeD, f.y + RT.crown(clamp(eyeD, edgeR, edgeL)) + groundDrop + eyeH, f.z + f.nz * eyeD);
     camera.position.copy(bike.pos);
     const yaw = Math.atan2(-f.tx, -f.tz) + bike.steerSmoothed * 0.05 + bike.lean * 0.04;
     const slope = Math.atan2(f.ty, 1);

@@ -108,7 +108,7 @@ html, body { margin: 0; height: 100%; background: #0a0d10; overflow: hidden; fon
         <li><b>Score</b> pace while the bar is green, clean bends chain a multiplier, a clean overtake is +150; passing blind or into oncoming, speeding in the village, humps hit hard and crashes all cost. Your best lap is kept</li>
       </ul>
       <div class="ride-options">
-        <label>ROUTE<select id="route"><option value="dales">Dales B-road · 2.4 km</option><option value="moor">Moorland A-road · 5.4 km</option></select></label>
+        <label>ROUTE<select id="route"><option value="dales">Dales B-road · 2.4 km</option><option value="moor">Moorland A-road · 5.4 km</option><option value="motorway">M1 motorway · 22 km</option></select></label>
         <label>START LOCATION<select id="spawn"></select></label>
         <label>LIGHT<select id="light"><option value="noon">Bright afternoon</option><option value="morning">Misty morning</option><option value="evening">Golden evening</option><option value="overcast">Overcast, wet road</option><option value="rain">Rain</option></select></label>
         <label>DETAIL<select id="quality"><option value="auto">Auto</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
@@ -924,6 +924,35 @@ EVO.tex.carDecal = function carDecal(kind = 'hatch') {
  */
 const EVO = window.EVO;
 
+/* M1 helpers: the long profile, the land beside it and a way from world z to
+ * distance along the road (the alignment runs steadily north, so z is enough). */
+const M1 = {
+  CONTROL: [[0,0], [-85.5,-234.9], [-171.0,-469.8], [-256.5,-704.8], [-342.0,-939.7], [-427.5,-1174.6], [-513.0,-1409.5], [-595.7,-1671.8], [-666.9,-1937.4], [-726.4,-2205.9], [-774.2,-2476.7], [-816.6,-2717.5], [-859.1,-2958.2], [-901.5,-3198.9], [-944.0,-3439.7], [-986.4,-3680.4], [-1028.9,-3921.1], [-1071.3,-4161.9], [-1113.8,-4402.6], [-1156.2,-4643.3], [-1213.2,-4879.4], [-1284.8,-5111.5], [-1370.7,-5338.6], [-1470.6,-5560.0], [-1584.0,-5774.7], [-1710.7,-5981.9], [-1850.0,-6180.9], [-1993.4,-6385.7], [-2136.8,-6590.4], [-2280.1,-6795.2], [-2423.5,-7000.0], [-2566.9,-7204.8], [-2710.3,-7409.6], [-2853.7,-7614.4], [-2997.1,-7819.2], [-3140.5,-8024.0], [-3283.9,-8228.7], [-3427.3,-8433.5], [-3570.7,-8638.3], [-3710.2,-8854.3], [-3841.5,-9075.4], [-3964.5,-9301.2], [-4079.0,-9531.5], [-4184.7,-9765.9], [-4281.7,-10004.1], [-4369.6,-10245.7], [-4453.6,-10476.4], [-4537.5,-10707.0], [-4621.5,-10937.7], [-4705.4,-11168.3], [-4789.4,-11399.0], [-4873.3,-11629.6], [-4957.3,-11860.3], [-5041.2,-12090.9], [-5125.2,-12321.6], [-5209.1,-12552.2], [-5293.1,-12782.9], [-5388.7,-13013.8], [-5494.4,-13240.4], [-5609.8,-13462.2], [-5734.8,-13678.7], [-5869.1,-13889.5], [-6012.5,-14094.3], [-6164.7,-14292.6], [-6325.4,-14484.2], [-6486.1,-14675.7], [-6646.8,-14867.2], [-6807.5,-15058.7], [-6968.2,-15250.2], [-7128.9,-15441.7], [-7289.6,-15633.2], [-7450.3,-15824.7], [-7611.0,-16016.2], [-7758.5,-16226.9], [-7887.1,-16449.6], [-7995.7,-16682.6], [-8083.7,-16924.3], [-8150.2,-17172.6], [-8194.9,-17425.9], [-8217.3,-17682.0], [-8240.0,-17941.1], [-8262.6,-18200.1], [-8285.3,-18459.1], [-8307.9,-18718.1], [-8330.6,-18977.1], [-8353.3,-19236.1], [-8375.9,-19495.1], [-8398.6,-19754.1], [-8421.2,-20013.1], [-8443.9,-20272.2]],
+  PROFILE: [[0, 0], [2400, -13], [4500, -33], [6000, -30], [8000, -10], [9900, 12], [12000, -8], [14500, -48], [16000, -50], [17800, -60], [19000, -48], [20000, -46], [21700, -56], [22400, -58]],
+  // land relative to the road: cuttings through the ridge, embankments over the valleys
+  LAND: [[0, -1.5], [3600, -1.5], [4200, -4.5], [5000, -4.5], [5600, -1], [8200, -1], [8800, 6], [10700, 6], [11300, -1], [13200, -1], [13800, -3.5], [15000, -3.5], [15600, -1], [17000, -1], [17300, -6.5], [18300, -6.5], [18700, -1], [22400, -1.5]],
+  interp(table, s) {
+    if (s <= table[0][0]) return table[0][1];
+    for (let i = 0; i < table.length - 1; i += 1) {
+      const [s0, h0] = table[i], [s1, h1] = table[i + 1];
+      if (s <= s1) { const t = (s - s0) / (s1 - s0); return h0 + (h1 - h0) * (t * t * (3 - 2 * t)); }
+    }
+    return table[table.length - 1][1];
+  },
+  zToS(z) {
+    // the control points are 250 m apart along the road; z falls monotonically
+    const C = M1.CONTROL, step = 22400 / (C.length - 1);
+    if (z >= 0) return z * -1;
+    for (let i = 0; i < C.length - 1; i += 1) {
+      if (z <= C[i][1] && z >= C[i + 1][1]) { const t = (C[i][1] - z) / (C[i][1] - C[i + 1][1]); return (i + t) * step; }
+    }
+    return 22400 + (C[C.length - 1][1] - z);
+  },
+  plan() { return ROUTES.motorway.m1; },
+  gantries() { return ROUTES.motorway.m1.gantries; },
+  limitAt(s) { return ROUTES.motorway.limitAt(s); }
+};
+
 const ROUTES = {
   /* ------------------------------------------------------------ Dales B road */
   dales: {
@@ -1087,6 +1116,100 @@ const ROUTES = {
     },
     scenery: { trees: 'sparse', flowers: false, blades: 0.9, farmsteads: false, fells: true, heather: true, grass: 0xa89a66, blade: 0x8f9469, fogScale: 0.62, flock: 3.4, walls: 6, cloughTrees: true },
     traffic: { oncoming: 1.15, same: 1, cruise: 1.45, hgv: 0.34 }
+  },
+
+  /* ------------------------------------------------- M1 smart motorway */
+  // Northbound from Toddington services to Newport Pagnell services: the
+  // four-lane all-lane-running section through junctions 12, 13 and 14. An
+  // open road, so the run has a start and a finish rather than laps.
+  motorway: {
+    id: 'motorway',
+    name: 'M1 · Toddington to Newport Pagnell',
+    kicker: 'SMART MOTORWAY · M1 NORTHBOUND J12–J14',
+    roadHint: 'keep left unless overtaking, obey the gantry limits, no undertaking; R resets you in lane 1, P pauses',
+    scoreHint: 'pace within the limit; passing on the right chains a multiplier (+80); undertaking, hogging an outer lane, tailgating, breaking a gantry limit and crashes cost; pull in at Newport Pagnell to complete the run (+300). Your best run is kept',
+    trafficLabels: ['Full motorway traffic', 'Southbound only', 'Empty motorway'],
+    blurb: 'Out of Toddington services onto the four-lane M1: through the Flitwick gap, up Brogborough Hill, past the Marston Gate sheds at J13 and across the Ouzel to J14, pulling in at Newport Pagnell. Variable limits on the gantries, lorries in the inside lanes and traffic that moves out to pass you. Fourteen miles, one run.',
+    open: true,
+    dual: { lanes: 4, laneW: 3.65, strip: 1.0, reserve: 3.6 },
+    scale: 1,
+    laneHalf: 7.3,          // four 3.65 m lanes
+    roadHalf: 8.3,          // plus the 1 m hard strip
+    hedgeOffset: 14.5,      // boundary fence from the centre of our carriageway
+    limit: 70,
+    bendThreshold: 1 / 1400, // a motorway curve is a sweep, not a bend
+    elevationWeight: 1,
+    terrainWeight: 0,
+    corridor: { inner: 2.5, outer: 24, reach: 60 },
+    // The long profile in metres relative to Toddington services (about 118 m
+    // AOD): down through the Flit gap, up Brogborough Hill to a crest in the
+    // Greensand cutting, down into the Marston Vale and across the Ouzel.
+    profile: (s) => M1.interp(M1.PROFILE, s),
+    elevation: [],
+    terrain: (x, z) => {
+      const s = M1.zToS(z);
+      return M1.interp(M1.PROFILE, s) + M1.interp(M1.LAND, s) +
+        (EVO.fbm(x / 900 + 2.2, z / 900 - 1.1, 3) - 0.5) * 9 + (EVO.fbm(x / 240 - 4.4, z / 240 + 3.3, 3) - 0.5) * 2.6;
+    },
+    spawns: [[440, 'Toddington services', 10.55], [1400, 'Approaching J12'], [7200, 'Brogborough Hill'], [10600, 'Approaching J13'], [15600, 'Salford straight'], [18900, 'Approaching J14']],
+    control: M1.CONTROL,
+    junctions: [],
+    boundaries: { seed: 7001, min: 900, span: 1200, mix: [['fence', 1]] },
+    places: { village: null, woodland: [], gates: [], humps: [], stripAt: [], covers: [], potholes: [], grids: [], laybys: [], lots: [], repairs: { count: 0, seed: 1, step: 100, from: 0 } },
+    /* Motorway plan: everything is placed by distance from Toddington services. */
+    m1: {
+      kmAtStart: 63.0, // driver location signs: M1 carriageway A, km from the M25 end
+      exits: [
+        { s: 2400, number: 12, road: 'A5120', places: ['Flitwick', 'Toddington', 'Harlington'], after: [['Milton Keynes', 11], ['Northampton', 32], ['The NORTH', null]] },
+        { s: 12000, number: 13, road: 'A421', places: ['Milton Keynes (S)', 'Bedford', 'Ampthill'], extraRoad: 'A507', after: [['Northampton', 27], ['Leicester', 58], ['The NORTH', null]] },
+        { s: 20000, number: 14, road: 'A509', places: ['Milton Keynes', 'Newport Pagnell', 'Olney'], after: [['Northampton', 22], ['Leicester', 52], ['The NORTH', null]] }
+      ],
+      services: {
+        start: { name: 'Toddington', operator: 'moto', merge: [0, 380] },
+        end: { name: 'Newport Pagnell', operator: 'Welcome Break', diverge: 650, nose: 300 },
+        next: [['Newport Pagnell', 14]]
+      },
+      // Portal gantries with a signal over each lane. '' is blank, a number is a
+      // variable limit, 'END' clears it (national speed limit applies).
+      gantries: [
+        { s: 900, msg: '' }, { s: 2000, msg: 'DONT DRIVE TIRED' }, { s: 3300, msg: '' }, { s: 4600, msg: 'KEEP APART 2 CHEVRONS' },
+        { s: 6000, msg: '' }, { s: 7400, msg: '' }, { s: 8800, msg: 'CHECK YOUR FUEL LEVEL' },
+        { s: 10400, limit: 60, msg: 'CONGESTION AFTER J13' }, { s: 11400, limit: 50, msg: 'SLOW TRAFFIC AHEAD' },
+        { s: 12500, limit: 'END', msg: '' }, { s: 13900, msg: '' }, { s: 15300, msg: 'KEEP LEFT UNLESS OVERTAKING' },
+        { s: 16700, msg: '' }, { s: 18200, msg: '' }, { s: 19500, msg: 'STAY IN LANE J14 ROADWORKS' }, { s: 20700, msg: '' }
+      ],
+      // overbridges other than the junction roads: minor roads, farm tracks, a footbridge
+      bridges: [
+        { s: 1100, kind: 'road' }, { s: 3250, kind: 'road' }, { s: 4700, kind: 'road' }, { s: 6350, kind: 'road' }, { s: 7800, kind: 'foot' },
+        { s: 9200, kind: 'road' }, { s: 10650, kind: 'road' }, { s: 13400, kind: 'road' }, { s: 14900, kind: 'road' }, { s: 16350, kind: 'road' },
+        { s: 17700, kind: 'road' }, { s: 18900, kind: 'foot' }, { s: 21000, kind: 'road' }
+      ],
+      refuges: [1600, 3900, 6100, 8300, 10100, 13000, 15400, 17300, 19100],
+      pylons: [{ s: 5200, angle: 62 }, { s: 15800, angle: 105 }],
+      woods: [[5500, 6200, -1], [7500, 10700, 1], [7900, 10300, -1], [16800, 17300, 1]],
+      sheds: [{ s: 12300, side: -1 }, { s: 19000, side: -1 }],
+      noise: [[1450, 2050, 1], [18400, 19100, 1]],
+      lit: [[1700, 3100], [11300, 12700], [19300, 20700]]
+    },
+    limitAt(s) {
+      let lim = 70;
+      for (const g of M1.gantries()) { if (s >= g.s && g.limit) lim = g.limit === 'END' ? 70 : g.limit; }
+      return lim;
+    },
+    readout(RT, s) {
+      const M = M1.plan(), L = RT.length;
+      const lim = M1.limitAt(s);
+      const nextExit = M.exits.find((e) => e.s - s > -200);
+      const toServices = L - M.services.end.nose - s;
+      if (s < 700) return { name: 'TODDINGTON SERVICES', note: 'Merge · give way to traffic on the M1', warn: true };
+      if (toServices < 1650 && toServices > -50) return { name: 'M1 NORTHBOUND', note: `Newport Pagnell services · ${Math.max(0, Math.round(toServices / 100) / 10)} km · keep left`, warn: toServices < 500 };
+      if (lim !== 70) return { name: 'M1 NORTHBOUND', note: `Variable limit ${lim} · smart motorway`, warn: true };
+      if (nextExit && nextExit.s - s < 1700 && nextExit.s - s > -200) return { name: 'M1 NORTHBOUND', note: `Junction ${nextExit.number} · ${nextExit.road} · ${Math.max(0, Math.round((nextExit.s - s) / 100) / 10)} km` };
+      const km = (M.kmAtStart + s / 1000).toFixed(1);
+      return { name: 'M1 NORTHBOUND', note: `Four lanes · no hard shoulder · marker ${km}` };
+    },
+    scenery: { motorway: true, trees: 'belts', flowers: false, blades: 0.35, farmsteads: false, fells: false, grass: 0xf2f0e6, fogScale: 0.8, flock: 0, walls: 0 },
+    traffic: { motorway: true, oncoming: 0, same: 1, cruise: 1, hgv: 0.3 }
   }
 };
 
@@ -1124,6 +1247,20 @@ const LANE_HALF = ROUTE.laneHalf;   // carriageway half width
 const ROAD_HALF = ROUTE.roadHalf;   // asphalt mesh half width incl. broken edge
 const HEDGE_OFFSET = ROUTE.hedgeOffset; // boundary line from centre
 let SAMPLE = 1.0;            // metres between samples
+// An open route runs from a start to an end instead of closing on itself: the
+// curve is not closed, neighbours are clamped rather than wrapped, and the
+// frame clamps to the ends so nothing ahead of the finish reads back to the start.
+const OPEN = !!ROUTE.open;
+// A dual carriageway describes the second carriageway and the reserve between,
+// so the cross-section height and the ground plan can cover both.
+const DUAL = ROUTE.dual ? {
+  lanes: ROUTE.dual.lanes, laneW: ROUTE.dual.laneW, strip: ROUTE.dual.strip, reserve: ROUTE.dual.reserve,
+  // right-hand edge of our carriageway, the reserve, and the far edge of the other one (all as +d = left)
+  rightEdge: -(ROUTE.laneHalf + ROUTE.dual.strip),
+  reserveFar: -(ROUTE.laneHalf + ROUTE.dual.strip + ROUTE.dual.reserve),
+  farEdge: -(ROUTE.laneHalf + ROUTE.dual.strip + ROUTE.dual.reserve + ROUTE.laneHalf * 2 + ROUTE.dual.strip * 2),
+  crossfall: 0.025
+} : null;
 
 const CONTROL = ROUTE.control;
 const terrainBase = ROUTE.terrain;
@@ -1131,33 +1268,40 @@ const terrainBase = ROUTE.terrain;
 function buildRoute() {
   const SCALE = ROUTE.scale;
   const pts = CONTROL.map(([x, z]) => new THREE.Vector3(x * SCALE, 0, z * SCALE));
-  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.5);
-  curve.arcLengthDivisions = 4000;
+  const curve = new THREE.CatmullRomCurve3(pts, !OPEN, 'centripetal', 0.5);
+  curve.arcLengthDivisions = OPEN ? 12000 : 4000;
   const length = curve.getLength();
   const n = Math.round(length / SAMPLE);
   const px = new Float32Array(n), pz = new Float32Array(n), py = new Float32Array(n);
   for (let i = 0; i < n; i += 1) {
-    const p = curve.getPointAt(i / n);
+    const p = curve.getPointAt(OPEN ? i / (n - 1) : i / n);
     px[i] = p.x; pz[i] = p.z;
   }
+  // neighbour index: wrapped on a loop, clamped on an open road
+  const nb = OPEN ? (i) => clamp(i, 0, n - 1) : (i) => mod(i, n);
   // Elevation: periodic harmonics of the loop length so the loop closes, plus a
   // touch of the terrain itself. Amplitudes are per route: a B road stays gentle,
   // a moor road climbs to a summit and falls off the edge.
+  // An open road can carry an explicit long profile instead (a motorway's
+  // climb over a ridge is authored, not periodic).
   for (let i = 0; i < n; i += 1) {
     const s = i * SAMPLE, w = Math.PI * 2 / length;
     let h = 0;
-    for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
+    if (ROUTE.profile) h = ROUTE.profile(s, length);
+    else for (const [k, amp, phase] of ROUTE.elevation) h += amp * Math.sin(w * k * s + phase);
     py[i] = h;
   }
   // Smooth terrain sample blended in so fields and road agree broadly.
   const tBlend = new Float32Array(n);
-  for (let i = 0; i < n; i += 1) tBlend[i] = terrainBase(px[i], pz[i]);
-  for (let pass = 0; pass < 3; pass += 1) {
-    const copy = Float32Array.from(tBlend);
-    for (let i = 0; i < n; i += 1) {
-      let acc = 0, cnt = 0;
-      for (let k = -40; k <= 40; k += 4) { acc += copy[mod(i + k, n)]; cnt += 1; }
-      tBlend[i] = acc / cnt;
+  if (ROUTE.terrainWeight > 0) {
+    for (let i = 0; i < n; i += 1) tBlend[i] = terrainBase(px[i], pz[i]);
+    for (let pass = 0; pass < 3; pass += 1) {
+      const copy = Float32Array.from(tBlend);
+      for (let i = 0; i < n; i += 1) {
+        let acc = 0, cnt = 0;
+        for (let k = -40; k <= 40; k += 4) { acc += copy[nb(i + k)]; cnt += 1; }
+        tBlend[i] = acc / cnt;
+      }
     }
   }
   for (let i = 0; i < n; i += 1) py[i] = py[i] * ROUTE.elevationWeight + tBlend[i] * ROUTE.terrainWeight;
@@ -1166,7 +1310,7 @@ function buildRoute() {
   const nx = new Float32Array(n), nz = new Float32Array(n);
   const kappa = new Float32Array(n), heading = new Float32Array(n);
   for (let i = 0; i < n; i += 1) {
-    const a = mod(i - 1, n), b = mod(i + 1, n);
+    const a = nb(i - 1), b = nb(i + 1);
     let dx = px[b] - px[a], dz = pz[b] - pz[a], dy = py[b] - py[a];
     const hl = Math.hypot(dx, dz); dx /= hl; dz /= hl; dy /= hl;
     tx[i] = dx; tz[i] = dz; ty[i] = dy;
@@ -1176,16 +1320,16 @@ function buildRoute() {
   }
   // Verify normal is to the left: cross(up, t) = ( -tz? ) up=(0,1,0), t=(tx,0,tz): up×t = (1*tz - 0*0, 0*tx - 0*tz, 0*0 - 1*tx) = (tz, 0, -tx). Left-hand side of travel is up×t. Good.
   for (let i = 0; i < n; i += 1) {
-    const a = mod(i - 3, n), b = mod(i + 3, n);
+    const a = nb(i - 3), b = nb(i + 3);
     let dh = heading[b] - heading[a];
     while (dh > Math.PI) dh -= Math.PI * 2;
     while (dh < -Math.PI) dh += Math.PI * 2;
-    kappa[i] = dh / (6 * SAMPLE); // >0 = turning left (heading = atan2(x, z) increases anticlockwise seen from above... define left as +)
+    kappa[i] = dh / ((b - a) * SAMPLE); // >0 = turning left (heading = atan2(x, z) increases anticlockwise seen from above... define left as +)
   }
   // Heading defined as atan2(tx, tz): turning left (towards +normal = (tz,-tx)) — check sign numerically later; consumers use the sign consistently.
   // Smooth curvature a little.
   const ks = Float32Array.from(kappa);
-  for (let i = 0; i < n; i += 1) { let acc = 0; for (let k = -4; k <= 4; k += 1) acc += ks[mod(i + k, n)]; kappa[i] = acc / 9; }
+  for (let i = 0; i < n; i += 1) { let acc = 0; for (let k = -4; k <= 4; k += 1) acc += ks[nb(i + k)]; kappa[i] = acc / 9; }
 
   return { curve, length, n, px, py, pz, tx, ty, tz, nx, nz, kappa, heading };
 }
@@ -1196,9 +1340,9 @@ SAMPLE = R.length / R.n;
 /* Frame at arbitrary distance s (metres, wraps). */
 const _frame = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, nx: 0, nz: 0, kappa: 0, heading: 0, s: 0, i: 0 };
 function frame(s, out = _frame) {
-  const f = mod(s / SAMPLE, R.n);
-  const i = Math.floor(f), j = (i + 1) % R.n, t = f - i;
-  out.s = mod(s, R.length); out.i = i;
+  const f = OPEN ? clamp(s / SAMPLE, 0, R.n - 1.0001) : mod(s / SAMPLE, R.n);
+  const i = Math.floor(f), j = OPEN ? Math.min(i + 1, R.n - 1) : (i + 1) % R.n, t = f - i;
+  out.s = OPEN ? clamp(s, 0, R.length) : mod(s, R.length); out.i = i;
   out.x = lerp(R.px[i], R.px[j], t); out.y = lerp(R.py[i], R.py[j], t); out.z = lerp(R.pz[i], R.pz[j], t);
   out.tx = lerp(R.tx[i], R.tx[j], t); out.ty = lerp(R.ty[i], R.ty[j], t); out.tz = lerp(R.tz[i], R.tz[j], t);
   const hl = Math.hypot(out.tx, out.tz); out.tx /= hl; out.tz /= hl;
@@ -1216,7 +1360,18 @@ function point(s, d, up = 0, out = new THREE.Vector3()) {
   out.set(f.x + f.nx * d, f.y + crown(d) + up, f.z + f.nz * d);
   return out;
 }
-function crown(d) { return -0.025 * Math.abs(d); }
+// Cross-section height. A two-way road is crowned at the centre; a dual
+// carriageway has a single crossfall away from the central reserve, and the
+// same function carries on across the reserve and the other carriageway so
+// anything placed on either side sits on the surface that is drawn.
+function crown(d) {
+  if (!DUAL) return -0.025 * Math.abs(d);
+  // beyond the hard strip the verge, slips and car parks stay level with the edge
+  if (d >= DUAL.rightEdge) return -DUAL.crossfall * Math.min(d, ROAD_HALF);
+  const top = -DUAL.crossfall * DUAL.rightEdge;
+  if (d >= DUAL.reserveFar) return top;
+  return top - DUAL.crossfall * (DUAL.reserveFar - d);
+}
 
 /* ------------------------------------------------------------ side roads */
 const JUNCTIONS = ROUTE.junctions.map((j) => {
@@ -1303,9 +1458,12 @@ function terrainHeight(x, z) {
   const base = terrainBase(x, z) * 0.85 + 0.6;
   const near = nearest(x, z);
   let h = base;
-  if (near && near.dist < CORRIDOR.reach) {
-    const w = smoothstep(CORRIDOR.inner, CORRIDOR.outer, near.dist);
-    h = lerp(near.y - 0.9, base, w);
+  if (near && near.dist < CORRIDOR.reach + (DUAL ? -DUAL.farEdge : 0)) {
+    // on a dual carriageway the corridor is measured from the nearer outer edge
+    const edge = DUAL ? Math.max(0, near.d >= 0 ? near.d - ROAD_HALF : DUAL.farEdge - near.d) : near.dist;
+    const w = smoothstep(CORRIDOR.inner, CORRIDOR.outer, edge);
+    const shoulder = DUAL ? near.y + crown(near.d >= 0 ? ROAD_HALF : DUAL.farEdge) - 0.55 : near.y - 0.9;
+    h = lerp(shoulder, base, w);
   }
   const side = sideInfluence(x, z);
   if (side && side.dist < 16) {
@@ -1330,7 +1488,7 @@ function findBends() {
     } else i += 1;
   }
   // A bend that straddles the loop seam appears twice: merge it into one.
-  if (bends.length > 1 && bends[0].start === 0 && bends[bends.length - 1].end === R.n) {
+  if (!OPEN && bends.length > 1 && bends[0].start === 0 && bends[bends.length - 1].end === R.n) {
     const first = bends.shift(), last = bends.pop();
     const apex = Math.abs(R.kappa[first.apex]) > Math.abs(R.kappa[last.apex]) ? first.apex + R.n : last.apex;
     bends.push({ start: last.start, end: R.n + first.end, apex, dir: Math.sign(R.kappa[apex % R.n]), radius: 1 / Math.abs(R.kappa[apex % R.n]) });
@@ -1343,7 +1501,7 @@ const BENDS = findBends();
 function planBoundaries() {
   const plan = ROUTE.boundaries;
   const rnd = EVO.rng(plan.seed);
-  const first = plan.mix[0][0], second = plan.mix[1][0];
+  const first = plan.mix[0][0], second = (plan.mix[1] || plan.mix[0])[0];
   const sides = {};
   for (const side of [1, -1]) {
     const list = [];
@@ -1383,7 +1541,9 @@ function inJunctionMouth(s, side, margin = 9) {
 }
 
 EVO.route = {
-  route: ROUTE, id: ROUTE.id,
+  route: ROUTE, id: ROUTE.id, OPEN, DUAL,
+  // where the rider sits when the ride starts or is reset: the left lane
+  homeLane: DUAL ? DUAL.laneW * (DUAL.lanes / 2 - 0.5) : 1.5,
   R, LANE_HALF, ROAD_HALF, HEDGE_OFFSET, SAMPLE,
   length: R.length, frame, point, crown, terrainBase, terrainHeight, nearest,
   JUNCTIONS, sidePoint, sideInfluence, BENDS, BOUNDARIES, boundaryAt, inJunctionMouth
@@ -1640,9 +1800,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     };
     EVO.tagShader(mat, 'fill' + amount.toFixed(3));
   };
-  EVO.addFoliageFill(hedgeMat, 0.12);
+  EVO.addFoliageFill(hedgeMat, 0.26);
   const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.2 });
-  EVO.addFoliageFill(leafMat, 0.16);
+  EVO.addFoliageFill(leafMat, 0.24);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
   const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color: SCENE.blade ?? 0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
@@ -1683,6 +1843,16 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     EVO.tagShader(mat, 'cloud');
   }
 
+  // The road-specific world is built by one of two builders: the two-way
+  // country road here, or the motorway module for a dual carriageway. Both hand
+  // back the same ground and sign helpers that the rest of the world relies on.
+  const materials = { roadMat, grassMat, hedgeMat, stoneMat, markMat, leafMat, umbelMat, bladeMat, coneMat, postMat, woodMat, blackMat, signBackMat, studMat, barrierMat, barrierRedMat };
+  const part = SCENE.motorway
+    ? EVO.buildMotorway({ scene, renderer, quality, T, rnd, L, GeoSink, stripRows, orientRows, addCloudShadow, materials })
+    : buildBroad();
+  const { groundAt, groundMeshes, VERGE_D, signPost, vergeSign } = part;
+
+  function buildBroad() {
   /* ------------------------------------------------- verge height model */
   // The verge starts at the edge of whatever carriageway this route has, so the
   // profile and the verge mesh are both measured out from it.
@@ -2283,7 +2453,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       }
     }
     const geo = new THREE.BoxGeometry(4.4, 1, 1.5); geo.translate(0, 0.5, 0);
-    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false; EVO.addFoliageFill(farHedgeMat, 0.12);
+    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false; EVO.addFoliageFill(farHedgeMat, 0.26);
     const Y2 = new THREE.Vector3(0, 1, 0);
     const im = new THREE.InstancedMesh(geo, farHedgeMat, Math.max(1, segs.length));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
@@ -2506,6 +2676,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x3a3d40, transparent: true, opacity: 0.6 })));
   }
 
+  return { groundAt, groundMeshes, VERGE_D, signPost, vergeSign };
+  }
+
   /* ------------------------------------------------------- sky and sun */
   const sunDir = new THREE.Vector3(-0.62, 0.50, 0.60).normalize();
   const skyUniforms = {
@@ -2580,15 +2753,15 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
    * the tarmac reads. Everything here is a live uniform or light property, so a
    * preset can change between rides without rebuilding the world. */
   const PRESETS = {
-    noon: { sun: [-0.62, 0.50, 0.60], sunColor: 0xfff4e5, sunI: 2.9, hemi: [0xbfcbd8, 0x5f6a4c, 1.95], ambient: 0.05, fog: [0xb9c4cf, 0.0009],
+    noon: { sun: [-0.62, 0.50, 0.60], sunColor: 0xfff4e5, sunI: 2.4, hemi: [0xbfcbd8, 0x5f6a4c, 3.4], ambient: 0.05, fog: [0xb9c4cf, 0.0009],
       zenith: [0.07, 0.20, 0.58], horizon: [0.50, 0.58, 0.72], glow: 0.45, disc: 16, cover: 0, cloud: [[0.38, 0.41, 0.48], [0.92, 0.90, 0.87]], wet: 0, radius: 2, exposure: 1.42 },
-    morning: { sun: [0.58, 0.33, 0.74], sunColor: 0xffe6c4, sunI: 2.5, hemi: [0xc9d3dc, 0x66705a, 1.8], ambient: 0.06, fog: [0xc9d0d6, 0.00095],
+    morning: { sun: [0.58, 0.33, 0.74], sunColor: 0xffe6c4, sunI: 2.1, hemi: [0xc9d3dc, 0x66705a, 3.2], ambient: 0.06, fog: [0xc9d0d6, 0.00095],
       zenith: [0.16, 0.28, 0.54], horizon: [0.62, 0.66, 0.71], glow: 0.6, disc: 12, cover: -0.12, cloud: [[0.48, 0.50, 0.56], [0.96, 0.95, 0.92]], wet: 0.4, radius: 2.5, exposure: 1.38 },
-    evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.9, hemi: [0xb3a6be, 0x6a5641, 2.2], ambient: 0.18, fog: [0xd2b89c, 0.00075],
+    evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.5, hemi: [0xb3a6be, 0x6a5641, 3.3], ambient: 0.18, fog: [0xd2b89c, 0.00075],
       zenith: [0.10, 0.16, 0.42], horizon: [0.66, 0.44, 0.28], glow: 1.0, disc: 20, cover: 0.04, cloud: [[0.44, 0.32, 0.37], [1.0, 0.80, 0.60]], wet: 0.15, radius: 2, exposure: 1.5 },
-    overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.75, hemi: [0xc3cad2, 0x6b7064, 2.4], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
+    overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.7, hemi: [0xc3cad2, 0x6b7064, 3.1], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
       zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 },
-    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 2.15], ambient: 0.14, fog: [0x8f989f, 0.0024],
+    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 3.0], ambient: 0.14, fog: [0x8f989f, 0.0024],
       zenith: [0.24, 0.27, 0.32], horizon: [0.40, 0.43, 0.46], glow: 0.03, disc: 0, cover: 0.5, cloud: [[0.24, 0.26, 0.29], [0.48, 0.50, 0.52]], wet: 1, radius: 9, exposure: 1.25, rain: 1 }
   };
   let lightingName = 'noon', rainLevel = 0;
@@ -2604,7 +2777,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
     // wet tarmac: smoother, and it mirrors the sky
-    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 0.85;
+    // wet tarmac is darker, smoother and mirrors the sky, mostly at grazing angles
+    roadMat.roughness = 0.95 - P.wet * 0.38; roadMat.envMapIntensity = 0.16 + P.wet * 0.5;
+    roadMat.color.set(0xc6c0b5).multiplyScalar(1 - P.wet * 0.3);
     for (const m of [grassMat, hedgeMat]) m.color.setScalar(1 - P.wet * 0.12);
     // wet tarmac has less to offer the tyres: the corner speeds and the planner follow
     EVO.grip = 1 - (P.rain || 0) * 0.24 - (P.wet || 0) * 0.04;
@@ -2623,6 +2798,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     if (forward) _bike.addScaledVector(forward, 30);
     sun.target.position.copy(_bike);
     sun.position.copy(_bike).addScaledVector(sunDir, 240);
+    part.update?.(time, bikePos, forward);
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
@@ -2788,6 +2964,9 @@ const originalBuild=E.buildWorld;
 E.buildWorld=function(renderer,quality){
   const w=originalBuild(renderer,quality), scene=w.scene, P=R.detailPlan, rnd=E.rng(61123);
   const ROUTE=E.ROUTE, S=ROUTE.scenery, LEN=R.length, frac=(t)=>t*LEN;
+  // The motorway module places its own furniture; it only needs the spatial
+  // partitioning and distance culling of instanced scenery from here.
+  if(S.motorway){E.partitionScenery(w,quality,[]);w.materials.detail={};return w;}
   const UP=new THREE.Vector3(0,1,0), temp=new THREE.Matrix4(), quat=new THREE.Quaternion();
   const materials={}, textures=[];
   const material=(name,color,extra={})=>materials[name]||(materials[name]=new THREE.MeshStandardMaterial({name,color,roughness:0.88,...extra}));
@@ -3028,11 +3207,11 @@ E.buildWorld=function(renderer,quality){
   // Tar-sealed repairs: irregular contours, aggregate speckle and feathered edges.
   const patchTex=canvasTexture(512,512,(c,W,H)=>{
     const r=E.rng(54);c.clearRect(0,0,W,H);
-    c.beginPath();c.moveTo(32,23);c.lineTo(472,34);c.lineTo(485,472);c.lineTo(22,487);c.closePath();c.fillStyle='#282a29';c.fill();c.strokeStyle='#171b19';c.lineWidth=13;c.stroke();
-    for(let i=0;i<15500;i++){let x=28+r()*450,y=30+r()*448,v=48+Math.floor(r()*42);c.fillStyle=`rgba(${v},${v+1},${v},${.15+r()*.4})`;c.fillRect(x,y,1+r()*2,1+r()*2);}
+    c.beginPath();c.moveTo(32,23);c.lineTo(472,34);c.lineTo(485,472);c.lineTo(22,487);c.closePath();c.fillStyle='#4a4c4a';c.fill();c.strokeStyle='#33362f';c.lineWidth=13;c.stroke();
+    for(let i=0;i<15500;i++){let x=28+r()*450,y=30+r()*448,v=70+Math.floor(r()*48);c.fillStyle=`rgba(${v},${v+1},${v},${.15+r()*.4})`;c.fillRect(x,y,1+r()*2,1+r()*2);}
     c.strokeStyle='rgba(119,115,99,.3)';c.lineWidth=2;c.strokeRect(36,36,433,440);
   });
-  const patchMat=material('surface repairs',0xb1b0a6,{map:patchTex,alphaTest:.2,transparent:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  const patchMat=material('surface repairs',0xb1b0a6,{map:patchTex,roughness:.97,alphaTest:.2,transparent:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   for(const p of P.repairs)surfaceRibbon(p.s-p.length/2,p.s+p.length/2,p.d-p.width/2,p.d+p.width/2,patchMat,.45,.010);
   // Manhole castings are flush/sunken, with short tyre inputs rather than huge obstacles.
   const coverTex=canvasTexture(256,256,(c,W,H)=>{
@@ -3804,8 +3983,25 @@ if (P.summit) {
   }
 
   const added=batch.finish();
-  // Dense roadside objects are spatially instanced, not rendered as a whole-loop
-  // batch. Use the same geometry/material/depth shader, preserving wind and shadows.
+  const cullables=E.partitionScenery(w,quality,added);
+  // Tiny, infrequent distant birds give the landscape some life without heavy models.
+  const birdGeo=new THREE.BufferGeometry();birdGeo.setAttribute('position',new THREE.Float32BufferAttribute([-.6,0,0,-.13,.09,.05,0,0,0,0,0,0,.13,.09,.05,.6,0,0],3));birdGeo.computeVertexNormals();
+  const birds=[];const birdMat=new THREE.MeshBasicMaterial({color:0x30362f,side:THREE.DoubleSide,fog:true});
+  for(let k=0;k<7;k++){const b=new THREE.Mesh(birdGeo,birdMat);scene.add(b);birds.push(b);}
+  const oldUpdate=w.update;
+  w.update=function(time,pos,forward){
+    oldUpdate(time,pos,forward);
+    birds.forEach((b,k)=>{const ss=1050+k*9+Math.sin(time*.025)*45,f={...R.frame(ss)};b.position.set(f.x+f.nx*(60+k*2)+Math.sin(time*.14+k)*12,f.y+25+k*.9+Math.sin(time*.6+k)*.6,f.z+f.nz*(60+k*2)+Math.cos(time*.14+k)*12);b.rotation.set(0,time*.14+k*.18,Math.sin(time*2.4+k)*.16);});
+  };
+  w.detailStats={buildings:buildings.length,humps:P.humps.length,rumbleStrips:P.strips.length,repairs:P.repairs.length,covers:P.covers.length,gates:P.gates.length,batchedParts:batch.parts,detailMeshes:added.length,spatialBatches:cullables.length,chevrons:chevronCount,fenceRuns:3,dampZones:5};
+  w.materials.detail=materials;w.sceneDetails={potholes:P.potholes.length,parkingBays:P.lots.length,plants:plantCount,wallCaps:capCount,fieldMaterials:3};return w;
+};
+
+/* Dense roadside objects are spatially instanced, not rendered as a whole-loop
+ * batch. Use the same geometry/material/depth shader, preserving wind and
+ * shadows, and cull each batch by distance from the rider. */
+E.partitionScenery=function(w,quality,added){
+  const scene=w.scene;
   const candidates=[];
   scene.traverse(o=>{if(o.isInstancedMesh&&o.count>=64&&!o.userData.partitioned)candidates.push(o);});
   const cullables=[];
@@ -3830,10 +4026,6 @@ if (P.summit) {
     old.parent.remove(old);old.dispose();
   }
   for(const m of added){m.userData.originalShadow=m.castShadow;cullables.push(m);}
-  // Tiny, infrequent distant birds give the landscape some life without heavy models.
-  const birdGeo=new THREE.BufferGeometry();birdGeo.setAttribute('position',new THREE.Float32BufferAttribute([-.6,0,0,-.13,.09,.05,0,0,0,0,0,0,.13,.09,.05,.6,0,0],3));birdGeo.computeVertexNormals();
-  const birds=[];const birdMat=new THREE.MeshBasicMaterial({color:0x30362f,side:THREE.DoubleSide,fog:true});
-  for(let k=0;k<7;k++){const b=new THREE.Mesh(birdGeo,birdMat);scene.add(b);birds.push(b);}
   let lastCull=-1;
   const oldUpdate=w.update;
   w.update=function(time,pos,forward){
@@ -3847,10 +4039,8 @@ if (P.summit) {
       }
       lastCull=time;
     }
-    birds.forEach((b,k)=>{const ss=1050+k*9+Math.sin(time*.025)*45,f={...R.frame(ss)};b.position.set(f.x+f.nx*(60+k*2)+Math.sin(time*.14+k)*12,f.y+25+k*.9+Math.sin(time*.6+k)*.6,f.z+f.nz*(60+k*2)+Math.cos(time*.14+k)*12);b.rotation.set(0,time*.14+k*.18,Math.sin(time*2.4+k)*.16);});
   };
-  w.detailStats={buildings:buildings.length,humps:P.humps.length,rumbleStrips:P.strips.length,repairs:P.repairs.length,covers:P.covers.length,gates:P.gates.length,batchedParts:batch.parts,detailMeshes:added.length,spatialBatches:cullables.length,chevrons:chevronCount,fenceRuns:3,dampZones:5};
-  w.materials.detail=materials;w.sceneDetails={potholes:P.potholes.length,parkingBays:P.lots.length,plants:plantCount,wallCaps:capCount,fieldMaterials:3};return w;
+  return cullables;
 };
 
 }
@@ -3917,10 +4107,974 @@ EVO.createRain = function createRain(scene, quality) {
       uniforms.uAlpha.value = Math.min(1, level) * 0.55;
       uniforms.uFall.value.copy(wind);
       // the streak is the drop's motion relative to the rider over an exposure
-      vel.copy(forward).multiplyScalar(-speed).add(wind).multiplyScalar(0.045);
+      vel.copy(forward).multiplyScalar(-speed).add(wind).multiplyScalar(0.022);
+      if (vel.length() > 0.7) vel.setLength(0.7);
       uniforms.uStreak.value.copy(vel);
     }
   };
+};
+
+}
+
+/* ---- 29-motorway.js ---- */
+{
+
+/*
+ * AVENRÀ EVO — M1 smart motorway world.
+ *
+ * Builds the dual carriageway route: two carriageways with a concrete step
+ * barrier between them, lane lines and studs, diverge and merge tapers with
+ * hatched noses, roundabout interchanges on overbridges, portal gantries with
+ * lane signals and message signs, advance direction signs, driver location
+ * signs, emergency refuge areas, two service areas, and the flat arable
+ * Bedfordshire and Buckinghamshire farmland either side. Everything static is
+ * batched into 400 m chunks along the road and switched on by distance, so a
+ * 22 km road costs no more per frame than a 2 km loop.
+ */
+const EVO = window.EVO;
+const { clamp, lerp, smoothstep } = EVO;
+const RT = EVO.route;
+
+EVO.buildMotorway = function buildMotorway({ scene, renderer, quality, T, rnd, L, GeoSink, stripRows, addCloudShadow, materials }) {
+  const M = EVO.ROUTE.m1, D = RT.DUAL, ROAD_HALF = RT.ROAD_HALF, LANE_HALF = RT.LANE_HALF, LANE_W = D.laneW;
+  const { roadMat, grassMat, hedgeMat, markMat, leafMat, postMat, woodMat, blackMat, signBackMat, studMat } = materials;
+  const coarse = quality.coarse;
+  const CHUNK = 400;
+  const UP = new THREE.Vector3(0, 1, 0);
+  const SB0 = D.reserveFar, SB1 = D.farEdge;          // southbound carriageway edges (+d = left)
+  const RES = (D.rightEdge + D.reserveFar) / 2;        // centre of the reserve
+  const LANES = [LANE_W * 1.5, LANE_W * 0.5, -LANE_W * 0.5, -LANE_W * 1.5]; // lane centres, lane 1 first
+  const SB_LANES = LANES.map((d) => SB0 - LANE_W * 0.5 - (LANE_W * 1.5 - d)); // mirrored, their lane 1 nearest their verge
+
+  /* ---------------------------------------------------------- materials */
+  const mat = (name, color, extra = {}) => { const m = new THREE.MeshStandardMaterial({ name, color, roughness: 0.9, metalness: 0, ...extra }); return m; };
+  const concreteMat = mat('concrete barrier', 0xa9a79f, { roughness: 0.92 });
+  const steelMat = mat('steel barrier', 0xa2a6ab, { roughness: 0.42, metalness: 0.65 });
+  const gantryMat = mat('gantry steel', 0x676b70, { roughness: 0.55, metalness: 0.5 });
+  const signalMat = mat('signal housing', 0x121417, { roughness: 0.6 });
+  const eraMat = mat('refuge surface', 0xc86f2a, { roughness: 0.96 });
+  const reserveMat = mat('reserve surface', 0x4e4d4a, { roughness: 0.97 });
+  const slabMat = mat('car park', 0x7e7d79, { roughness: 0.95 });
+  const timberMat = mat('noise fence', 0x6e5a43, { roughness: 0.95 });
+  const shedMat = mat('warehouse cladding', 0xdadcdb, { roughness: 0.6, metalness: 0.15 });
+  const shedBandMat = mat('warehouse band', 0x1f4f8f, { roughness: 0.6, metalness: 0.15 });
+  const glassMat = mat('services glazing', 0x1a2a33, { roughness: 0.15, metalness: 0.4 });
+  const renderMat = mat('services render', 0xd6d0c2, { roughness: 0.85 });
+  const canopyMat = mat('fuel canopy', 0xe8e9ea, { roughness: 0.5, metalness: 0.2, emissive: 0x9a9a96, emissiveIntensity: 0.35 });
+  const lampMat = mat('lighting column', 0x8d9296, { roughness: 0.5, metalness: 0.6 });
+  const pylonMat = mat('pylon steel', 0x6f7377, { roughness: 0.6, metalness: 0.5 });
+  const parapetMat = mat('bridge parapet', 0xa7a9a6, { roughness: 0.85, side: THREE.DoubleSide });
+  const deckMat = mat('bridge deck', 0x8f8d88, { roughness: 0.9 });
+  const bankMat = new THREE.MeshStandardMaterial({ name: 'earth bank', map: T.grass.map, normalMap: T.grass.normalMap, normalScale: new THREE.Vector2(0.2, 0.2), roughness: 1, vertexColors: true });
+  // Arable fields: a neutral drilled-soil tile so the vertex colour carries the crop
+  const fieldTex = (() => {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(512, 512), d = img.data;
+    for (let y = 0; y < 512; y += 1) for (let x = 0; x < 512; x += 1) {
+      const rows = 0.5 + 0.5 * Math.sin(x / 512 * Math.PI * 2 * 14 + EVO.noise2(x / 40, y / 40) * 2);
+      const n = EVO.fbm(x / 64 + 3, y / 64 + 1, 3);
+      const v = 0.56 + (n - 0.5) * 0.28 + (rows - 0.5) * 0.12;
+      const i = (y * 512 + x) * 4; d[i] = v * 255; d[i + 1] = v * 250; d[i + 2] = v * 236; d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return t;
+  })();
+  const fieldMat = new THREE.MeshStandardMaterial({ name: 'arable field', map: fieldTex, roughness: 1, vertexColors: true });
+  for (const m of [concreteMat, reserveMat, slabMat, eraMat, bankMat, fieldMat]) addCloudShadow(m);
+
+  /* ------------------------------------------------- frame helpers */
+  // Frame that carries on straight beyond either end, so the services and
+  // the carriageway can run past the start and the finish.
+  const _f = {};
+  function fr(s, out = _f) {
+    if (s >= 0 && s <= L) return RT.frame(s, out);
+    const s0 = s < 0 ? 0 : L;
+    const f = RT.frame(s0, out), ds = s - s0;
+    f.x += f.tx * ds; f.z += f.tz * ds; f.y += f.ty * ds; f.s = s; f.kappa = 0;
+    return f;
+  }
+  function P(s, d, up = 0, out = new THREE.Vector3()) { const f = fr(s); return out.set(f.x + f.nx * d, f.y + RT.crown(d) + up, f.z + f.nz * d); }
+  const land = (x, z) => RT.terrainBase(x, z) * 0.85 + 0.6;
+
+  /* ------------------------------------------- plan: lane extensions */
+  // Where the left edge of the carriageway moves out: merge and diverge
+  // auxiliary lanes (with their tapers) and emergency refuge areas.
+  const exits = M.exits.map((e) => ({ ...e, ring: e.s + 450 }));
+  const SV = M.services;
+  const startMerge = { nose: 360, aux: [430, 640], taper: [640, 720] };
+  const endDiverge = { taper: [L - 720, L - 620], aux: [L - 620, L - 330], nose: L - 330 };
+  const ease = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+  const AUX_W = 4.5, ERA_W = 4.6, ERA_L = 100;
+  const SLIP_D = ROAD_HALF + 2.3;   // centre of a slip lane while it runs alongside
+  const SLIP_HALF = 2.3;
+  // the services slips: where their centre line sits while the rider can still be on them
+  const startSlipD = (s) => (s < startMerge.nose ? lerp(30, SLIP_D + 4, ease((s - 120) / (startMerge.nose - 120))) : lerp(SLIP_D + 4, SLIP_D, ease((s - startMerge.nose) / (startMerge.aux[0] - startMerge.nose))));
+  const endSlipD = (s) => (s < endDiverge.nose + 80 ? lerp(SLIP_D, SLIP_D + 4, ease((s - endDiverge.nose) / 80)) : lerp(SLIP_D + 4, 30, ease((s - endDiverge.nose - 80) / (L + 40 - endDiverge.nose - 80))));
+  const extensions = []; // { a, b, w, kind, taperIn, taperOut, widthAt? }
+  extensions.push({ a: 120, b: startMerge.taper[1], w: AUX_W, kind: 'merge', taperIn: 0, taperOut: 80, widthAt: (s) => (s < startMerge.aux[0] ? startSlipD(s) + SLIP_HALF + 0.6 - ROAD_HALF : AUX_W) });
+  for (const e of exits) {
+    // the diverge keeps its width through the hatched nose, then the slip is its own road
+    extensions.push({ a: e.s - 350, b: e.s + 110, w: AUX_W, kind: 'diverge', taperIn: 100, taperOut: 0, widthAt: (s) => (s < e.s ? AUX_W : AUX_W + 5.5 * (s - e.s) / 110) });
+    extensions.push({ a: e.s + 950, b: e.s + 1280, w: AUX_W, kind: 'merge', taperIn: 0, taperOut: 80 });
+  }
+  extensions.push({ a: endDiverge.taper[0], b: L + 40, w: AUX_W, kind: 'diverge', taperIn: 100, taperOut: 0, widthAt: (s) => (s < endDiverge.nose ? AUX_W : endSlipD(s) + SLIP_HALF + 0.6 - ROAD_HALF) });
+  for (const s of M.refuges) extensions.push({ a: s - ERA_L / 2 - 30, b: s + ERA_L / 2 + 30, w: ERA_W, kind: 'refuge', taperIn: 30, taperOut: 30 });
+  function auxWidth(s) {
+    let w = 0;
+    for (const x of extensions) {
+      if (s < x.a || s > x.b) continue;
+      let k = 1;
+      if (x.taperIn && s < x.a + x.taperIn) k = (s - x.a) / x.taperIn;
+      if (x.taperOut && s > x.b - x.taperOut) k = (x.b - s) / x.taperOut;
+      w = Math.max(w, (x.widthAt ? x.widthAt(s) : x.w) * clamp(k, 0, 1));
+    }
+    return w;
+  }
+  const extent = { left: ROAD_HALF, right: D.rightEdge };
+  function roadExtent(s) { extent.left = ROAD_HALF + auxWidth(s); return extent; }
+  RT.roadExtent = roadExtent;
+  RT.auxWidth = auxWidth;
+  RT.laneCentres = LANES;
+  RT.runEnd = L - 40;
+  RT.edgeReason = (s, d) => (d < 0 ? 'INTO THE CENTRAL BARRIER' : exits.some((e) => s > e.s && s < e.s + 500) ? 'LEFT THE M1 · TOOK THE EXIT' : 'OFF THE CARRIAGEWAY · INTO THE BARRIER');
+  RT.finishNose = endDiverge.nose;
+
+  /* ------------------------------------------------------ ground */
+  // The services car parks are flat slabs beside the road; everything else is
+  // the verge stepping down off the hard strip and blending into the land.
+  const parks = [
+    { s0: 20, s1: 340, d0: 40, d1: 166, y: null, name: SV.start.name },
+    { s0: L - 120, s1: L + 250, d0: 40, d1: 166, y: null, name: SV.end.name }
+  ];
+  for (const p of parks) { const f = fr((p.s0 + p.s1) / 2); p.y = f.y + RT.crown(ROAD_HALF) + 0.35; }
+  function parkAt(s, d, margin = 0) { for (const p of parks) if (s >= p.s0 - 12 - margin && s <= p.s1 + 12 + margin && d >= p.d0 - 8 - margin && d <= p.d1 + 8 + margin) return p; return null; }
+  const gf = {};
+  function groundAt(s, d) {
+    const f = fr(s, gf);
+    const x = f.x + f.nx * d, z = f.z + f.nz * d;
+    const left = ROAD_HALF + auxWidth(s);
+    let y;
+    if (d <= left && d >= SB1) y = f.y + RT.crown(d);
+    else {
+      const dd = d > 0 ? d - left : SB1 - d;
+      const edgeY = f.y + RT.crown(d > 0 ? left : SB1);
+      const verge = edgeY - 0.1 - 0.35 * smoothstep(0, 2.2, dd);
+      const base = land(x, z);
+      y = lerp(verge, base, smoothstep(3, 24, dd));
+      const park = d > 0 ? parkAt(s, d) : null;
+      if (park) {
+        const inside = smoothstep(0, 8, Math.min(s - park.s0 + 12, park.s1 + 12 - s)) * smoothstep(0, 8, Math.min(d - park.d0 + 8, park.d1 + 8 - d));
+        y = lerp(y, park.y, inside);
+      }
+    }
+    return { x, y, z, f };
+  }
+  const groundMeshes = [];
+  const VERGE_D = [ROAD_HALF, ROAD_HALF + 1.2, ROAD_HALF + 3, ROAD_HALF + 6, ROAD_HALF + 10, ROAD_HALF + 15, ROAD_HALF + 21];
+
+  /* ------------------------------------------------- chunked batching */
+  // One mesh per material per 400 m of road. Meshes carry the road distance of
+  // their chunk and a viewing range; the update switches them by distance.
+  const chunked = [];
+  class Batch {
+    constructor() { this.groups = new Map(); }
+    key(material, s) { return `${material.uuid}:${Math.floor(s / CHUNK)}`; }
+    group(material, s, range) {
+      const k = this.key(material, s);
+      if (!this.groups.has(k)) this.groups.set(k, { material, chunk: Math.floor(s / CHUNK), range, p: [], n: [], uv: [], c: [], ix: [], count: 0, hasN: true, hasC: false });
+      const g = this.groups.get(k); g.range = Math.max(g.range, range);
+      return g;
+    }
+    // rows: arrays of {x,y,z,u,v,r,g,b}
+    strip(material, s, rows, range = 1800) {
+      const g = this.group(material, s, range);
+      const cols = rows[0].length, base = g.count;
+      for (const row of rows) for (const v of row) { g.p.push(v.x, v.y, v.z); g.n.push(0, 1, 0); g.uv.push(v.u ?? 0, v.v ?? 0); g.c.push(v.r ?? 1, v.g ?? 1, v.b ?? 1); if (v.r !== undefined) g.hasC = true; }
+      g.hasN = false;
+      for (let i = 0; i < rows.length - 1; i += 1) for (let c = 0; c < cols - 1; c += 1) {
+        const a = base + i * cols + c, b = base + (i + 1) * cols + c;
+        g.ix.push(a, b, b + 1, a, b + 1, a + 1);
+      }
+      g.count += rows.length * cols;
+    }
+    geometry(material, s, geo, matrix, range = 1200, color) {
+      const g = this.group(material, s, range);
+      const pa = geo.attributes.position, na = geo.attributes.normal, ua = geo.attributes.uv;
+      const nm = new THREE.Matrix3().getNormalMatrix(matrix), p = new THREE.Vector3(), n = new THREE.Vector3();
+      for (let i = 0; i < pa.count; i += 1) {
+        p.fromBufferAttribute(pa, i).applyMatrix4(matrix); n.fromBufferAttribute(na, i).applyMatrix3(nm).normalize();
+        g.p.push(p.x, p.y, p.z); g.n.push(n.x, n.y, n.z); g.uv.push(ua ? ua.getX(i) : 0, ua ? ua.getY(i) : 0);
+        if (color) { g.c.push(color.r, color.g, color.b); g.hasC = true; } else g.c.push(1, 1, 1);
+      }
+      const idx = geo.index;
+      if (idx) for (let i = 0; i < idx.count; i += 1) g.ix.push(g.count + idx.getX(i)); else for (let i = 0; i < pa.count; i += 1) g.ix.push(g.count + i);
+      g.count += pa.count;
+    }
+    finish(shadow = true) {
+      const out = [];
+      for (const g of this.groups.values()) {
+        if (!g.count) continue;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
+        if (g.hasC) geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3));
+        geo.setIndex(g.ix);
+        if (g.hasN) geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3)); else geo.computeVertexNormals();
+        geo.computeBoundingSphere();
+        const m = new THREE.Mesh(geo, g.material);
+        m.name = `m1 ${g.material.name} ${g.chunk}`; m.userData.s = (g.chunk + 0.5) * CHUNK; m.userData.range = g.range;
+        m.castShadow = shadow && g.material.userData.noShadow !== true; m.receiveShadow = true;
+        scene.add(m); chunked.push(m); out.push(m);
+      }
+      this.groups.clear();
+      return out;
+    }
+  }
+  const surfaces = new Batch(), furniture = new Batch(), structures = new Batch();
+  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _sc = new THREE.Vector3();
+  // place a geometry at road coordinates (s, d, up) turned to the road heading (+ extra yaw)
+  function put(batch, material, geo, s, d, up = 0, yaw = 0, range = 1200, scale = 1, color) {
+    const f = fr(s);
+    _v.set(f.x + f.nx * d, f.y + RT.crown(clamp(d, SB1, ROAD_HALF + 12)) + up, f.z + f.nz * d);
+    _q.setFromAxisAngle(UP, f.heading + yaw); _sc.setScalar(scale);
+    _m.compose(_v, _q, _sc);
+    batch.geometry(material, s, geo, _m, range, color);
+  }
+  function putAt(batch, material, geo, x, y, z, yaw, s, range = 1200, scale = 1, color) {
+    _v.set(x, y, z); _q.setFromAxisAngle(UP, yaw); _sc.setScalar(scale); _m.compose(_v, _q, _sc);
+    batch.geometry(material, s, geo, _m, range, color);
+  }
+
+  /* A ribbon in road coordinates from sA to sB: `cols(s)` gives the lateral
+   * offsets, `height(s, d, f)` the surface height, split into chunks. */
+  function ribbon(batch, material, sA, sB, cols, height, opts = {}) {
+    const step = opts.step ?? 4, range = opts.range ?? 1800, uv = opts.uv, tint = opts.tint;
+    const c0 = Math.floor(sA / CHUNK), c1 = Math.floor((sB - 1e-6) / CHUNK);
+    for (let c = c0; c <= c1; c += 1) {
+      const a = Math.max(sA, c * CHUNK), b = Math.min(sB, (c + 1) * CHUNK);
+      if (b - a < 0.05) continue;
+      const rows = [], n = Math.max(1, Math.ceil((b - a) / step));
+      for (let i = 0; i <= n; i += 1) {
+        const s = lerp(a, b, i / n), f = fr(s), ds = typeof cols === 'function' ? cols(s) : cols;
+        rows.push(ds.map((d) => {
+          const y = height(s, d, f);
+          const v = { x: f.x + f.nx * d, y, z: f.z + f.nz * d };
+          if (uv) { const t = uv(s, d); v.u = t[0]; v.v = t[1]; } else { v.u = d / 4; v.v = s / 4; }
+          if (tint) { const t = tint(s, d, v); v.r = t[0]; v.g = t[1]; v.b = t[2]; }
+          return v;
+        }));
+      }
+      batch.strip(material, (a + b) / 2, rows, range);
+    }
+  }
+  const roadY = (s, d, f) => f.y + RT.crown(d);
+
+  /* ------------------------------------------------------- carriageways */
+  // motorway asphalt is a paler, more worn grey than a country lane
+  const roadTint = (s) => { const t = 1.18 + (EVO.fbm(s / 41, 0.3, 2) - 0.5) * 0.24; return [t, t, t * 1.02]; };
+  {
+    // northbound: hard strip, four lanes, hard strip
+    const cols = [-ROAD_HALF, -LANE_HALF, -LANE_W * 0.5, 0, LANE_W * 0.5, LANE_HALF, ROAD_HALF];
+    ribbon(surfaces, roadMat, -450, L + 750, cols, roadY, { step: 5, range: 2200, uv: (s, d) => [(d + ROAD_HALF) / (LANE_W * 2), s / 6.2], tint: roadTint });
+    // southbound
+    const sb = [SB1, SB1 + 1, SB1 + 1 + LANE_W, SB0 - 1 - LANE_W, SB0 - 1, SB0];
+    ribbon(surfaces, roadMat, -450, L + 750, sb, roadY, { step: 5, range: 2200, uv: (s, d) => [(SB0 - d) / (LANE_W * 2), s / 6.2], tint: roadTint });
+    // the reserve: paved, darker, with the concrete step barrier down the middle
+    ribbon(surfaces, reserveMat, -450, L + 750, [SB0, RES - 0.28, RES + 0.28, D.rightEdge], roadY, { step: 8, range: 1800 });
+    // auxiliary lanes and refuges: extra asphalt beyond the left hard strip
+    for (const x of extensions) {
+      const m = x.kind === 'refuge' ? eraMat : roadMat;
+      const a = x.widthAt && x.kind === 'merge' ? startMerge.nose : x.a, b = x.widthAt && x.kind === 'diverge' ? Math.min(x.b, x.b === L + 40 ? endDiverge.nose : x.b - 110) : x.b;
+      ribbon(surfaces, m, a, b, (s) => { const w = Math.max(0.06, Math.min(AUX_W, auxWidth(s))); return [ROAD_HALF - 0.02, ROAD_HALF + w * 0.5, ROAD_HALF + w]; }, roadY,
+        { step: 2, range: 1800, uv: (s, d) => [(d - ROAD_HALF) / (LANE_W * 2) + 0.5, s / 6.2], tint: x.kind === 'refuge' ? null : roadTint });
+    }
+  }
+
+  /* ------------------------------------------------------ verges and land */
+  // Fields: a patchwork of crops divided by hedges that run away from the
+  // road, each field a different crop; the verge itself is mown grass.
+  const fieldSeed = EVO.rng(313);
+  const hedgeLines = []; // { s, side, len, skew }
+  for (const side of [1, -1]) for (let s = -600; s < L + 800; s += 170 + fieldSeed() * 220) hedgeLines.push({ s, side, len: 260 + fieldSeed() * 360, skew: (fieldSeed() - 0.5) * 0.5 });
+  // pasture, ripening wheat, young cereal, ploughed clay, barley stubble, grass ley, oilseed rape (on a neutral soil tile)
+  const fieldPalette = [[0.62, 0.9, 0.42], [1.45, 1.2, 0.55], [0.55, 0.85, 0.4], [0.6, 0.45, 0.32], [1.3, 1.15, 0.7], [0.7, 0.95, 0.5], [1.4, 1.35, 0.3]];
+  function fieldTint(s, d) {
+    const side = d > 0 ? 1 : -1, ad = Math.abs(d);
+    // which strip between two hedge lines, and which band away from the road
+    let k = 0;
+    for (const h of hedgeLines) { if (h.side === side && h.s <= s) k += 1; }
+    const band = ad < 165 ? 0 : ad < 330 ? 1 : 2;
+    const c = fieldPalette[(k * 3 + band * 2 + (side > 0 ? 0 : 4)) % fieldPalette.length];
+    const n = EVO.fbm(s / 90 + 3, d / 90 - 2, 2) - 0.5;
+    return [c[0] + n * 0.16, c[1] + n * 0.14, c[2] + n * 0.1];
+  }
+  const vergeTint = (s, d) => { const n = EVO.fbm(s / 30 + 1, d / 30, 2) - 0.5; return [0.9 + n * 0.2, 0.96 + n * 0.16, 0.8 + n * 0.14]; };
+  {
+    // the verge (mown grass) to the boundary, then the fields beyond it
+    const vergeOut = [0, 1.2, 3, 6, 10, 15, 18], fieldOut = [18, 24, 32, 42, 56, 74, 100, 140, 200, 280, 400, 560];
+    for (const side of [1, -1]) {
+      const edgeAt = (s) => (side > 0 ? ROAD_HALF + auxWidth(s) : SB1);
+      const vCols = (s) => { const e = edgeAt(s); const c = vergeOut.map((o) => e + side * o); return side > 0 ? c : c.reverse(); };
+      const fCols = (s) => { const e = edgeAt(s); const c = fieldOut.map((o) => e + side * o); return side > 0 ? c : c.reverse(); };
+      const uv = (s, d) => { const g = groundAt(s, d); return [g.x / 4, g.z / 4]; };
+      ribbon(surfaces, grassMat, -600, L + 800, vCols, (s, d) => groundAt(s, d).y, { step: 8, range: 2400, uv, tint: (s, d) => vergeTint(s, d) });
+      ribbon(surfaces, fieldMat, -600, L + 800, fCols, (s, d) => groundAt(s, d).y, { step: 10, range: 2400, uv: (s, d) => { const g = groundAt(s, d); return [g.x / 3, g.z / 3]; }, tint: (s, d) => fieldTint(s, d) });
+    }
+    // a coarse plain beyond the fields so the horizon is land, not sky
+    const far = [560, 800, 1100, 1500, 2100, 3000];
+    for (const side of [1, -1]) {
+      const cols = far.map((o) => side * o);
+      const rowsCols = side > 0 ? cols : cols.slice().reverse();
+      ribbon(surfaces, fieldMat, -1200, L + 1500, rowsCols, (s, d, f) => { const x = f.x + f.nx * d, z = f.z + f.nz * d; return land(x, z) - 1.5; },
+        { step: 120, range: 4500, uv: (s, d) => [s / 3, d / 3], tint: (s, d) => { const f = fieldTint(s, d); return [f[0] * 0.8, f[1] * 0.82, f[2] * 0.78]; } });
+    }
+  }
+  for (const m of surfaces.finish(false)) if (m.material === grassMat || m.material === fieldMat) groundMeshes.push(m);
+
+  /* ------------------------------------------------------- markings */
+  // Lane lines 2 m / 7 m, solid 200 mm edge lines with the raised rib beside
+  // the hard strip, 1 m / 1 m lane-drop lines along the diverges, chevron
+  // hatching at every nose, and studs: white between lanes, red on the left
+  // edge, amber beside the reserve, green along the slips.
+  const MARK_UP = 0.012;
+  const markY = (s, d, f) => f.y + RT.crown(d) + MARK_UP;
+  function line(sA, sB, d, w, step = 8, up = 0) { ribbon(surfaces, markMat, sA, sB, [d - w / 2, d + w / 2], (s, dd, f) => markY(s, dd, f) + up, { step, range: 1500 }); }
+  function dashed(sA, sB, d, w, dash, gap) { for (let s = sA; s < sB; s += dash + gap) line(s, Math.min(sB, s + dash), d, w, 8); }
+  {
+    const s0 = -450, s1 = L + 750;
+    // lane lines both carriageways
+    for (const d of [LANE_W, 0, -LANE_W]) dashed(s0, s1, d, 0.15, 2, 7);
+    for (const d of [SB0 - LANE_W, SB0 - LANE_W * 2, SB0 - LANE_W * 3]) dashed(s0, s1, d, 0.15, 2, 7);
+    // edge lines: solid beside the reserve, and along the left where the
+    // carriageway keeps its normal width; the lane-drop line takes over
+    // wherever an auxiliary lane opens
+    line(s0, s1, -LANE_HALF, 0.2, 12); line(s0, s1, SB0 - LANE_W * 4, 0.2, 12);
+    line(s0, s1, SB0 - 0.1, 0.2, 12);
+    let runA = s0;
+    for (let s = s0; s <= s1; s += 2) {
+      const aux = auxWidth(s) > 0.3;
+      if (aux || s >= s1) { if (s - runA > 2) line(runA, s, LANE_HALF, 0.2, 12); runA = s + 2; }
+      if (aux) { while (s <= s1 && auxWidth(s) > 0.3) s += 2; runA = s; }
+    }
+    for (const x of extensions) {
+      if (x.kind === 'refuge') { line(x.a, x.b, LANE_HALF, 0.2, 6); continue; }
+      const a = x.widthAt && x.kind === 'merge' ? startMerge.nose : x.a, b = x.widthAt && x.kind === 'diverge' ? Math.min(x.b, x.b === L + 40 ? endDiverge.nose : x.b - 110) : x.b;
+      dashed(a, b, LANE_HALF, 0.2, 1, 1);
+      // outer edge line of the auxiliary lane
+      ribbon(surfaces, markMat, a + (x.taperIn || 0), b - (x.taperOut || 0), (s) => [ROAD_HALF + Math.min(AUX_W, auxWidth(s)) - 1.1, ROAD_HALF + Math.min(AUX_W, auxWidth(s)) - 0.9], markY, { step: 6, range: 1500 });
+    }
+    // studs
+    const studGeo = new THREE.BoxGeometry(0.12, 0.024, 0.2);
+    const studs = [];
+    const studColours = { white: new THREE.Color(0xe8ecee), red: new THREE.Color(0xd3261f), amber: new THREE.Color(0xe7a01c), green: new THREE.Color(0x27a344) };
+    for (let s = s0 + 4.5; s < s1; s += 9) {
+      for (const d of [LANE_W, 0, -LANE_W, SB0 - LANE_W, SB0 - LANE_W * 2, SB0 - LANE_W * 3]) studs.push([s, d, 'white']);
+      studs.push([s, -LANE_HALF - 0.25, 'amber'], [s, SB0 + 0.25, 'amber']);
+      studs.push([s, auxWidth(s) > 0.3 ? LANE_HALF : LANE_HALF + 0.25, auxWidth(s) > 0.3 ? 'green' : 'red']);
+      studs.push([s, SB1 + 0.75, 'red']);
+    }
+    const im = new THREE.InstancedMesh(studGeo, studMat, studs.length);
+    studs.forEach(([s, d, c], k) => {
+      const f = fr(s); _v.set(f.x + f.nx * d, f.y + RT.crown(d) + 0.011, f.z + f.nz * d); _q.setFromAxisAngle(UP, f.heading); _sc.setScalar(1);
+      _m.compose(_v, _q, _sc); im.setMatrixAt(k, _m); im.setColorAt(k, studColours[c]);
+    });
+    im.name = 'road studs'; im.userData.detailDistance = coarse ? 140 : 190; im.castShadow = false; scene.add(im);
+  }
+  // Chevron hatching in the nose between a diverging or merging slip and the
+  // main line: diagonal 0.3 m bars inside a triangle that opens to 5 m.
+  function hatchNose(sNose, len, opening, dir) {
+    // dir +1: nose at sNose opening towards greater s (a diverge); -1: closing (a merge)
+    const bars = Math.floor(len / 2.0);
+    for (let k = 1; k < bars; k += 1) {
+      const t = k / bars, s = sNose + dir * t * len, w = opening * t;
+      if (w < 0.9) continue;
+      // a 45 degree stripe 0.3 m wide: two rows, the second shifted along by the width it spans
+      const f0 = fr(s), f1 = fr(s + dir * (w - 0.3));
+      const rows = [[{ d: ROAD_HALF + 0.05, f: f0, s }, { d: ROAD_HALF + 0.35, f: f0, s }], [{ d: ROAD_HALF + w - 0.25, f: f1, s: s + dir * (w - 0.3) }, { d: ROAD_HALF + w + 0.05, f: f1, s: s + dir * (w - 0.3) }]]
+        .map((row) => row.map((v) => ({ x: v.f.x + v.f.nx * v.d, y: markY(v.s, v.d, v.f), z: v.f.z + v.f.nz * v.d, u: 0, v: 0 })));
+      surfaces.strip(markMat, s, dir > 0 ? rows : rows.map((r) => r.slice().reverse()), 900);
+    }
+    // solid outline of the nose
+    ribbon(surfaces, markMat, sNose, sNose + dir * len, (s) => { const w = opening * Math.abs(s - sNose) / len; return [ROAD_HALF - 0.05 + w, ROAD_HALF + 0.15 + w]; }, markY, { step: 3, range: 900 });
+  }
+
+  /* ---------------------------------------------------- slip roads */
+  // A slip is its own ribbon: a centre line described in road coordinates
+  // (lateral offset and height above the carriageway as functions of s).
+  const slipRuns = []; // { a, b, dAt, width }: where slips lie, so fences and hedges keep clear
+  function slipEdge(s, side) {
+    let best = 0;
+    for (const r of slipRuns) { if (s < r.a || s > r.b) continue; const d = r.dAt(s); if (Math.sign(d) === side || (side > 0 && d > 0)) best = Math.max(best, Math.abs(d) + r.width / 2 + 3.5); }
+    return best;
+  }
+  const fenceD = (s, side) => (side > 0 ? Math.max(RT.HEDGE_OFFSET + auxWidth(s), slipEdge(s, 1) + 2) : Math.min(SB1 - (RT.HEDGE_OFFSET - ROAD_HALF), -slipEdge(s, -1) - 2));
+  function slip(sA, sB, dAt, hAt, width = 4.6, opts = {}) {
+    slipRuns.push({ a: sA, b: sB, dAt, width });
+    const cols = (s) => { const c = dAt(s); return [c - width / 2 - 1.0, c - width / 2, c, c + width / 2, c + width / 2 + 1.0]; };
+    const height = (s, d, f) => { const c = dAt(s); const edge = Math.abs(d - c) > width / 2 + 0.01 ? -0.12 : 0; return f.y + RT.crown(clamp(d, SB1, ROAD_HALF)) + hAt(s) + edge; };
+    ribbon(surfaces, roadMat, sA, sB, cols, height, { step: 4, range: 1800, uv: (s, d) => [(d - dAt(s)) / (LANE_W * 2) + 0.5, s / 6.2], tint: roadTint });
+    // edge lines
+    for (const side of [-1, 1]) ribbon(surfaces, markMat, sA, sB, (s) => [dAt(s) + side * (width / 2 - 0.25), dAt(s) + side * (width / 2 - 0.1)], (s, d, f) => height(s, d, f) + MARK_UP, { step: 6, range: 1200 });
+    // the bank the slip climbs on: grass shoulders falling to the ground
+    if (opts.bank) {
+      for (const side of [-1, 1]) {
+        const bankCols = (s) => { const c = dAt(s) + side * (width / 2 + 1.0); const h = hAt(s); const run = Math.max(0.5, h * 2.2); return side > 0 ? [c, c + run * 0.5, c + run, c + run + 3] : [c + run * -1 - 3, c - run, c - run * 0.5, c]; };
+        ribbon(surfaces, bankMat, sA, sB, bankCols, (s, d, f) => {
+          const c = dAt(s) + side * (width / 2 + 1.0), h = hAt(s), run = Math.max(0.5, h * 2.2);
+          const t = clamp(Math.abs(d - c) / run, 0, 1);
+          const top = f.y + RT.crown(clamp(d, SB1, ROAD_HALF)) + h - 0.12;
+          return lerp(top, groundAt(s, d).y - 0.02, t * t * (3 - 2 * t));
+        }, { step: 5, range: 1500, uv: (s, d) => [s / 4, d / 4], tint: (s, d) => vergeTint(s, d) });
+      }
+    }
+  }
+
+  /* ------------------------------------------ roundabout interchanges */
+  // J12, J13 and J14 are roundabouts carried over the motorway on two decks,
+  // with the slips climbing to them. The ring sits 8 m above the reserve and
+  // the motorway runs through the open middle of it.
+  const RING_R = 60, RING_H = 8.0, RING_W = 11, JOIN = Math.sqrt(RING_R * RING_R - (RING_R - 10) * (RING_R - 10));
+  function interchange(e) {
+    const sc = e.ring, cx = RES;
+    const deckTop = (s) => fr(s).y + RT.crown(RES) + RING_H;
+    const noseD = ROAD_HALF + 2.3, sbNose = SB1 - 2.3, mergeNose = e.s + 950;
+    const joinN = cx + (RING_R - 10), joinS = cx - (RING_R - 10);
+    // northbound exit slip: nose to the ring, climbing; entry slip back down to the merge
+    slip(e.s, sc - JOIN, (s) => lerp(noseD, joinN, ease((s - e.s) / (sc - JOIN - e.s))), (s) => RING_H * ease((s - e.s - 60) / (sc - JOIN - e.s - 60)), 4.6, { bank: true });
+    slip(sc + JOIN, mergeNose, (s) => lerp(joinN, noseD, ease((s - sc - JOIN) / (mergeNose - sc - JOIN))), (s) => RING_H * (1 - ease((s - sc - JOIN) / (mergeNose - sc - JOIN - 60))), 4.6, { bank: true });
+    hatchNose(e.s, 110, 5.5, 1);
+    hatchNose(mergeNose, 110, 5.5, -1);
+    // southbound slips, mirrored on the far side
+    slip(sc + JOIN, mergeNose, (s) => lerp(joinS, sbNose, ease((s - sc - JOIN) / (mergeNose - sc - JOIN))), (s) => RING_H * (1 - ease((s - sc - JOIN) / (mergeNose - sc - JOIN - 60))), 4.6, { bank: true });
+    slip(e.s, sc - JOIN, (s) => lerp(sbNose, joinS, ease((s - e.s) / (sc - JOIN - e.s))), (s) => RING_H * ease((s - e.s - 60) / (sc - JOIN - e.s - 60)), 4.6, { bank: true });
+    // the ring: road surface, a broken line round the middle, parapets
+    const ringPoint = (a, r, up = 0) => { const s = sc + Math.cos(a) * r, d = cx + Math.sin(a) * r; const f = fr(s); return new THREE.Vector3(f.x + f.nx * d, deckTop(sc) + up, f.z + f.nz * d); };
+    const N = 96;
+    const rows = [];
+    for (let i = 0; i <= N; i += 1) {
+      const a = i / N * Math.PI * 2;
+      rows.push([RING_R + RING_W / 2, RING_R, RING_R - RING_W / 2].map((r) => { const p = ringPoint(a, r, 0.02); return { x: p.x, y: p.y, z: p.z, u: a * RING_R / 6.2, v: (r - RING_R) / 12 + 0.5, r: 0.94, g: 0.94, b: 0.95 }; }));
+    }
+    structures.strip(roadMat, sc, rows, 2000);
+    for (let i = 0; i < N; i += 2) { const r2 = [i, i + 1].map((k) => { const a = k / N * Math.PI * 2; return [RING_R - 0.06, RING_R + 0.06].map((r) => { const p = ringPoint(a, r, 0.035); return { x: p.x, y: p.y, z: p.z }; }); }); structures.strip(markMat, sc, r2, 1200); }
+    for (const side of [-1, 1]) {
+      const par = [];
+      for (let i = 0; i <= N; i += 1) {
+        const a = i / N * Math.PI * 2, r = RING_R + side * (RING_W / 2 + 0.25);
+        const top = ringPoint(a, r, 1.1), foot = ringPoint(a, r, 0), back = ringPoint(a, r + side * 0.3, 0.9);
+        par.push([{ x: foot.x, y: foot.y, z: foot.z, u: a * 8, v: 0 }, { x: top.x, y: top.y, z: top.z, u: a * 8, v: 1 }, { x: back.x, y: back.y, z: back.z, u: a * 8, v: 1.2 }]);
+      }
+      structures.strip(parapetMat, sc, side > 0 ? par : par.map((r) => r.slice().reverse()), 1800);
+    }
+    // banks outside and inside the ring wherever it is over land rather than a deck
+    const overRoad = (a) => { const d = cx + Math.sin(a) * RING_R; return d > SB1 - 4 && d < ROAD_HALF + auxWidth(sc + Math.cos(a) * RING_R) + 4; };
+    for (const inner of [false, true]) {
+      const r0 = inner ? RING_R - RING_W / 2 - 0.6 : RING_R + RING_W / 2 + 0.6;
+      // columns run inward (decreasing radius) so the strip faces up
+      const steps = inner ? [0, -7, -14, -20] : [26, 18, 9, 0];
+      let run = [];
+      const flush = () => { if (run.length > 1) structures.strip(bankMat, sc, run, 1800); run = []; };
+      for (let i = 0; i <= N; i += 1) {
+        const a = i / N * Math.PI * 2;
+        if (overRoad(a)) { flush(); continue; }
+        run.push(steps.map((o, k) => {
+          const r = r0 + o, p = ringPoint(a, r), s = sc + Math.cos(a) * r, d = cx + Math.sin(a) * r;
+          const g = groundAt(s, d).y, t = k / (steps.length - 1);
+          const y = lerp(p.y - 0.3, g - 0.05, ease(t));
+          return { x: p.x, y, z: p.z, u: p.x / 4, v: p.z / 4, r: 0.86, g: 0.9, b: 0.72 };
+        }));
+      }
+      flush();
+    }
+    // decks where the ring crosses the two carriageways, on piers
+    const deckGeo = new THREE.BoxGeometry(1, 1.3, 1);
+    for (const sign of [-1, 1]) {
+      const sDeck = sc + sign * 57.5;
+      const left = ROAD_HALF + auxWidth(sDeck) + 5, right = SB1 - 5, span = left - right;
+      _v.copy(P(sDeck, (left + right) / 2, RING_H - 0.66)); _q.setFromAxisAngle(UP, fr(sDeck).heading); _sc.set(span, 1, RING_W + 1.5);
+      _m.compose(_v, _q, _sc); structures.geometry(deckMat, sDeck, deckGeo, _m, 2000);
+      for (const d of [RES, left, right]) {
+        const g = d === RES ? fr(sDeck).y + RT.crown(RES) : groundAt(sDeck, d).y;
+        const h = deckTop(sDeck) - 1.3 - g;
+        const pier = new THREE.CylinderGeometry(0.85, 0.95, h, 12); pier.translate(0, h / 2, 0);
+        const pp = P(sDeck, d);
+        putAt(structures, concreteMat, pier, pp.x, g, pp.z, 0, sDeck, 1800);
+      }
+    }
+    // the A-road continuing away from the ring on both sides, down to ground level
+    for (const side of [-1, 1]) {
+      const d0 = cx + side * RING_R, len = 420, f = fr(sc);
+      const rowsA = [], bank = [];
+      for (let i = 0; i <= 42; i += 1) {
+        const t = i / 42, d = d0 + side * (t * len), g = groundAt(sc, d).y;
+        const y = lerp(deckTop(sc), g + 0.25, ease((t * len - 20) / (len - 20)));
+        rowsA.push([-5.5, 0, 5.5].map((w) => ({ x: f.x + f.nx * d + f.tx * w, y, z: f.z + f.nz * d + f.tz * w, u: w / 6.2 + 0.5, v: t * len / 6.2, r: 0.94, g: 0.94, b: 0.95 })));
+        const run = Math.max(0.5, (y - g) * 2.0) + 1.5;
+        bank.push([-6.5 - run, -6.5, 6.5, 6.5 + run].map((w, k) => ({ x: f.x + f.nx * d + f.tx * w, y: (k === 0 || k === 3) ? g - 0.05 : y - 0.15, z: f.z + f.nz * d + f.tz * w, u: d / 4, v: w / 4, r: 0.86, g: 0.9, b: 0.72 })));
+      }
+      structures.strip(roadMat, sc, side > 0 ? rowsA.map((r) => r.slice().reverse()) : rowsA, 2000);
+      structures.strip(bankMat, sc, side > 0 ? bank.map((r) => r.slice().reverse()) : bank, 1800);
+    }
+  }
+  for (const e of exits) interchange(e);
+  // services noses
+  hatchNose(startMerge.nose, 100, 5, -1);
+  hatchNose(endDiverge.nose, 100, 5, 1);
+  for (const e of exits) interchange(e);
+  // services noses
+  hatchNose(startMerge.nose, 100, 5, -1);
+  hatchNose(endDiverge.nose, 100, 5, 1);
+
+  /* ------------------------------------------------------ services */
+  // Slip roads between the car parks and the carriageway, then the buildings.
+  const totems = [];
+  {
+    const st = startMerge, en = endDiverge;
+    // Toddington: the exit slip comes down off the car park and runs alongside until the nose
+    slip(120, st.aux[0] + 2, startSlipD, () => 0, 4.6, { bank: false });
+    // Newport Pagnell: the slip leaves the nose and climbs gently to the car park
+    slip(en.nose - 2, L + 40, endSlipD, () => 0, 4.6, { bank: false });
+    for (const park of parks) {
+      const sMid = (park.s0 + park.s1) / 2, f = fr(sMid);
+      const slabGeo = new THREE.BoxGeometry(park.d1 - park.d0, 0.3, park.s1 - park.s0);
+      put(structures, slabMat, slabGeo, sMid, (park.d0 + park.d1) / 2, park.y - fr(sMid).y - RT.crown((park.d0 + park.d1) / 2) - 0.1, 0, 2200);
+      // parking bays: rows of bays along the road, marked with white lines, some of them taken
+      const bayLine = new THREE.BoxGeometry(0.1, 0.02, 5.2);
+      const kinds = ['hatch', 'suv', 'van', 'hatch', 'hatch', 'suv'], paints = [0xd2d1c9, 0x324d65, 0xe1ded3, 0x883839, 0x777d7a, 0x1f3a6e, 0xc9ccd1, 0x4c6b3c];
+      let bayIndex = 0;
+      for (let row = 0; row < 4; row += 1) {
+        const sRow = park.s0 + 40 + row * 48;
+        for (let d = park.d0 + 22; d < park.d1 - 44; d += 2.6) {
+          put(structures, markMat, bayLine, sRow, d, park.y - fr(sRow).y - RT.crown(d) + 0.06, 0, 500);
+          put(structures, markMat, bayLine, sRow + 10.6, d, park.y - fr(sRow + 10.6).y - RT.crown(d) + 0.06, 0, 500);
+          bayIndex += 1;
+          if (bayIndex % 3 === 1 && RT.detailPlan) RT.detailPlan.lots.push({ s: sRow + (bayIndex % 2 ? 2.7 : 7.9), side: 1, d: d + 1.3, kind: kinds[bayIndex % kinds.length], paint: paints[bayIndex % paints.length], dir: bayIndex % 2 ? 1 : -1 });
+        }
+      }
+      // amenity building: rendered box with a full-height glazed front facing the car park
+      const bs = sMid + 20, bd = park.d1 - 32, bw = 34, bl = 78, bh = 7.5;
+      const up = park.y - fr(bs).y - RT.crown(bd);
+      put(structures, renderMat, new THREE.BoxGeometry(bw, bh, bl).translate(0, bh / 2, 0), bs, bd, up, 0, 2200);
+      put(structures, glassMat, new THREE.BoxGeometry(0.4, 4.2, bl - 6).translate(0, 2.6, 0), bs, bd - bw / 2 - 0.1, up, 0, 1800);
+      put(structures, canopyMat, new THREE.BoxGeometry(6, 0.4, bl - 2).translate(0, 4.9, 0), bs, bd - bw / 2 - 2.6, up, 0, 1800);
+      put(structures, deckMat, new THREE.BoxGeometry(bw + 1, 0.5, bl + 1).translate(0, bh + 0.2, 0), bs, bd, up, 0, 2200);
+      // fuel station: canopy on columns, pumps, a kiosk
+      const fs = park.s0 + 60, fd = park.d0 + 14, fup = park.y - fr(fs).y - RT.crown(fd);
+      put(structures, canopyMat, new THREE.BoxGeometry(22, 0.9, 34).translate(0, 5.6, 0), fs, fd, fup, 0, 2000);
+      for (const [dx, dz] of [[-8, -12], [8, -12], [-8, 12], [8, 12], [-8, 0], [8, 0]]) put(structures, steelMat, new THREE.CylinderGeometry(0.22, 0.22, 5.2, 8).translate(0, 2.6, 0), fs + dz, fd + dx, fup, 0, 1400);
+      for (const dz of [-9, -3, 3, 9]) put(structures, signalMat, new THREE.BoxGeometry(1.0, 1.7, 0.6).translate(0, 0.85, 0), fs + dz, fd, fup, 0, 900);
+      put(structures, renderMat, new THREE.BoxGeometry(10, 4, 12).translate(0, 2, 0), fs, fd + 18, fup, 0, 1800);
+      // totem sign and a few lorries in the lorry park
+      put(structures, gantryMat, new THREE.BoxGeometry(0.5, 9, 0.5).translate(0, 4.5, 0), park.s0 + 10, park.d0 + 4, park.y - fr(park.s0 + 10).y - RT.crown(park.d0 + 4), 0, 2600);
+      totems.push({ s: park.s0 + 10, d: park.d0 + 4, y: park.y, name: park.name });
+      for (let k = 0; k < 4; k += 1) {
+        const ls = park.s1 - 30 - k * 20, ld = park.d1 - 8;
+        put(structures, canopyMat, new THREE.BoxGeometry(2.55, 2.9, 13.6).translate(0, 2.55, 0), ls, ld, park.y - fr(ls).y - RT.crown(ld), 0, 1400);
+        put(structures, signalMat, new THREE.BoxGeometry(2.4, 1.1, 13.6).translate(0, 0.55, 0), ls, ld, park.y - fr(ls).y - RT.crown(ld), 0, 1400);
+      }
+    }
+  }
+
+  /* --------------------------------------------- barriers and fences */
+  {
+    // concrete step barrier down the reserve: a continuous extrusion
+    const prof = [[-0.27, 0], [-0.27, 0.08], [-0.17, 0.25], [-0.11, 0.9], [0.11, 0.9], [0.17, 0.25], [0.27, 0.08], [0.27, 0]];
+    ribbon(furniture, concreteMat, -450, L + 750, prof.map(([w]) => RES + w), (s, d, f) => {
+      const k = prof.findIndex(([w]) => Math.abs(RES + w - d) < 1e-6);
+      return f.y + RT.crown(RES) + prof[k][1];
+    }, { step: 6, range: 1500, uv: (s, d) => [s / 2, d] });
+    // steel safety barrier along the left verge: W-beam on posts, kept back from the strip
+    const beamGeo = new THREE.BoxGeometry(0.08, 0.31, 4.0).translate(0, 0.62, 0);
+    const postGeo = new THREE.BoxGeometry(0.1, 0.75, 0.06).translate(0, 0.375, 0);
+    const wantBarrier = (s) => { const n = EVO.noise2(s / 900, 4.4); return M.bridges.some((b) => Math.abs(b.s - s) < 140) || exits.some((e) => Math.abs(e.ring - s) < 260) || n > 0.42; };
+    for (let s = -300; s < L + 600; s += 4) {
+      const d = ROAD_HALF + auxWidth(s) + 1.2;
+      if (!wantBarrier(s) || parkAt(s, d + 10)) continue;
+      const g = groundAt(s, d), f = g.f;
+      putAt(furniture, steelMat, beamGeo, g.x, g.y, g.z, f.heading, s, 900);
+      if (s % 8 < 4) putAt(furniture, gantryMat, postGeo, g.x, g.y, g.z, f.heading, s, 700);
+    }
+    // boundary fence both sides with a hedge beyond it
+    const fpost = new THREE.BoxGeometry(0.09, 1.2, 0.09).translate(0, 0.6, 0);
+    const hedgeGeo = new THREE.BoxGeometry(1.6, 1.3, 4.5).translate(0, 0.65, 0);
+    const wires = [];
+    for (const side of [1, -1]) {
+      let last = null;
+      for (let s = -600; s < L + 800; s += 4.5) {
+        const d = fenceD(s, side);
+        const nearRing = exits.some((e) => Math.abs(e.ring - s) < 180) || (side > 0 && parkAt(s, d + 12));
+        if (nearRing) { last = null; continue; }
+        const g = groundAt(s, d);
+        putAt(furniture, woodMat, fpost, g.x, g.y - 0.05, g.z, g.f.heading, s, 420);
+        if (last) for (const h of [0.45, 0.8, 1.1]) wires.push(last.x, last.y + h, last.z, g.x, g.y + h, g.z);
+        last = g;
+        const hg = groundAt(s, d + side * 1.9);
+        const tint = 0.85 + EVO.noise2(s / 9, side) * 0.3, hh = 0.8 + EVO.noise2(s / 23, side + 4) * 0.7;
+        if (EVO.noise2(s / 60, side + 9) > 0.9) { last = null; continue; } // a gate or a gap in the hedge
+        _v.set(hg.x, hg.y - 0.2, hg.z); _q.setFromAxisAngle(UP, hg.f.heading); _sc.set(1, hh, 1); _m.compose(_v, _q, _sc);
+        furniture.geometry(hedgeMat, s, hedgeGeo, _m, 900, new THREE.Color(tint, tint * 1.02, tint * 0.9));
+      }
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
+    const wireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x4a4d50, transparent: true, opacity: 0.5 })); wireMesh.name = 'fence wire'; scene.add(wireMesh);
+    // field hedges running away from the road, with hedgerow trees along them
+    const treePlacements = [];
+    for (const h of hedgeLines) {
+      const f = fr(h.s);
+      const edge = fenceD(h.s, h.side) + h.side * 3;
+      for (let t = 0; t < h.len; t += 4.5) {
+        const d = edge + h.side * t, ss = h.s + t * h.skew;
+        const g = groundAt(ss, d);
+        if (exits.some((e) => Math.abs(e.ring - ss) < 200 && Math.abs(d - RES) < 120)) continue;
+        if (h.side > 0 && parkAt(ss, d)) continue;
+        const yaw = Math.atan2(f.nx * h.side + f.tx * h.skew, f.nz * h.side + f.tz * h.skew);
+        const tint = 0.85 + EVO.noise2(t / 9, h.s) * 0.3;
+        putAt(furniture, hedgeMat, hedgeGeo, g.x, g.y - 0.2, g.z, yaw, ss, 1200, 1, new THREE.Color(tint, tint * 1.02, tint * 0.9));
+        if (t > 8 && rnd() < 0.07) treePlacements.push({ x: g.x, y: g.y - 0.2, z: g.z, species: rnd() < 0.6 ? 'oak' : 'ash', scale: 0.85 + rnd() * 0.5, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+      }
+    }
+    // tree belts along the boundary, dense through the woods, sparse elsewhere
+    const woodAt = (s, side) => M.woods.some(([a, b, sd]) => s >= a && s <= b && sd === side);
+    for (const side of [1, -1]) for (let s = -500; s < L + 700; s += 3.5) {
+      const inWood = woodAt(s, side);
+      if (!inWood && rnd() > 0.06) continue;
+      if (exits.some((e) => Math.abs(e.ring - s) < 150)) continue;
+      const edge = fenceD(s, side) + side * 3;
+      const layers = inWood ? 3 : 1;
+      for (let k = 0; k < layers; k += 1) {
+        const d = edge + side * (1.5 + k * 9 + rnd() * 7), ss = s + (rnd() - 0.5) * 3;
+        if (side > 0 && parkAt(ss, d)) continue;
+        const g = groundAt(ss, d), r = rnd();
+        const species = r < 0.35 ? 'oak' : r < 0.55 ? 'ash' : r < 0.75 ? 'birch' : r < 0.9 ? 'beech' : 'hawthorn';
+        treePlacements.push({ x: g.x, y: g.y - 0.2, z: g.z, species, scale: (species === 'hawthorn' ? 0.55 : 0.8) + rnd() * 0.5, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+      }
+    }
+    // copses and lone trees out in the fields
+    for (let k = 0; k < 420; k += 1) {
+      const s = rnd() * (L + 800) - 400, side = rnd() < 0.5 ? 1 : -1, d = side * (60 + rnd() * 460) + (side < 0 ? SB1 : 0);
+      if (exits.some((e) => Math.abs(e.ring - s) < 200 && Math.abs(d - RES) < 140)) continue;
+      if (side > 0 && parkAt(s, d, 30)) continue;
+      const g = groundAt(s, d), n = rnd() < 0.3 ? 3 + Math.floor(rnd() * 5) : 1;
+      for (let j = 0; j < n; j += 1) {
+        const gx = g.x + (rnd() - 0.5) * 24, gz = g.z + (rnd() - 0.5) * 24;
+        treePlacements.push({ x: gx, y: RT.terrainHeight(gx, gz) - 0.2, z: gz, species: rnd() < 0.6 ? 'oak' : 'ash', scale: 0.9 + rnd() * 0.6, yaw: rnd() * Math.PI * 2, tint: 0.85 + rnd() * 0.3 });
+      }
+    }
+    EVO.vegetation.createTreeMeshes(scene, treePlacements, quality);
+    // noise fences: tall timber panels close behind the barrier
+    for (const [a, b, side] of M.noise) {
+      const d = side > 0 ? ROAD_HALF + 4.2 : SB1 - 4.2;
+      const panel = new THREE.BoxGeometry(0.12, 3.2, 3.0).translate(0, 1.6, 0);
+      for (let s = a; s < b; s += 3) { if (auxWidth(s) > 0.1) continue; const g = groundAt(s, d); putAt(furniture, timberMat, panel, g.x, g.y - 0.1, g.z, g.f.heading, s, 1200); }
+    }
+  }
+
+  /* ------------------------------------------------- signs and gantries */
+  const texCache = {};
+  function signTexture(key, w, h, draw) {
+    if (texCache[key]) return texCache[key];
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'); draw(ctx, w, h);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    texCache[key] = t; return t;
+  }
+  const BLUE = '#0c4d9f', GREEN = '#0c7a3c';
+  const font = (px, bold = true) => `${bold ? 'bold ' : ''}${px}px "Helvetica Neue", Arial, Helvetica, sans-serif`;
+  function drawArrowSlant(ctx, x, y, size, up = true) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 4); ctx.fillStyle = '#fff';
+    ctx.fillRect(-size * 0.1, -size * 0.55, size * 0.2, size * 1.0);
+    ctx.beginPath(); ctx.moveTo(0, -size * 0.85); ctx.lineTo(size * 0.32, -size * 0.45); ctx.lineTo(-size * 0.32, -size * 0.45); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  function routePatch(ctx, x, y, text, px) {
+    ctx.font = font(px); const w = ctx.measureText(text).width + px * 0.5;
+    ctx.fillStyle = GREEN; ctx.fillRect(x, y - px * 0.85, w, px * 1.1);
+    ctx.fillStyle = '#f2d24a'; ctx.textAlign = 'left'; ctx.fillText(text, x + px * 0.25, y);
+    return w;
+  }
+  function junctionPanel(ctx, x, y, number, px) {
+    ctx.fillStyle = '#111'; ctx.fillRect(x, y, px * 1.9, px * 1.25);
+    ctx.fillStyle = '#fff'; ctx.font = font(px * 0.9); ctx.textAlign = 'center'; ctx.fillText(String(number), x + px * 0.95, y + px * 0.95);
+  }
+  const adsTexture = (e, distance) => signTexture(`ads${e.number}:${distance}`, 1024, 768, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, W - 28, H - 28);
+    junctionPanel(ctx, 38, 38, e.number, 64);
+    const px = 88; let y = 210;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+    ctx.font = font(px); e.places.forEach((p) => { ctx.fillStyle = '#fff'; ctx.font = font(px); ctx.fillText(p, 60, y); y += px * 1.25; });
+    let x = 60; x += routePatch(ctx, x, y, e.road, 76) + 20; if (e.extraRoad) routePatch(ctx, x, y, e.extraRoad, 76);
+    ctx.fillStyle = '#fff'; ctx.font = font(84); ctx.textAlign = 'right';
+    if (distance) ctx.fillText(distance, W - 60, H - 60); else drawArrowSlant(ctx, W - 130, H - 150, 150);
+  });
+  const confirmTexture = (e) => signTexture(`confirm${e.number}`, 1024, 720, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, W - 28, H - 28);
+    ctx.fillStyle = '#fff'; ctx.font = font(96); ctx.textAlign = 'left'; ctx.fillText('M1', 60, 150);
+    let y = 300;
+    for (const [place, miles] of e.after) { ctx.font = font(92); ctx.textAlign = 'left'; ctx.fillText(place, 60, y); if (miles != null) { ctx.textAlign = 'right'; ctx.fillText(String(miles), W - 60, y); } y += 130; }
+  });
+  const servicesTexture = (name, distance, operator) => signTexture(`svc:${name}:${distance}`, 1024, 640, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, W - 28, H - 28);
+    ctx.fillStyle = '#fff'; ctx.font = font(96); ctx.textAlign = 'left'; ctx.fillText('Services', 60, 150);
+    ctx.font = font(66, false); ctx.fillText(name, 60, 250);
+    if (operator) { ctx.font = font(48); ctx.fillText(operator, 60, 320); }
+    // pictograms: fuel, cup, fork and knife, bed, information
+    const icons = ['⛽', '☕', '🍴', '🛏', 'i'];
+    icons.forEach((ic, k) => { ctx.fillStyle = '#fff'; ctx.fillRect(60 + k * 170, 380, 140, 140); ctx.fillStyle = BLUE; ctx.font = font(84); ctx.textAlign = 'center'; ctx.fillText(ic, 130 + k * 170, 480); });
+    ctx.fillStyle = '#fff'; ctx.font = font(84); ctx.textAlign = 'right';
+    if (distance) ctx.fillText(distance, W - 60, 150); else drawArrowSlant(ctx, W - 130, 240, 150);
+  });
+  const nextServicesTexture = () => signTexture('nextsvc', 1024, 400, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, W - 28, H - 28);
+    ctx.fillStyle = '#fff'; ctx.font = font(82); ctx.textAlign = 'left'; ctx.fillText('Services', 60, 130);
+    SV.next.forEach(([n, mi], k) => { ctx.font = font(74); ctx.textAlign = 'left'; ctx.fillText(n, 60, 250 + k * 90); ctx.textAlign = 'right'; ctx.fillText(`${mi} m`, W - 60, 250 + k * 90); });
+  });
+  const countdownTexture = (bars) => signTexture(`cd${bars}`, 256, 384, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.fillStyle = '#fff'; for (let k = 0; k < bars; k += 1) { ctx.save(); ctx.translate(W / 2, H * 0.28 + k * H * 0.22); ctx.rotate(-0.55); ctx.fillRect(-100, -14, 200, 28); ctx.restore(); }
+  });
+  const dlsTexture = (km) => signTexture(`dls${km}`, 256, 384, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = font(78); ctx.fillText('M1', W / 2, 105); ctx.fillText('A', W / 2, 215); ctx.font = font(70); ctx.fillText(km, W / 2, 330);
+  });
+  const eraTexture = () => signTexture('era', 512, 640, (ctx, W, H) => {
+    ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; ctx.strokeRect(12, 12, W - 24, H - 24);
+    ctx.fillStyle = '#e8781c'; ctx.fillRect(60, 60, W - 120, 300);
+    ctx.fillStyle = '#fff'; ctx.font = font(120); ctx.textAlign = 'center'; ctx.fillText('SOS', W / 2, 260);
+    ctx.font = font(58); ctx.fillText('Emergency', W / 2, 460); ctx.fillText('area', W / 2, 540);
+  });
+  const nslTexture = () => EVO.tex.signNSL();
+  const signalTexture = (aspect) => signTexture(`sig:${aspect}`, 256, 256, (ctx, W, H) => {
+    ctx.fillStyle = '#0a0b0c'; ctx.fillRect(0, 0, W, H);
+    if (!aspect) return;
+    if (aspect === 'END') { ctx.strokeStyle = '#f4f4f0'; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(W / 2, H / 2, 94, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(W / 2 + 62, H / 2 - 62); ctx.lineTo(W / 2 - 62, H / 2 + 62); ctx.stroke(); return; }
+    ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = 16; ctx.beginPath(); ctx.arc(W / 2, H / 2, 100, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#f7f7f2'; ctx.font = font(120); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(aspect), W / 2, H / 2 + 4);
+  });
+  const ms4Texture = (msg) => signTexture(`ms4:${msg}`, 1024, 384, (ctx, W, H) => {
+    ctx.fillStyle = '#0a0b0c'; ctx.fillRect(0, 0, W, H);
+    if (!msg) return;
+    const words = msg.split(' '), lines = []; let cur = '';
+    for (const w of words) { if ((cur + ' ' + w).trim().length > 16) { lines.push(cur.trim()); cur = w; } else cur += ' ' + w; }
+    if (cur.trim()) lines.push(cur.trim());
+    ctx.fillStyle = '#ffb61c'; ctx.font = font(96); ctx.textAlign = 'center';
+    lines.slice(0, 3).forEach((l, k) => ctx.fillText(l, W / 2, 130 + k * 118));
+  });
+
+  const signMats = {};
+  const signMaterial = (tex, emissive = false) => {
+    if (!signMats[tex.uuid]) signMats[tex.uuid] = new THREE.MeshStandardMaterial({ name: 'sign face', map: tex, roughness: 0.5, metalness: 0.05, emissive: emissive ? 0xffffff : 0x000000, emissiveMap: emissive ? tex : null, emissiveIntensity: emissive ? 1.3 : 0 });
+    return signMats[tex.uuid];
+  };
+  const faceGeoCache = {};
+  const faceGeo = (w, h) => { const k = `${w}x${h}`; faceGeoCache[k] = faceGeoCache[k] || new THREE.PlaneGeometry(w, h); return faceGeoCache[k]; };
+  // A verge sign: face on posts, back plate, at road distance s and offset d,
+  // facing back down the road towards the rider.
+  function signPost(x, y, z, yaw, tex, w, h, mountH, double = false) {
+    const g = new THREE.Group();
+    const face = new THREE.Mesh(faceGeo(w, h), signMaterial(tex)); face.position.set(0, mountH + h / 2, 0.035);
+    const back = new THREE.Mesh(faceGeo(w, h), signBackMat); back.position.set(0, mountH + h / 2, 0); back.rotation.y = Math.PI;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, mountH + h * 0.9, 8), postMat); post.position.set(double ? -w * 0.3 : 0, (mountH + h * 0.9) / 2, -0.01);
+    g.add(face, back, post);
+    if (double) { const p2 = post.clone(); p2.position.x = w * 0.3; g.add(p2); }
+    g.position.set(x, y, z); g.rotation.y = yaw;
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(g);
+    return g;
+  }
+  function vergeSign(s, side, tex, w, h, mountH, facingForward, offset) {
+    const d = side > 0 ? ROAD_HALF + auxWidth(s) + (offset ?? 3.2) : SB1 - (offset ?? 3.2);
+    const g = groundAt(s, d), f = g.f;
+    const yaw = facingForward ? Math.atan2(f.tx, f.tz) : Math.atan2(-f.tx, -f.tz);
+    const sg = signPost(g.x, g.y, g.z, yaw, tex, w, h, mountH, w > 1.2);
+    sg.userData.s = s; sg.userData.range = 1300; chunked.push(sg);
+    return sg;
+  }
+  {
+    // advance direction signs at a mile and half a mile, the sign at the nose,
+    // countdown markers, and a confirmatory sign after each junction
+    for (const e of exits) {
+      vergeSign(e.s - 1609, 1, adsTexture(e, '1 m'), 5.2, 3.9, 1.9, false);
+      vergeSign(e.s - 805, 1, adsTexture(e, '½ m'), 5.2, 3.9, 1.9, false);
+      vergeSign(e.s - 30, 1, adsTexture(e, null), 5.2, 3.9, 1.9, false, 5.2);
+      [3, 2, 1].forEach((bars, k) => vergeSign(e.s - 270 + k * 90, 1, countdownTexture(bars), 0.9, 1.35, 1.6, false));
+      vergeSign(e.s + 1150, 1, confirmTexture(e), 4.6, 3.2, 1.9, false);
+    }
+    // services signs: the next services after Toddington, then Newport Pagnell at a mile, half a mile and the nose
+    vergeSign(760, 1, nextServicesTexture(), 4.2, 1.7, 1.9, false);
+    vergeSign(endDiverge.nose - 1609, 1, servicesTexture(SV.end.name, '1 m', SV.end.operator), 4.6, 2.9, 1.9, false);
+    vergeSign(endDiverge.nose - 805, 1, servicesTexture(SV.end.name, '½ m', SV.end.operator), 4.6, 2.9, 1.9, false);
+    vergeSign(endDiverge.nose - 30, 1, servicesTexture(SV.end.name, null, SV.end.operator), 4.6, 2.9, 1.9, false, 5.2);
+    [3, 2, 1].forEach((bars, k) => vergeSign(endDiverge.nose - 270 + k * 90, 1, countdownTexture(bars), 0.9, 1.35, 1.6, false));
+    // driver location signs every 500 m, emergency area signs, national limit at the start
+    for (let s = 500; s < L - 300; s += 500) vergeSign(s, 1, dlsTexture((M.kmAtStart + s / 1000).toFixed(1)), 0.62, 0.93, 1.3, false, 1.6);
+    for (const s of M.refuges) { vergeSign(s - 300, 1, eraTexture(), 1.1, 1.4, 1.6, false); vergeSign(s - ERA_L / 2, 1, eraTexture(), 1.1, 1.4, 1.6, false, ERA_W + 1.6); }
+    vergeSign(startMerge.taper[1] + 40, 1, nslTexture(), 0.9, 0.9, 1.8, false);
+    // services totems: a tall blue board by each car park entrance
+    for (const t of totems) {
+      const tex = signTexture(`totem:${t.name}`, 256, 768, (ctx, W, H) => {
+        ctx.fillStyle = BLUE; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.strokeRect(8, 8, W - 16, H - 16);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = font(44); ctx.fillText('SERVICES', W / 2, 90);
+        ctx.font = font(34, false); ctx.fillText(t.name, W / 2, 150);
+        ['FUEL', 'FOOD', 'COFFEE', 'SHOP', 'PARKING'].forEach((w, k) => { ctx.fillStyle = k % 2 ? '#e8e8e2' : '#fff'; ctx.font = font(40); ctx.fillText(w, W / 2, 260 + k * 96); });
+      });
+      const f = fr(t.s), yaw = Math.atan2(-f.tx, -f.tz);
+      const g = signPost(f.x + f.nx * t.d, t.y, f.z + f.nz * t.d, yaw, tex, 2.4, 7.2, 1.6, true);
+      g.userData.s = t.s; g.userData.range = 2600; chunked.push(g);
+    }
+  }
+  // Emergency refuge areas: the orange surface is laid; add the SOS cabinet
+  {
+    const cab = new THREE.BoxGeometry(0.7, 1.5, 0.5).translate(0, 0.75, 0);
+    for (const s of M.refuges) { const g = groundAt(s + 20, ROAD_HALF + ERA_W + 1.4); putAt(furniture, eraMat, cab, g.x, g.y, g.z, g.f.heading, s, 700); }
+  }
+  // Portal gantries: a column each side of the carriageway and one in the
+  // reserve, a box beam across, a signal over every lane, a walkway, and the
+  // message sign where there is a message. The southbound side carries blank signals.
+  {
+    const colGeo = new THREE.CylinderGeometry(0.32, 0.36, 7.2, 12).translate(0, 3.6, 0);
+    const baseGeo = new THREE.BoxGeometry(1.4, 0.5, 1.4).translate(0, 0.25, 0);
+    const sigGeo = new THREE.BoxGeometry(1.5, 1.25, 0.45).translate(0, 0.62, 0);
+    const railGeo = new THREE.BoxGeometry(1, 0.05, 0.05);
+    for (const g of M.gantries) {
+      const s = g.s, f = fr(s);
+      const left = ROAD_HALF + auxWidth(s) + 1.6, right = SB1 - 1.6;
+      for (const d of [left, RES, right]) {
+        const y = d === RES ? f.y + RT.crown(RES) : groundAt(s, d).y;
+        const pp = P(s, d);
+        putAt(furniture, gantryMat, colGeo, pp.x, y, pp.z, f.heading, s, 1800);
+        putAt(furniture, concreteMat, baseGeo, pp.x, y, pp.z, f.heading, s, 900);
+      }
+      const beamH = 6.9;
+      const beam = new THREE.BoxGeometry(left - right + 0.8, 0.75, 0.75);
+      _v.copy(P(s, (left + right) / 2, beamH)); _q.setFromAxisAngle(UP, f.heading); _sc.setScalar(1); _m.compose(_v, _q, _sc);
+      furniture.geometry(gantryMat, s, beam, _m, 2000);
+      // walkway rails behind the beam
+      for (const h of [0.55, 1.1]) { const r = new THREE.BoxGeometry(left - right + 0.8, 0.05, 0.05); _v.copy(P(s, (left + right) / 2, beamH + 0.4 + h)); _v.addScaledVector(new THREE.Vector3(f.tx, 0, f.tz), 0.7); _m.compose(_v, _q, _sc); furniture.geometry(gantryMat, s, r, _m, 1200); }
+      // signals over our lanes, facing back at the rider; blank ones over the other carriageway
+      const aspect = g.limit ? String(g.limit) : '';
+      const sigMat = (a) => signMaterial(signalTexture(a), true);
+      for (const d of LANES) {
+        const pp = P(s, d, beamH + 0.45);
+        putAt(furniture, signalMat, sigGeo, pp.x, pp.y, pp.z, f.heading, s, 1500);
+        const face = new THREE.Mesh(faceGeo(1.3, 1.1), sigMat(aspect)); face.position.set(pp.x - f.tx * 0.24, pp.y + 0.62, pp.z - f.tz * 0.24); face.rotation.y = Math.atan2(-f.tx, -f.tz);
+        face.userData.s = s; face.userData.range = 1500; scene.add(face); chunked.push(face);
+      }
+      for (const d of SB_LANES) { const pp = P(s, d, beamH + 0.45); putAt(furniture, signalMat, sigGeo, pp.x, pp.y, pp.z, f.heading, s, 1500); }
+      if (g.msg) {
+        const pp = P(s, (LANES[1] + LANES[2]) / 2, beamH + 1.95);
+        putAt(furniture, signalMat, new THREE.BoxGeometry(4.2, 1.7, 0.4).translate(0, 0.85, 0), pp.x, pp.y, pp.z, f.heading, s, 1600);
+        const face = new THREE.Mesh(faceGeo(4.0, 1.5), signMaterial(ms4Texture(g.msg), true)); face.position.set(pp.x - f.tx * 0.22, pp.y + 0.85, pp.z - f.tz * 0.22); face.rotation.y = Math.atan2(-f.tx, -f.tz);
+        face.userData.s = s; face.userData.range = 1600; scene.add(face); chunked.push(face);
+      }
+    }
+  }
+  // Lighting columns in the reserve through the lit sections
+  {
+    const col = new THREE.CylinderGeometry(0.09, 0.16, 12, 8).translate(0, 6, 0);
+    const arm = new THREE.BoxGeometry(0.12, 0.12, 2.6).translate(0, 12, 1.2);
+    const lantern = new THREE.BoxGeometry(0.3, 0.2, 0.7).translate(0, 12, 2.3);
+    for (const [a, b] of M.lit) for (let s = a; s < b; s += 40) {
+      const f = fr(s), pp = P(s, RES, 0.9);
+      for (const flip of [0, Math.PI]) { putAt(furniture, lampMat, arm, pp.x, pp.y, pp.z, f.heading + flip, s, 1400); putAt(furniture, lampMat, lantern, pp.x, pp.y, pp.z, f.heading + flip, s, 1400); }
+      putAt(furniture, lampMat, col, pp.x, pp.y, pp.z, f.heading, s, 1600);
+    }
+  }
+  /* --------------------------------------------------- overbridges */
+  // Minor roads and a footbridge or two cross on two-span decks: a pier in
+  // the reserve, abutments on the verges, banks carrying the road up to them.
+  {
+    const deckGeo = new THREE.BoxGeometry(1, 1, 1);
+    for (const b of M.bridges) {
+      const s = b.s, f = fr(s), foot = b.kind === 'foot';
+      const width = foot ? 3.2 : 8.5, clear = foot ? 5.7 : 5.4, thick = foot ? 0.5 : 1.2;
+      const left = ROAD_HALF + auxWidth(s) + 6, right = SB1 - 6;
+      const top = f.y + RT.crown(RES) + clear + thick;
+      _v.copy(P(s, (left + right) / 2, 0)); _v.y = top - thick / 2; _q.setFromAxisAngle(UP, f.heading); _sc.set(left - right, thick, width);
+      _m.compose(_v, _q, _sc); structures.geometry(deckMat, s, deckGeo, _m, 2200);
+      // parapets along both edges of the deck
+      for (const side of [-1, 1]) { _v.copy(P(s, (left + right) / 2, 0)); _v.y = top + (foot ? 0.7 : 0.55); _v.addScaledVector(new THREE.Vector3(f.tx, 0, f.tz), side * (width / 2 - 0.15)); _sc.set(left - right, foot ? 1.4 : 1.1, 0.25); _m.compose(_v, _q, _sc); structures.geometry(parapetMat, s, deckGeo, _m, 1800); }
+      // pier and abutments
+      for (const d of [RES, left, right]) {
+        const g = d === RES ? f.y + RT.crown(RES) : groundAt(s, d).y;
+        const h = top - thick - g;
+        const pier = d === RES ? new THREE.BoxGeometry(0.9, h, width - 1).translate(0, h / 2, 0) : new THREE.BoxGeometry(1.4, h, width + 1).translate(0, h / 2, 0);
+        const pp = P(s, d); putAt(structures, concreteMat, pier, pp.x, g, pp.z, f.heading, s, 1800);
+      }
+      // approach banks with the road on top, falling to the ground over 90 m each side
+      for (const side of [-1, 1]) {
+        const d0 = side > 0 ? left : right, len = foot ? 40 : 110;
+        const rows = [], bank = [];
+        for (let i = 0; i <= 22; i += 1) {
+          const t = i / 22, d = d0 + side * t * len, g = groundAt(s, d).y;
+          const y = foot ? lerp(top, g + 0.2, ease(t)) : lerp(top, g + 0.2, ease((t * len - 6) / (len - 6)));
+          const hw = width / 2;
+          rows.push([-hw, 0, hw].map((w) => ({ x: f.x + f.nx * d + f.tx * w, y: y + 0.02, z: f.z + f.nz * d + f.tz * w, u: w / 6.2 + 0.5, v: t * len / 6.2, r: 0.94, g: 0.94, b: 0.95 })));
+          const run = Math.max(0.6, (y - g) * 2.0) + 1.2;
+          bank.push([-hw - run, -hw - 0.4, hw + 0.4, hw + run].map((w, k) => ({ x: f.x + f.nx * d + f.tx * w, y: (k === 0 || k === 3) ? g - 0.05 : y - 0.12, z: f.z + f.nz * d + f.tz * w, u: d / 4, v: w / 4, r: 0.86, g: 0.9, b: 0.72 })));
+        }
+        structures.strip(roadMat, s, side > 0 ? rows.map((r) => r.slice().reverse()) : rows, 2000);
+        structures.strip(bankMat, s, side > 0 ? bank.map((r) => r.slice().reverse()) : bank, 1800);
+      }
+    }
+  }
+
+  /* ---------------------------------------------- pylons and sheds */
+  {
+    // 400 kV lattice towers striding across the fields: four legs, a body, three crossarms, wires
+    const leg = new THREE.BoxGeometry(0.28, 1, 0.28);
+    const armGeo = new THREE.BoxGeometry(1, 0.5, 0.5);
+    const wires = [];
+    for (const py of M.pylons) {
+      const f = fr(py.s), ang = THREE.MathUtils.degToRad(py.angle);
+      const dirX = f.tx * Math.cos(ang) + f.nx * Math.sin(ang), dirZ = f.tz * Math.cos(ang) + f.nz * Math.sin(ang);
+      const prev = [];
+      for (let k = -4; k <= 4; k += 1) {
+        const dist = k * 330 + (k >= 0 ? 90 : -90);
+        const x = f.x + dirX * dist, z = f.z + dirZ * dist;
+        const yg = RT.terrainHeight(x, z) - 0.2, H = 46;
+        const yaw = Math.atan2(dirX, dirZ);
+        for (const [lx, lz] of [[-3.2, -3.2], [3.2, -3.2], [-3.2, 3.2], [3.2, 3.2]]) {
+          _v.set(x + Math.cos(yaw) * lx + Math.sin(yaw) * lz, yg, z - Math.sin(yaw) * lx + Math.cos(yaw) * lz); _q.setFromAxisAngle(UP, yaw);
+          _sc.set(1, H, 1); _m.compose(_v.setY(yg + H / 2), _q, _sc); structures.geometry(pylonMat, py.s, leg, _m, 3200);
+        }
+        const arms = [[H * 0.62, 11], [H * 0.78, 13], [H * 0.93, 10]];
+        for (const [h, w] of arms) { _v.set(x, yg + h, z); _sc.set(w * 2, 1, 1); _q.setFromAxisAngle(UP, yaw + Math.PI / 2); _m.compose(_v, _q, _sc); structures.geometry(pylonMat, py.s, armGeo, _m, 3200); }
+        _v.set(x, yg + H + 1.5, z); _sc.set(1.2, 3, 1.2); _q.setFromAxisAngle(UP, yaw); _m.compose(_v, _q, _sc); structures.geometry(pylonMat, py.s, leg, _m, 3200);
+        const ends = arms.flatMap(([h, w]) => [-1, 1].map((sd) => [x + Math.cos(yaw + Math.PI / 2) * w * sd, yg + h - 2.2, z - Math.sin(yaw + Math.PI / 2) * w * sd]));
+        if (prev.length) ends.forEach((e, j) => { const a = prev[j]; for (let t = 1; t <= 8; t += 1) { const u0 = (t - 1) / 8, u1 = t / 8; wires.push(lerp(a[0], e[0], u0), lerp(a[1], e[1], u0) - Math.sin(u0 * Math.PI) * 9, lerp(a[2], e[2], u0), lerp(a[0], e[0], u1), lerp(a[1], e[1], u1) - Math.sin(u1 * Math.PI) * 9, lerp(a[2], e[2], u1)); } });
+        prev.length = 0; prev.push(...ends);
+      }
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
+    const wm = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2f3236, transparent: true, opacity: 0.55 })); wm.name = 'pylon wires'; scene.add(wm);
+    // distribution sheds beside the junctions: long cladded boxes with a blue band and dock doors
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    for (const sh of M.sheds) {
+      for (let k = 0; k < 3; k += 1) {
+        const s = sh.s + k * 260 + rnd() * 40, side = sh.side, d = side > 0 ? 140 + rnd() * 60 : SB1 - 130 - rnd() * 60;
+        const len = 170 + rnd() * 90, wid = 90 + rnd() * 50, h = 13 + rnd() * 4;
+        const g = groundAt(s, d), f = g.f;
+        _q.setFromAxisAngle(UP, f.heading);
+        _v.set(g.x, g.y + h / 2, g.z); _sc.set(wid, h, len); _m.compose(_v, _q, _sc); structures.geometry(shedMat, s, box, _m, 3500);
+        _v.set(g.x, g.y + h - 1.6, g.z); _sc.set(wid + 0.3, 1.4, len + 0.3); _m.compose(_v, _q, _sc); structures.geometry(shedBandMat, s, box, _m, 3500);
+        _v.set(g.x, g.y + 0.5, g.z); _sc.set(wid + 40, 0.3, len + 30); _m.compose(_v, _q, _sc); structures.geometry(slabMat, s, box, _m, 3500);
+      }
+    }
+  }
+  surfaces.finish(false);
+  furniture.finish(true);
+  structures.finish(true);
+
+  /* --------------------------------------------------------- update */
+  // Chunk visibility by distance along the road, refreshed a few times a second.
+  let lastCull = -1, lastS = 0;
+  function update(time, pos, forward) {
+    if (time - lastCull < 0.2) return;
+    lastCull = time;
+    const near = RT.nearest(pos.x, pos.z);
+    const s = near ? near.s : lastS; lastS = s;
+    for (const o of chunked) { const range = o.userData.range || 1200; o.visible = Math.abs(o.userData.s - s) < range; }
+  }
+  return { groundAt, groundMeshes, VERGE_D, signPost, vergeSign, update };
 };
 
 }
@@ -3958,7 +5112,15 @@ const LOOK_STEP = 4;
 // far too short on a fast road, where you arrive at a bend having covered it in
 // well under a second.
 const lookAhead = (v) => clamp(v * v / (2 * DECEL_PLAN) + v * 3, 70, 340);
-const LANE_EDGE = 2.7, VERGE_EDGE = 3.6, CRASH_EDGE = 4.5;
+// Road edges in lateral metres. A two-way road is symmetric about its centre
+// line; a dual carriageway has the verge on the left and the central reserve
+// barrier on the right, and the left edge moves out along slip roads and
+// refuge areas.
+const EDGE = RT.DUAL
+  ? { laneL: RT.ROAD_HALF - 0.2, vergeL: RT.ROAD_HALF + 0.6, crashL: RT.ROAD_HALF + 1.6, laneR: -(RT.ROAD_HALF - 0.25), vergeR: -(RT.ROAD_HALF + 0.05), crashR: -(RT.ROAD_HALF + 0.42),
+      reasonL: 'OFF THE CARRIAGEWAY · INTO THE BARRIER', reasonR: 'INTO THE CENTRAL BARRIER' }
+  : { laneL: RT.LANE_HALF - 0.3, vergeL: RT.LANE_HALF + 0.6, crashL: RT.LANE_HALF + 1.5, laneR: -(RT.LANE_HALF - 0.3), vergeR: -(RT.LANE_HALF + 0.6), crashR: -(RT.LANE_HALF + 1.5),
+      reasonL: 'OFF THE ROAD · INTO THE HEDGE', reasonR: 'OFF THE ROAD · WRONG SIDE' };
 
 EVO.V_MAX = V_MAX;
 EVO.grip = 1; // scaled down by the weather; 1 is dry tarmac
@@ -3966,7 +5128,7 @@ EVO.cornerSpeeds = (radius) => ({ safe: Math.min(V_MAX, Math.sqrt(A_LAT_SAFE * E
 
 EVO.createBike = function createBike() {
   const bike = {
-    s: RT.length * 0.075, d: 1.5, v: 0, a: 0,
+    s: RT.length * 0.075, d: RT.homeLane, v: 0, a: 0, finished: false,
     lean: 0, leanTarget: 0, steer: 0, steerSmoothed: 0,
     pitch: 0, pitchVel: 0, heave: 0, heaveVel: 0,
     offRoad: 0, rumble: 0, odometer: 0, drift: 0, surfaceRoughness:0.2, surfaceImpact:0, motionScale:1,
@@ -4027,8 +5189,8 @@ EVO.createBike = function createBike() {
     const inp = bike.input;
     const crashed = bike.crashTimer > 0;
     if (crashed) bike.crashTimer -= dt;
-    const throttle = crashed ? 0 : inp.throttle;
-    const brake = crashed ? 1 : inp.brake;
+    const throttle = crashed || bike.finished ? 0 : inp.throttle;
+    const brake = crashed ? 1 : bike.finished ? Math.max(inp.brake, 0.35) : inp.brake;
 
     // Powertrain: EV torque is strongest from a standstill and tails off so the
     // terminal speed lands on V_MAX.
@@ -4076,14 +5238,17 @@ EVO.createBike = function createBike() {
     }
     bike.drift = lerp(bike.drift, drift, 1 - Math.exp(-dt * 6));
 
-    // Road edge, verge and the hedge line.
-    const ad = Math.abs(bike.d);
-    if (ad > LANE_EDGE) {
-      bike.offRoad = lerp(bike.offRoad, ad > VERGE_EDGE ? 1.6 : 1, 1 - Math.exp(-dt * 6));
-    } else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
-    if (ad >= CRASH_EDGE && !crashed) bike.crash(bike.d > 0 ? 'OFF THE ROAD · INTO THE HEDGE' : 'OFF THE ROAD · WRONG SIDE');
-    bike.d = clamp(bike.d, -CRASH_EDGE, CRASH_EDGE);
-    if (crashed && bike.crashTimer <= 0) { bike.d = 1.5; bike.offRoad = 0; bike.drift = 0; }
+    // Road edge, verge and whatever lies beyond it. On the motorway the left
+    // edge follows the slip roads and refuges out and back.
+    const ext = RT.roadExtent ? RT.roadExtent(bike.s).left - RT.ROAD_HALF : 0;
+    const laneL = EDGE.laneL + ext, vergeL = EDGE.vergeL + ext, crashL = EDGE.crashL + ext;
+    const over = bike.d > laneL || bike.d < EDGE.laneR;
+    const onVerge = bike.d > vergeL || bike.d < EDGE.vergeR;
+    if (over) bike.offRoad = lerp(bike.offRoad, onVerge ? 1.6 : 1, 1 - Math.exp(-dt * 6));
+    else bike.offRoad = lerp(bike.offRoad, 0, 1 - Math.exp(-dt * 4));
+    if ((bike.d >= crashL || bike.d <= EDGE.crashR) && !crashed) bike.crash(RT.edgeReason ? RT.edgeReason(bike.s, bike.d) : bike.d > 0 ? EDGE.reasonL : EDGE.reasonR);
+    bike.d = clamp(bike.d, EDGE.crashR, crashL);
+    if (crashed && bike.crashTimer <= 0) { bike.d = RT.homeLane; bike.offRoad = 0; bike.drift = 0; }
     bike.rumble = clamp(bike.offRoad * Math.min(1, bike.v / 8), 0, 1);
 
     // Lean: corner physics from the road curvature plus a steering lean.
@@ -4108,7 +5273,10 @@ EVO.createBike = function createBike() {
     bike.heaveVel += ((roadHeave + buzz - bike.heave) * 180 - bike.heaveVel * 19) * dt;
     bike.heave += bike.heaveVel * dt;
 
-    bike.s = mod(bike.s + bike.v * dt, RT.length);
+    if (RT.OPEN) {
+      bike.s = Math.min(bike.s + bike.v * dt, RT.length - 1);
+      if (RT.runEnd && bike.s >= RT.runEnd && !bike.finished) bike.finished = true;
+    } else bike.s = mod(bike.s + bike.v * dt, RT.length);
     bike.odometer += bike.v * dt;
     if (bike.notice && bike.elapsed > bike.notice.until) bike.notice = null;
   };
@@ -4118,9 +5286,10 @@ EVO.createBike = function createBike() {
     // Eye moves to the inside of the corner as the rider leans.
     const eyeD = bike.d + Math.sin(bike.lean) * 0.42;
     const eyeH = EYE_HEIGHT * Math.cos(bike.lean * 0.9) + bike.heave - Math.max(0, -bike.pitch) * 0.8;
-    const ad = Math.abs(eyeD);
-    const groundDrop = ad > RT.LANE_HALF ? -0.1 - (ad - RT.LANE_HALF) * 0.12 : 0; // verge and ditch
-    bike.pos.set(f.x + f.nx * eyeD, f.y + RT.crown(Math.min(ad, RT.LANE_HALF)) + groundDrop + eyeH, f.z + f.nz * eyeD);
+    const edgeL = RT.roadExtent ? RT.roadExtent(bike.s).left : RT.LANE_HALF, edgeR = RT.DUAL ? RT.DUAL.rightEdge : -RT.LANE_HALF;
+    const beyond = eyeD > edgeL ? eyeD - edgeL : eyeD < edgeR ? edgeR - eyeD : 0;
+    const groundDrop = beyond > 0 ? -0.1 - beyond * 0.12 : 0; // verge and ditch
+    bike.pos.set(f.x + f.nx * eyeD, f.y + RT.crown(clamp(eyeD, edgeR, edgeL)) + groundDrop + eyeH, f.z + f.nz * eyeD);
     camera.position.copy(bike.pos);
     const yaw = Math.atan2(-f.tx, -f.tz) + bike.steerSmoothed * 0.05 + bike.lean * 0.04;
     const slope = Math.atan2(f.ty, 1);
@@ -4243,11 +5412,12 @@ const HUMP_SMOOTH = 15, HUMP_HARD = -40;
 
 EVO.createScore = function createScore(bike, traffic) {
   const RT = EVO.route;
+  if (RT.DUAL) return createRunScore(bike, traffic);
   const L = RT.length;
   let best = 0;
   try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { best = 0; }
   const state = {
-    score: 0, lap: 1, lapTime: 0, best, lastLap: null, chain: 0,
+    score: 0, lap: 1, lapTime: 0, best, lastLap: null, chain: 0, get label() { return `LAP ${state.lap}`; },
     get mult() { return 1 + Math.min(8, state.chain) * 0.25; },
     pop: null, // { text, points, tone, until }
     flags: { speeding: false, verge: false }
@@ -4381,6 +5551,97 @@ EVO.createScore = function createScore(bike, traffic) {
 
   return { state, update, reset };
 };
+
+/* Motorway scoring: one run from services to services. Pace pays while you
+ * are within the limit on the carriageway; passing on the right pays and
+ * chains a multiplier; undertaking, hogging an outer lane with the inside
+ * lane clear, tailgating, breaking the gantry limit, leaving the carriageway
+ * and crashing all cost. Pulling in at the services completes the run. */
+const BEST_RUN_KEY = `evo.bestRun.${EVO.activeRoute}`;
+const CLEAN_PASS = 80, UNDERTAKE = -150, QUEUE_PASS = 20, UNDERTAKEN = -40, PULL_IN = 300, RUN_CRASH = -250;
+function createRunScore(bike, traffic) {
+  const RT = EVO.route, LANES = RT.laneCentres || [5.475, 1.825, -1.825, -5.475];
+  let best = 0;
+  try { best = Number(localStorage.getItem(BEST_RUN_KEY)) || 0; } catch (e) { best = 0; }
+  const state = {
+    score: 0, lap: 1, lapTime: 0, best, lastLap: null, chain: 0, finished: false, label: 'RUN',
+    get mult() { return 1 + Math.min(8, state.chain) * 0.25; },
+    pop: null, flags: { speeding: false, verge: false, hog: false, tailgate: false }
+  };
+  let crashes = bike.crashes, hogTime = 0, tailTime = 0;
+  function pop(text, points, tone) {
+    state.score += points;
+    state.pop = { text, points, tone: tone || (points >= 0 ? 'good' : 'bad'), until: bike.elapsed + 1.8 };
+  }
+  function setBest() { try { localStorage.setItem(BEST_RUN_KEY, String(Math.round(best))); } catch (e) { /* private mode */ } }
+  const laneIndex = (d) => { let k = 0; for (let i = 1; i < LANES.length; i += 1) if (Math.abs(d - LANES[i]) < Math.abs(d - LANES[k])) k = i; return k; };
+
+  function update(dt, events) {
+    if (dt <= 0 || state.finished) return;
+    const crashed = bike.crashTimer > 0;
+    state.lapTime += dt;
+    const mph = bike.v * 2.23694;
+    const limit = RT.speedLimitAt(bike.s);
+    const speeding = mph > limit + 4;
+    const onVerge = bike.offRoad > 0.5;
+    if (!crashed && !speeding && !onVerge) state.score += dt * (mph / 6) * state.mult;
+    if (speeding && !crashed) {
+      state.score -= dt * (limit < 70 ? 8 : 4);
+      if (!state.flags.speeding) { state.flags.speeding = true; pop(limit < 70 ? `OVER THE GANTRY LIMIT · ${limit}` : 'OVER THE LIMIT · 70', 0, 'bad'); }
+    } else state.flags.speeding = false;
+    if (onVerge && !crashed) {
+      state.score -= dt * 6;
+      if (!state.flags.verge) { state.flags.verge = true; pop(bike.d > 0 ? 'OFF THE CARRIAGEWAY' : 'ON THE HARD STRIP', 0, 'bad'); }
+    } else if (!onVerge) state.flags.verge = false;
+    if (bike.crashes > crashes) {
+      crashes = bike.crashes; state.chain = 0; state.score += RUN_CRASH;
+      state.pop = { text: 'CRASH', points: RUN_CRASH, tone: 'bad', until: bike.elapsed + 2.2 };
+    }
+    // lane discipline: an outer lane with the inside lane clear is hogging after a few seconds
+    const lane = laneIndex(bike.d);
+    const insideClear = lane > 0 && Math.abs(bike.d - LANES[lane]) < 1.0 && traffic.laneClear && traffic.laneClear(LANES[lane - 1], 85, 30);
+    if (insideClear && bike.v > 15 && !crashed) hogTime += dt; else hogTime = Math.max(0, hogTime - dt * 2);
+    if (hogTime > 6) {
+      state.score -= dt * 3;
+      if (!state.flags.hog) { state.flags.hog = true; state.chain = 0; pop('LANE HOGGING · MOVE LEFT', 0, 'bad'); }
+    } else state.flags.hog = false;
+    // two-second rule
+    const ahead = traffic.sameAhead ? traffic.sameAhead(70) : null;
+    const tooClose = ahead && bike.v > 12 && (ahead.distance - ahead.car.half) / bike.v < 1.1;
+    if (tooClose && !crashed) tailTime += dt; else tailTime = 0;
+    if (tailTime > 1.5) {
+      state.score -= dt * 2;
+      if (!state.flags.tailgate) { state.flags.tailgate = true; pop('TOO CLOSE · LEAVE TWO SECONDS', 0, 'bad'); }
+    } else state.flags.tailgate = false;
+    // passes
+    if (events && events.overtake && !crashed) {
+      const o = events.overtake;
+      if (o.side === 'left') {
+        if (o.car.v < 12) pop('PASSED QUEUING TRAFFIC', QUEUE_PASS);
+        else { state.chain = 0; pop('UNDERTAKING', UNDERTAKE); }
+      } else if (o.gap < 0.45) pop('PASS · TOO CLOSE', Math.round(CLEAN_PASS * 0.25));
+      else { state.chain += 1; pop(state.chain > 1 ? `CLEAN PASS ×${state.mult.toFixed(2).replace(/\.?0+$/, '')}` : 'CLEAN PASS', Math.round(CLEAN_PASS * state.mult)); }
+    }
+    if (events && events.passedBy && events.passedBy.side === 'left' && !crashed && bike.v > 15) { state.chain = 0; pop('UNDERTAKEN · YOU WERE IN THE WAY', UNDERTAKEN); }
+    // the finish
+    if (bike.finished) {
+      state.finished = true;
+      const pulledIn = bike.d > RT.ROAD_HALF - 0.5;
+      if (pulledIn) state.score += PULL_IN;
+      const total = Math.round(state.score);
+      state.lastLap = { score: total, time: state.lapTime, lap: 1, pulledIn };
+      if (total > best) { best = total; state.best = best; setBest(); state.pop = { text: `NEW BEST RUN · ${total.toLocaleString()}`, points: 0, tone: 'best', until: bike.elapsed + 6 }; }
+      else state.pop = { text: `${pulledIn ? 'PULLED IN AT NEWPORT PAGNELL' : 'MISSED THE SERVICES'} · ${total.toLocaleString()}`, points: 0, tone: 'good', until: bike.elapsed + 6 };
+      bike.say(pulledIn ? 'NEWPORT PAGNELL SERVICES · RUN COMPLETE' : 'MISSED THE SERVICES · RUN COMPLETE', 6, 'info');
+    }
+    if (state.pop && bike.elapsed > state.pop.until) state.pop = null;
+  }
+  function reset() {
+    state.score = 0; state.lap = 1; state.lapTime = 0; state.chain = 0; state.pop = null; state.lastLap = null; state.finished = false;
+    hogTime = 0; tailTime = 0; crashes = bike.crashes;
+  }
+  return { state, update, reset };
+}
 
 }
 
@@ -4976,25 +6237,28 @@ function makeCar(kind, paint, envMap, parked=false) {
   return g;
 }
 
+/* Merge the static parts of a vehicle by material: one draw call per material
+ * instead of dozens of small meshes. Brake lights keep their own material. */
+// Merge the static parts of each car by material. This avoids dozens of draw calls per parked vehicle.
+function mergeGroup(group){
+  group.updateMatrixWorld(true);const bins=new Map(),remove=[];
+  group.traverse(o=>{if(!o.isMesh||(o.material.transparent&&!o.material.alphaTest))return;const key=o.material.uuid;
+    if(!bins.has(key))bins.set(key,{mat:o.material,parts:[],shadow:false});const b=bins.get(key);const g=o.geometry.clone().applyMatrix4(o.matrixWorld);b.parts.push(g);b.shadow=b.shadow||o.castShadow;remove.push(o);
+  });
+  remove.forEach(o=>o.removeFromParent());
+  for(const b of bins.values()){
+    const p=[],n=[],uv=[],ix=[];let offset=0;
+    for(const g of b.parts){const pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;
+      for(let i=0;i<pa.count;i++){p.push(pa.getX(i),pa.getY(i),pa.getZ(i));n.push(na.getX(i),na.getY(i),na.getZ(i));uv.push(ua?ua.getX(i):0,ua?ua.getY(i):0);}
+      const ind=g.index;if(ind)for(let i=0;i<ind.count;i++)ix.push(ind.getX(i)+offset);else for(let i=0;i<pa.count;i++)ix.push(i+offset);offset+=pa.count;g.dispose();
+    }
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(ix);geo.computeBoundingSphere();
+    const m=new THREE.Mesh(geo,b.mat);m.castShadow=b.shadow;m.receiveShadow=true;group.add(m);
+  }
+}
+
 EVO.addParkedVillageCars = function addParkedVillageCars(world, envMap, quality={}) {
   const parked=[],UP=new THREE.Vector3(0,1,0);
-  // Merge the static parts of each car by material. This avoids dozens of draw calls per parked vehicle.
-  function mergeGroup(group){
-    group.updateMatrixWorld(true);const bins=new Map(),remove=[];
-    group.traverse(o=>{if(!o.isMesh||o.material.transparent)return;const key=o.material.uuid;
-      if(!bins.has(key))bins.set(key,{mat:o.material,parts:[],shadow:false});const b=bins.get(key);const g=o.geometry.clone().applyMatrix4(o.matrixWorld);b.parts.push(g);b.shadow=b.shadow||o.castShadow;remove.push(o);
-    });
-    remove.forEach(o=>o.removeFromParent());
-    for(const b of bins.values()){
-      const p=[],n=[],uv=[],ix=[];let offset=0;
-      for(const g of b.parts){const pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;
-        for(let i=0;i<pa.count;i++){p.push(pa.getX(i),pa.getY(i),pa.getZ(i));n.push(na.getX(i),na.getY(i),na.getZ(i));uv.push(ua?ua.getX(i):0,ua?ua.getY(i):0);}
-        const ind=g.index;if(ind)for(let i=0;i<ind.count;i++)ix.push(ind.getX(i)+offset);else for(let i=0;i<pa.count;i++)ix.push(i+offset);offset+=pa.count;g.dispose();
-      }
-      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(ix);geo.computeBoundingSphere();
-      const m=new THREE.Mesh(geo,b.mat);m.castShadow=b.shadow;m.receiveShadow=true;group.add(m);
-    }
-  }
   RT.detailPlan.lots.forEach((pc,i)=>{
     const mesh=makeCar(pc.kind,pc.paint,envMap,true);mergeGroup(mesh);
     const f={...RT.frame(pc.s)},p=world.groundAt(pc.s,pc.side*pc.d);
@@ -5065,6 +6329,7 @@ function makeLorry(paint, envMap) {
 }
 
 EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
+  if (EVO.ROUTE.traffic?.motorway && EVO.createMotorwayTraffic) return EVO.createMotorwayTraffic(scene, bike, opts, { makeCar, makeLorry, LORRY, CAR_HALF_WIDTH });
   const count = opts.count ?? 5;
   const sameCount = opts.same ?? 3;
   const L = RT.length;
@@ -5203,6 +6468,225 @@ EVO.createTraffic = function createTraffic(scene, bike, opts = {}) {
   return { cars, update, setMode, oncomingAhead, sameAhead, get mode() { return mode; } };
 };
 
+/* Motorway traffic: four lanes of same-direction vehicles with UK lane
+ * discipline (keep left, move out to pass, move back when clear, lorries in
+ * the inside lanes at 56 mph) and a cosmetic flow on the other carriageway.
+ * The road is open-ended, so vehicles are recycled around the rider. */
+EVO.createMotorwayTraffic = function createMotorwayTraffic(scene, bike, opts, parts) {
+  const { makeCar, makeLorry, LORRY, CAR_HALF_WIDTH } = parts;
+  const L = RT.length, LANES = RT.laneCentres, LW = RT.DUAL.laneW, envMap = opts.envMap || null;
+  const SB_LANES = [0, 1, 2, 3].map((k) => RT.DUAL.reserveFar - LW * (3.5 - k)); // their lane 1 first, nearest their verge
+  const coarse = !!opts.coarse;
+  const rnd = EVO.rng(9091);
+  const cars = [];
+  const paints = [0xc9ccd1, 0x1f3a6e, 0x8c1a1f, 0xe9e7e0, 0x26282b, 0x4c6b3c, 0x8a8f96, 0x2f4f8f, 0xd8d5cc, 0x5b1d24];
+  const lorryPaints = [0x35507a, 0x8d8f93, 0x9d2a2f, 0x2c4a7a, 0xe6e3da, 0x2d6b3a];
+  const hgvShare = opts.hgv ?? 0.3;
+  function build(kind, i) {
+    const lorry = kind === 'lorry';
+    const mesh = lorry ? makeLorry(lorryPaints[i % lorryPaints.length], envMap)
+      : makeCar(kind, kind === 'van' && i % 2 ? 0xf2f0ea : paints[i % paints.length], envMap);
+    mergeGroup(mesh);
+    scene.add(mesh);
+    return { mesh, lorry, kind, half: lorry ? LORRY.L / 2 : kind === 'van' ? 2.55 : 2.35 };
+  }
+  // cruise speeds by type and lane: lorries on the limiter, cars a little over the limit in the outer lanes
+  function cruiseFor(kind, lane) {
+    if (kind === 'lorry') return 24.4 + rnd() * 0.9;
+    if (kind === 'van') return 27 + rnd() * 3;
+    return [27.5 + rnd() * 3, 29.5 + rnd() * 3, 31.5 + rnd() * 3, 33 + rnd() * 3.5][lane];
+  }
+  function laneFor(kind) {
+    const r = rnd();
+    if (kind === 'lorry') return r < 0.85 ? 0 : 1;
+    if (kind === 'van') return r < 0.6 ? 0 : 1;
+    return r < 0.38 ? 0 : r < 0.72 ? 1 : r < 0.93 ? 2 : 3;
+  }
+  const count = EVO.ROUTE.traffic?.count ?? (coarse ? 15 : 24), sbCount = coarse ? 9 : 14;
+  for (let i = 0; i < count; i += 1) {
+    const r = rnd();
+    const kind = r < hgvShare ? 'lorry' : r < hgvShare + 0.14 ? 'van' : r < hgvShare + 0.5 ? 'hatch' : 'suv';
+    const c = build(kind, i);
+    const lane = laneFor(kind);
+    cars.push({ ...c, dir: 1, lane, d: LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
+  }
+  for (let i = 0; i < sbCount; i += 1) {
+    const r = rnd();
+    const kind = r < 0.25 ? 'lorry' : r < 0.36 ? 'van' : r < 0.7 ? 'hatch' : 'suv';
+    const c = build(kind, i + 40);
+    const lane = laneFor(kind);
+    cars.push({ ...c, dir: -1, lane, d: SB_LANES[lane], s: 0, v: 0, cruise: cruiseFor(kind, lane), braking: 0, lastRel: null, inLaneSince: 0, changeCooldown: 0 });
+  }
+  let mode = 'both';
+  function active(car) { return mode === 'both' || (mode === 'oncoming' && car.dir < 0); }
+
+  // Seed positions in a window around the rider, spaced out per lane.
+  function clearAt(car, s) {
+    for (const o of cars) { if (o === car || o.dir !== car.dir || o.lane !== car.lane) continue; if (Math.abs(o.s - s) < 45 + o.half + car.half) return false; }
+    return Math.abs(s - bike.s) > 30 || Math.abs(car.d - bike.d) > 2.2;
+  }
+  function respawn(car, ahead) {
+    for (let tries = 0; tries < 12; tries += 1) {
+      const s = ahead ? bike.s + 650 + rnd() * 450 : bike.s - 320 - rnd() * 160;
+      if (s < 40 || s > L - 60) { if (ahead && s > L - 60) car.s = L - 60 - rnd() * 40; else car.s = Math.max(40, s); }
+      else car.s = s;
+      if (clearAt(car, car.s)) break;
+      car.s += 60 * (ahead ? 1 : -1);
+    }
+    car.lane = laneFor(car.kind); car.d = (car.dir > 0 ? LANES : SB_LANES)[car.lane];
+    car.cruise = cruiseFor(car.kind, car.lane); car.v = car.cruise; car.lastRel = null; car.inLaneSince = 0;
+  }
+  function seed() {
+    let k = 0;
+    for (const car of cars) {
+      for (let tries = 0; tries < 20; tries += 1) {
+        const s = car.dir > 0 ? bike.s - 300 + (k / cars.length) * 1400 + rnd() * 60 : bike.s - 250 + rnd() * 1300;
+        car.s = clamp(s, 40, L - 60);
+        if (clearAt(car, car.s)) break;
+        k += 0.3;
+      }
+      car.v = car.cruise; k += 1;
+      place(car);
+    }
+  }
+
+  const _p = new THREE.Vector3();
+  function place(car) {
+    const f = RT.frame(car.s);
+    RT.point(car.s, car.d, 0, _p);
+    car.mesh.position.copy(_p);
+    if (car.dir < 0) car.mesh.rotation.set(Math.atan2(f.ty, 1), Math.atan2(-f.tx, -f.tz), 0, 'YXZ');
+    else car.mesh.rotation.set(-Math.atan2(f.ty, 1), Math.atan2(f.tx, f.tz), 0, 'YXZ');
+    // a lane change leans the car into its move a touch
+    car.mesh.rotation.y += (car.dTarget - car.d) * (car.dir > 0 ? -0.04 : 0.04);
+  }
+  for (const car of cars) car.dTarget = car.d;
+  seed();
+
+  // Nearest vehicle ahead of `car` in a lane (by lateral overlap), including the rider.
+  function leaderIn(car, laneD, maxGap) {
+    let best = null;
+    for (const o of cars) {
+      if (o === car || o.dir !== car.dir || !active(o)) continue;
+      if (Math.abs(o.d - laneD) > LW * 0.6) continue;
+      const gap = (o.s - car.s) * car.dir;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { s: o.s, v: o.v, half: o.half, gap };
+    }
+    if (car.dir > 0 && Math.abs(bike.d - laneD) < LW * 0.6) {
+      const gap = bike.s - car.s;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { s: bike.s, v: bike.v, half: 1.1, gap, bike: true };
+    }
+    return best;
+  }
+  function followerIn(car, laneD, maxGap) {
+    let best = null;
+    for (const o of cars) {
+      if (o === car || o.dir !== car.dir || !active(o)) continue;
+      if (Math.abs(o.d - laneD) > LW * 0.6) continue;
+      const gap = (car.s - o.s) * car.dir;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { v: o.v, gap };
+    }
+    if (car.dir > 0 && Math.abs(bike.d - laneD) < LW * 0.6) {
+      const gap = car.s - bike.s;
+      if (gap > 0 && gap < maxGap && (!best || gap < best.gap)) best = { v: bike.v, gap, bike: true };
+    }
+    return best;
+  }
+  const maxLane = (car) => (car.lorry ? 1 : 3);
+
+  function update(dt) {
+    const events = { collision: null, passBy: null, overtake: null, passedBy: null, tailgate: 0 };
+    for (const car of cars) {
+      if (!active(car)) continue;
+      const dir = car.dir, lanes = dir > 0 ? LANES : SB_LANES;
+      car.inLaneSince += dt; car.changeCooldown = Math.max(0, car.changeCooldown - dt);
+      // the gantry limit applies to everyone on our side
+      let limit = car.cruise;
+      if (dir > 0) limit = Math.min(limit, RT.speedLimitAt(car.s) / 2.23694 + (car.lorry ? 0 : 1.5));
+      // ease off before the finish so nothing piles into the end of the road
+      if (dir > 0 && car.s > L - 120) limit = Math.min(limit, 8);
+      // two-second gap to the leader in the lane we are in (or moving into)
+      const lead = leaderIn(car, car.dTarget, 160);
+      if (lead) {
+        const need = car.v * 1.9 + lead.half + car.half + 5;
+        if (lead.gap < need) limit = Math.min(limit, lead.gap < lead.half + car.half + 3 ? 0 : lead.v * ((lead.gap - lead.half - car.half - 3) / (need - lead.half - car.half - 3)));
+        if (lead.bike && lead.gap < 16 && bike.v < car.cruise - 3) events.tailgate = Math.max(events.tailgate, 1 - lead.gap / 16);
+      }
+      // lane discipline: move out to pass something slower, move back in when the inside lane is clear
+      if (dir > 0 && car.changeCooldown <= 0 && Math.abs(car.d - car.dTarget) < 0.05) {
+        const blocked = lead && lead.v < car.cruise - 1.5 && lead.gap < car.v * 3.2 + 25;
+        if (blocked && car.lane < maxLane(car)) {
+          const target = lanes[car.lane + 1];
+          const ahead = leaderIn(car, target, car.v * 2.5 + 20), behind = followerIn(car, target, 90);
+          const okBehind = !behind || behind.gap > (behind.v - car.v) * 3.5 + 28;
+          if (!ahead && okBehind) { car.lane += 1; car.dTarget = target; car.changeCooldown = 6; car.inLaneSince = 0; }
+        } else if (!blocked && car.lane > 0 && car.inLaneSince > 5) {
+          const target = lanes[car.lane - 1];
+          const ahead = leaderIn(car, target, car.v * 3.8 + 40), behind = followerIn(car, target, 45);
+          if ((!ahead || ahead.v > car.v - 1) && !behind) { car.lane -= 1; car.dTarget = target; car.changeCooldown = 5; car.inLaneSince = 0; }
+        }
+      }
+      // cars brake harder than they accelerate
+      const rate = limit < car.v - 0.5 ? 2.4 : 0.55;
+      car.v = lerp(car.v, limit, 1 - Math.exp(-dt * rate));
+      car.braking = lerp(car.braking, limit < car.v - 0.8 ? 1 : 0, 1 - Math.exp(-dt * 8));
+      if (car.mesh.userData.tail) car.mesh.userData.tail.emissiveIntensity = 0.7 + car.braking * 2.2;
+      car.d = lerp(car.d, car.dTarget, 1 - Math.exp(-dt * 0.9));
+      if (Math.abs(car.d - car.dTarget) < 0.03) car.d = car.dTarget;
+      car.s += dir * car.v * dt;
+      // recycle around the rider on an open road
+      const rel = car.s - bike.s;
+      if (dir > 0 && (rel < -480 || rel > 1250)) respawn(car, rel < 0 && car.cruise < bike.v + 2 ? true : rel > 0 ? false : true);
+      if (dir < 0 && (rel < -380 || rel > 1300)) { car.s = bike.s + 900 + rnd() * 380; car.lastRel = null; }
+      if (car.s < 20) car.s = 20;
+      place(car);
+      car.mesh.visible = Math.abs(car.s - bike.s) < (coarse ? 650 : 900);
+      if (dir < 0) { car.lastRel = rel; continue; }
+
+      // passes, both ways, and contact
+      const lateral = Math.abs(bike.d - car.d);
+      const relNow = car.s - bike.s;
+      if (car.lastRel !== null) {
+        if (car.lastRel > 0 && relNow <= 0) events.overtake = { car, gap: lateral - CAR_HALF_WIDTH, closing: bike.v - car.v, side: bike.d < car.d ? 'right' : 'left' };
+        if (car.lastRel < 0 && relNow >= 0) events.passedBy = { car, gap: lateral - CAR_HALF_WIDTH, side: car.d < bike.d ? 'right' : 'left' };
+      }
+      car.lastRel = relNow;
+      if (lateral < CAR_HALF_WIDTH + 0.4 && relNow > -car.half - 0.4 && relNow < car.half + 0.3) {
+        events.collision = { car, reason: relNow > 0 ? (car.lorry ? 'RAN INTO THE LORRY AHEAD' : 'RAN INTO THE CAR AHEAD') : 'CLIPPED BY TRAFFIC' };
+      }
+    }
+    return events;
+  }
+
+  function sameAhead(metres = 60) {
+    let best = null;
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      if (Math.abs(car.d - bike.d) > LW * 0.62) continue;
+      const rel = car.s - bike.s;
+      if (rel <= 0 || rel > metres) continue;
+      if (!best || rel < best.distance) best = { car, distance: rel };
+    }
+    return best;
+  }
+  /* Is the lane at lateral `d` free of traffic within `ahead` metres in front
+   * and `behind` metres back? Used by the score to judge lane hogging. */
+  function laneClear(d, ahead = 70, behind = 25) {
+    for (const car of cars) {
+      if (car.dir < 0 || !active(car)) continue;
+      if (Math.abs(car.d - d) > LW * 0.62) continue;
+      const rel = car.s - bike.s;
+      if (rel > -behind && rel < ahead) return false;
+    }
+    return true;
+  }
+  function setMode(next) {
+    mode = next;
+    for (const car of cars) { car.mesh.visible = active(car); car.lastRel = null; }
+  }
+  return { cars, update, setMode, oncomingAhead() { return null; }, sameAhead, laneClear, get mode() { return mode; } };
+};
+
 }
 
 /* ---- 90-main.js ---- */
@@ -5269,7 +6753,7 @@ EVO.createHud = function createHud(bike, score) {
         const sc = Math.max(0, Math.round(st.score)).toLocaleString();
         if (sc !== lastScore) { scoreEl.textContent = sc; lastScore = sc; }
         const mm = Math.floor(st.lapTime / 60), ss = Math.floor(st.lapTime % 60);
-        const meta = `LAP ${st.lap} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
+        const meta = `${st.label || `LAP ${st.lap}`} · ${mm}:${String(ss).padStart(2, '0')}${st.mult > 1 ? ` · ×${st.mult.toFixed(2).replace(/\.?0+$/, '')}` : ''} · BEST ${Math.round(st.best).toLocaleString()}`;
         if (meta !== lastMeta) { scoreMeta.textContent = meta; lastMeta = meta; }
         const p = st.pop;
         const key = p ? `${p.text}|${p.until}` : '';
@@ -5299,15 +6783,19 @@ function boot() {
     routeSel.value = EVO.activeRoute;
     const L = EVO.route.length;
     spawnSel.innerHTML = '';
-    for (const [at, label] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
+    for (const [at, label, lane] of (EVO.ROUTE.spawns || [[0, 'Start']])) {
       const o = document.createElement('option');
-      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label;
+      o.value = String(Math.round(at <= 1 ? at * L : at)); o.textContent = label; if (lane !== undefined) o.dataset.lane = String(lane);
       spawnSel.appendChild(o);
     }
     document.querySelector('#start .kicker').textContent = EVO.ROUTE.kicker;
     document.querySelector('#start .copy').textContent = EVO.ROUTE.blurb;
     const hint = document.querySelector('#start .controls li:nth-child(4)');
     if (hint && EVO.ROUTE.roadHint) hint.innerHTML = `<b>Road</b> ${EVO.ROUTE.roadHint}`;
+    const scoreHint = document.querySelector('#start .controls li:nth-child(5)');
+    if (scoreHint && EVO.ROUTE.scoreHint) scoreHint.innerHTML = `<b>Score</b> ${EVO.ROUTE.scoreHint}`;
+    const trafficSel = document.getElementById('traffic');
+    if (trafficSel && EVO.ROUTE.trafficLabels) EVO.ROUTE.trafficLabels.forEach((label, k) => { if (trafficSel.options[k]) trafficSel.options[k].textContent = label; });
     routeSel.addEventListener('change', () => {
       try { localStorage.setItem('evo.route', routeSel.value); } catch (e) { /* private mode */ }
       const q = new URLSearchParams(location.search);
@@ -5320,8 +6808,9 @@ function boot() {
     if (!app) { ridePending = true; return; }
     const wanted = new URLSearchParams(location.search).get('light') || document.getElementById('light')?.value || 'noon';
     if (wanted !== app.world.lightingName) app.setLighting(wanted);
-    app.bike.s=Number(document.getElementById('spawn').value)||180;
-    app.bike.d=1.5;app.bike.v=0;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
+    const spawnEl=document.getElementById('spawn'), spawnOpt=spawnEl.options[spawnEl.selectedIndex];
+    app.bike.s=Number(spawnEl.value)||180;
+    app.bike.d=spawnOpt&&spawnOpt.dataset.lane!==undefined?Number(spawnOpt.dataset.lane):EVO.route.homeLane;app.bike.v=0;app.bike.finished=false;app.bike.pitch=app.bike.pitchVel=app.bike.heave=app.bike.heaveVel=0;
     app.bike.motionScale=document.getElementById('comfort').checked?.45:1;
     const trafficMode=document.getElementById('traffic')?.value||'both';
     app.trafficEnabled=trafficMode!=='none';
@@ -5359,7 +6848,7 @@ function boot() {
   document.getElementById('pause').addEventListener('click',togglePause);
   window.addEventListener('keydown',e=>{
     if(e.code==='KeyP'&&!e.repeat)togglePause();
-    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=1.5;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
+    if(e.code==='KeyR'&&app?.running){const b=app.bike;b.d=EVO.route.homeLane;b.v=0;b.lean=b.leanTarget=b.pitch=b.pitchVel=b.heave=b.heaveVel=0;b.offRoad=b.rumble=b.crashTimer=0;b.notice=null;}
   });
   setStatus('Building detailed cottages, hedgerows and road surfaces…');
   setTimeout(() => {
@@ -5427,7 +6916,7 @@ function buildApp() {
   const bike = EVO.createBike();
   const audio = EVO.createAudio();
   const controls = EVO.createControls(canvas, bike, { onInteract: () => audio.start() });
-  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap });
+  const traffic = EVO.createTraffic(world.scene, bike, { count: Math.round((quality.coarse ? 6 : 7) * (EVO.ROUTE.traffic?.oncoming ?? 1)), same: quality.coarse ? 2 : 3, hgv: EVO.ROUTE.traffic?.hgv ?? 0, cruise: EVO.ROUTE.traffic?.cruise ?? 1, envMap: EVO.envMap, coarse: quality.coarse });
   const score = EVO.createScore(bike, traffic);
   const rain = EVO.createRain(world.scene, quality);
   EVO.addParkedVillageCars?.(world, EVO.envMap, quality);
@@ -5461,6 +6950,17 @@ function buildApp() {
   if (showStats) statsEl.hidden = false;
 
   const STEP = 1 / 120;
+  // On an open road the run ends at the far services: coast to a stop, show
+  // the result, then hand back to the start screen for another go.
+  let finishTimer = null;
+  function endRun() {
+    finishTimer = null;
+    const st = score.state, last = st.lastLap;
+    EVO.app.running = false;
+    const start = document.getElementById('start');
+    start.hidden = false; start.classList.remove('is-hidden');
+    if (last) { const mm = Math.floor(last.time / 60), ss = Math.floor(last.time % 60); setStatus(`Run complete: ${last.score.toLocaleString()} points in ${mm}:${String(ss).padStart(2, '0')}${last.pulledIn ? '' : ' (missed the services)'} · best ${Math.round(st.best).toLocaleString()}`); }
+  }
   let last = performance.now(), acc = 0, frames = 0, fpsTime = 0;
   const bikePos = new THREE.Vector3();
   function loop(now) {
@@ -5485,6 +6985,7 @@ function buildApp() {
       score.update(STEP, events);
       acc-=STEP;steps++;
     }
+    if (bike.finished && !finishTimer) finishTimer = setTimeout(endRun, 6500);
     hud.update();
     const portrait = window.innerHeight > window.innerWidth;
     bike.applyCamera(camera, portrait);

@@ -102,9 +102,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     };
     EVO.tagShader(mat, 'fill' + amount.toFixed(3));
   };
-  EVO.addFoliageFill(hedgeMat, 0.12);
+  EVO.addFoliageFill(hedgeMat, 0.26);
   const leafMat = new THREE.MeshStandardMaterial({ map: T.haw.map, normalMap: T.haw.normalMap, normalScale: new THREE.Vector2(0.7, 0.7), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.86, metalness: 0, emissive: 0x1c2c0c, emissiveIntensity: 0.2 });
-  EVO.addFoliageFill(leafMat, 0.16);
+  EVO.addFoliageFill(leafMat, 0.24);
   const umbelMat = new THREE.MeshStandardMaterial({ map: T.umbel, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x222218, emissiveIntensity: 0.4 });
   const stoneMat = new THREE.MeshStandardMaterial({ map: T.stone.map, normalMap: T.stone.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0, vertexColors: true });
   const bladeMat = new THREE.MeshStandardMaterial({ map: T.blade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color: SCENE.blade ?? 0xadb5a5, emissive: 0x1a2817, emissiveIntensity: 0.12 });
@@ -145,6 +145,16 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     EVO.tagShader(mat, 'cloud');
   }
 
+  // The road-specific world is built by one of two builders: the two-way
+  // country road here, or the motorway module for a dual carriageway. Both hand
+  // back the same ground and sign helpers that the rest of the world relies on.
+  const materials = { roadMat, grassMat, hedgeMat, stoneMat, markMat, leafMat, umbelMat, bladeMat, coneMat, postMat, woodMat, blackMat, signBackMat, studMat, barrierMat, barrierRedMat };
+  const part = SCENE.motorway
+    ? EVO.buildMotorway({ scene, renderer, quality, T, rnd, L, GeoSink, stripRows, orientRows, addCloudShadow, materials })
+    : buildBroad();
+  const { groundAt, groundMeshes, VERGE_D, signPost, vergeSign } = part;
+
+  function buildBroad() {
   /* ------------------------------------------------- verge height model */
   // The verge starts at the edge of whatever carriageway this route has, so the
   // profile and the verge mesh are both measured out from it.
@@ -745,7 +755,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
       }
     }
     const geo = new THREE.BoxGeometry(4.4, 1, 1.5); geo.translate(0, 0.5, 0);
-    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false; EVO.addFoliageFill(farHedgeMat, 0.12);
+    const farHedgeMat = hedgeMat.clone(); farHedgeMat.vertexColors = false; EVO.addFoliageFill(farHedgeMat, 0.26);
     const Y2 = new THREE.Vector3(0, 1, 0);
     const im = new THREE.InstancedMesh(geo, farHedgeMat, Math.max(1, segs.length));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
@@ -968,6 +978,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x3a3d40, transparent: true, opacity: 0.6 })));
   }
 
+  return { groundAt, groundMeshes, VERGE_D, signPost, vergeSign };
+  }
+
   /* ------------------------------------------------------- sky and sun */
   const sunDir = new THREE.Vector3(-0.62, 0.50, 0.60).normalize();
   const skyUniforms = {
@@ -1042,15 +1055,15 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
    * the tarmac reads. Everything here is a live uniform or light property, so a
    * preset can change between rides without rebuilding the world. */
   const PRESETS = {
-    noon: { sun: [-0.62, 0.50, 0.60], sunColor: 0xfff4e5, sunI: 2.9, hemi: [0xbfcbd8, 0x5f6a4c, 1.95], ambient: 0.05, fog: [0xb9c4cf, 0.0009],
+    noon: { sun: [-0.62, 0.50, 0.60], sunColor: 0xfff4e5, sunI: 2.4, hemi: [0xbfcbd8, 0x5f6a4c, 3.4], ambient: 0.05, fog: [0xb9c4cf, 0.0009],
       zenith: [0.07, 0.20, 0.58], horizon: [0.50, 0.58, 0.72], glow: 0.45, disc: 16, cover: 0, cloud: [[0.38, 0.41, 0.48], [0.92, 0.90, 0.87]], wet: 0, radius: 2, exposure: 1.42 },
-    morning: { sun: [0.58, 0.33, 0.74], sunColor: 0xffe6c4, sunI: 2.5, hemi: [0xc9d3dc, 0x66705a, 1.8], ambient: 0.06, fog: [0xc9d0d6, 0.00095],
+    morning: { sun: [0.58, 0.33, 0.74], sunColor: 0xffe6c4, sunI: 2.1, hemi: [0xc9d3dc, 0x66705a, 3.2], ambient: 0.06, fog: [0xc9d0d6, 0.00095],
       zenith: [0.16, 0.28, 0.54], horizon: [0.62, 0.66, 0.71], glow: 0.6, disc: 12, cover: -0.12, cloud: [[0.48, 0.50, 0.56], [0.96, 0.95, 0.92]], wet: 0.4, radius: 2.5, exposure: 1.38 },
-    evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.9, hemi: [0xb3a6be, 0x6a5641, 2.2], ambient: 0.18, fog: [0xd2b89c, 0.00075],
+    evening: { sun: [-0.74, 0.30, -0.60], sunColor: 0xffc27c, sunI: 2.5, hemi: [0xb3a6be, 0x6a5641, 3.3], ambient: 0.18, fog: [0xd2b89c, 0.00075],
       zenith: [0.10, 0.16, 0.42], horizon: [0.66, 0.44, 0.28], glow: 1.0, disc: 20, cover: 0.04, cloud: [[0.44, 0.32, 0.37], [1.0, 0.80, 0.60]], wet: 0.15, radius: 2, exposure: 1.5 },
-    overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.75, hemi: [0xc3cad2, 0x6b7064, 2.4], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
+    overcast: { sun: [-0.5, 0.62, 0.61], sunColor: 0xe8edf3, sunI: 0.7, hemi: [0xc3cad2, 0x6b7064, 3.1], ambient: 0.06, fog: [0xb6bcc2, 0.0017],
       zenith: [0.42, 0.46, 0.52], horizon: [0.60, 0.63, 0.66], glow: 0.08, disc: 2, cover: 0.32, cloud: [[0.44, 0.46, 0.49], [0.74, 0.75, 0.76]], wet: 0.85, radius: 7, exposure: 1.45 },
-    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 2.15], ambient: 0.14, fog: [0x8f989f, 0.0024],
+    rain: { sun: [-0.4, 0.62, 0.68], sunColor: 0xdfe6ee, sunI: 0.3, hemi: [0xa4adb6, 0x60665d, 3.0], ambient: 0.14, fog: [0x8f989f, 0.0024],
       zenith: [0.24, 0.27, 0.32], horizon: [0.40, 0.43, 0.46], glow: 0.03, disc: 0, cover: 0.5, cloud: [[0.24, 0.26, 0.29], [0.48, 0.50, 0.52]], wet: 1, radius: 9, exposure: 1.25, rain: 1 }
   };
   let lightingName = 'noon', rainLevel = 0;
@@ -1066,7 +1079,9 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     skyUniforms.uGlow.value = P.glow; skyUniforms.uDisc.value = P.disc; skyUniforms.uCover.value = P.cover;
     skyUniforms.uCloudDark.value.setRGB(...P.cloud[0]); skyUniforms.uCloudLight.value.setRGB(...P.cloud[1]);
     // wet tarmac: smoother, and it mirrors the sky
-    roadMat.roughness = 0.95 - P.wet * 0.5; roadMat.envMapIntensity = 0.16 + P.wet * 0.85;
+    // wet tarmac is darker, smoother and mirrors the sky, mostly at grazing angles
+    roadMat.roughness = 0.95 - P.wet * 0.38; roadMat.envMapIntensity = 0.16 + P.wet * 0.5;
+    roadMat.color.set(0xc6c0b5).multiplyScalar(1 - P.wet * 0.3);
     for (const m of [grassMat, hedgeMat]) m.color.setScalar(1 - P.wet * 0.12);
     // wet tarmac has less to offer the tyres: the corner speeds and the planner follow
     EVO.grip = 1 - (P.rain || 0) * 0.24 - (P.wet || 0) * 0.04;
@@ -1085,6 +1100,7 @@ EVO.buildWorld = function buildWorld(renderer, quality) {
     if (forward) _bike.addScaledVector(forward, 30);
     sun.target.position.copy(_bike);
     sun.position.copy(_bike).addScaledVector(sunDir, 240);
+    part.update?.(time, bikePos, forward);
   }
 
   for (const mat of [roadMat, grassMat, hedgeMat, stoneMat, markMat]) addCloudShadow(mat);
